@@ -1,13 +1,7 @@
 {
   "name": "K-Chat · E2EE",
   "short_name": "K-Chat",
-  "description": "Защищённый мессенджер с оконечным шифрованием (E2EE). Общайтесь безопасно.",
-  "theme_color": "#07070f",
-  "background_color": "#07070f",
-  "display": "standalone",
-  "orientation": "portrait-primary",
-  "scope": "/",
-  "start_url": "/",
+  "description": "Безопасный мессенджер с оконечным шифрованием (E2EE). Общайтесь приватно.",
   "icons": [
     {
       "src": "/icons/icon-192x192.png",
@@ -20,39 +14,43 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
-    },
-    {
-      "src": "/icons/icon-192x192-maskable.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "/icons/icon-512x512-maskable.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
     }
   ],
-  "screenshots": [
-    {
-      "src": "/screenshots/chat-view.png",
-      "sizes": "1170x2532",
-      "type": "image/png",
-      "form_factor": "narrow",
-      "label": "Чат с собеседником"
-    },
-    {
-      "src": "/screenshots/home-view.png",
-      "sizes": "1170x2532",
-      "type": "image/png",
-      "form_factor": "narrow",
-      "label": "Список чатов"
-    }
-  ],
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#00ff88",
+  "background_color": "#07070f",
   "categories": ["social", "productivity", "utilities"],
-  "lang": "ru",
-  "dir": "ltr",
+  "shortcuts": [
+    {
+      "name": "Новый чат",
+      "short_name": "Чат",
+      "description": "Начать новый приватный чат",
+      "url": "./?newchat",
+      "icons": [
+        {
+          "src": "/icons/newchat-96x96.png",
+          "sizes": "96x96"
+        }
+      ]
+    },
+    {
+      "name": "Контакты",
+      "short_name": "Контакты",
+      "description": "Управление контактами",
+      "url": "./?contacts",
+      "icons": [
+        {
+          "src": "/icons/contacts-96x96.png",
+          "sizes": "96x96"
+        }
+      ]
+    }
+  ],
+  "related_applications": [],
   "prefer_related_applications": false,
-  "related_applications": []
+  "display_override": ["window-controls-overlay"],
+  "edge_side_panel": {}
 }
