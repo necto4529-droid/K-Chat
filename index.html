@@ -788,7 +788,7 @@ function renderContacts(){
 window.delContact=(i,e)=>{e?.stopPropagation();const c=loadContacts();c.splice(i,1);saveContacts(c);renderContacts();toast('Контакт удалён');};
 window.startChatWithContact=id=>{const ct=loadContacts().find(c=>c.id===id);getOrCreateChat(id,ct?.name,ct?.avatar);renderChatList();goHome();setTimeout(()=>openChatById(id),120);};
 
-const AVTS=['👤','🤖','🦊','🐱','🐶','🦁','🐼','🦄','🔥','⭐','🌊','🍄'];
+const AVTS=['👤','🤖','🦊','🐱','🐶','🦁','🐼','🦄','🔥','⭐','🌊','🍄','❤️','🌚',];
 function initAvt(){$('avatarSelector').innerHTML=AVTS.map(e=>`<div class="icon-btn-sm" style="width:36px;height:36px;font-size:18px" onclick="selAvt('${e}',event)">${e}</div>`).join('');}
 window.selAvt=(em,e)=>{$('newContactAvatar').value=em;document.querySelectorAll('#avatarSelector .icon-btn-sm').forEach(el=>{el.style.borderColor='var(--border)';el.style.background='rgba(0,255,136,.08)';});if(e?.currentTarget){e.currentTarget.style.borderColor='var(--border-hi)';e.currentTarget.style.background='rgba(0,255,136,.18)';}};
 let _openChatAfterSave=false;
