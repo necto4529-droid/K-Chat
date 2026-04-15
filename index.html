@@ -181,7 +181,6 @@
       align-items: center;
       gap: 10px;
       padding: 8px 12px 8px 8px;
-      /* width controlled by msg-row max-width */
     }
 
     .voice-play-btn {
@@ -247,7 +246,6 @@
     .msg-row.recv .wf-bar            { background: rgba(255,255,255,.28); }
     .msg-row.sent .wf-bar.played     { background: rgba(0,255,136,.9); }
     .msg-row.recv .wf-bar.played     { background: rgba(0,217,255,.85); }
-    /* animating bars during playback */
     .wf-bar.active-bar {
       animation: wfPulse .5s ease-in-out infinite alternate;
     }
@@ -256,7 +254,6 @@
       to   { filter: brightness(1.6); }
     }
 
-    /* bottom row: timer • dot + meta */
     .voice-bottom {
       display: flex;
       align-items: center;
@@ -270,7 +267,6 @@
     }
     .msg-row.sent .voice-timer { color: rgba(180,255,210,.65); }
 
-    /* Unread dot — like Telegram */
     .voice-unread-dot {
       width: 7px;
       height: 7px;
@@ -286,7 +282,6 @@
       pointer-events: none;
     }
 
-    /* voice meta (time + ticks) — inline after dot */
     .voice-meta-inline {
       display: flex;
       align-items: center;
@@ -908,7 +903,7 @@ window.stopAndSendRecording=async function(){
   if(!isRecording)return;
   const chunks=await stopRecordingInternal();
   if(!chunks?.length){toast('Пустая запись','warn');return;}
-  const durMs=Date.now()-recStartTime; // captured before stop clears it
+  const durMs=Date.now()-recStartTime;
   const blob=new Blob(chunks,{type:chunks[0].type||'audio/webm'});
   if(!blob.size){toast('Пустая запись','warn');return;}
   const reader=new FileReader();
@@ -916,11 +911,8 @@ window.stopAndSendRecording=async function(){
   reader.readAsDataURL(blob);
 };
 
-// Save duration before clearing
-let lastRecDurMs=0;
 function stopRecordingInternal(){
   return new Promise(resolve=>{
-    lastRecDurMs=Date.now()-recStartTime;
     clearInterval(recTimerInterval);cancelAnimationFrame(recAnimFrame);
     isRecording=false;
     $('voiceRecordOverlay').classList.remove('active');
@@ -936,13 +928,11 @@ function stopRecordingInternal(){
 }
 
 function generateWaveform(){
-  // 40 random-ish amplitudes normalised 0..1
   const arr=[];for(let i=0;i<WF_BARS;i++)arr.push(Math.max(0.08,Math.min(1,Math.random()*0.9+0.08)));
   return arr;
 }
 
 async function sendVoiceMessage(dataURL,duration,waveform){
-  // For self-chat (Избранное) voiceListened=true immediately
   const selfChat=(activePid===MY_ID);
   if(selfChat){
     const msgId=uid(),ts=Date.now();
@@ -957,14 +947,12 @@ async function sendVoiceMessage(dataURL,duration,waveform){
   try{
     const enc=await encData(ENC.encode(JSON.stringify(env)),key);
     wsSend({type:'send-msg',target:activePid,msgId,payload:Array.from(new Uint8Array(enc))});
-    // voiceListened=false: sender's own message dot will be shown until peer listens
     const m={id:msgId,text:'',type:'sent',time:new Date(ts).toISOString(),reactions:{},edited:false,replyTo:replyTo||null,delivered:false,forwarded:false,voice:env.voice,voiceDuration:duration,voiceListened:false};
     upsertMsg(activePid,m);updateChat(activePid,{lastMsg:'🎙 Голосовое',lastMsgTime:ts});appendOrReloadMsg(activePid,m);cancelReply();
   }catch(e){toast('Ошибка отправки голосового','err');}
 }
 
 // ── VOICE PLAYBACK ──
-// Track which audio element is currently playing
 let currentAudio=null;
 
 function buildVoiceBubble(m,isSent){
@@ -973,17 +961,13 @@ function buildVoiceBubble(m,isSent){
 
   const wrap=document.createElement('div');wrap.className='voice-bubble';
 
-  // Play button
   const btn=document.createElement('button');btn.className='voice-play-btn';btn.innerHTML='▶';
 
-  // Right side
   const right=document.createElement('div');right.className='voice-right';
 
-  // Waveform
   const wf=document.createElement('div');wf.className='voice-waveform';
   const waveform=m.voice?.waveform||Array.from({length:WF_BARS},()=>Math.random());
   const barEls=[];
-  // Use a stable width: fill the available space
   const DISP_BARS=Math.min(waveform.length,WF_BARS);
   for(let i=0;i<DISP_BARS;i++){
     const b=document.createElement('div');b.className='wf-bar';
@@ -992,7 +976,6 @@ function buildVoiceBubble(m,isSent){
     wf.appendChild(b);barEls.push(b);
   }
 
-  // Bottom row
   const bot=document.createElement('div');bot.className='voice-bottom';
   const timerEl=document.createElement('span');timerEl.className='voice-timer';timerEl.textContent=fmtDur(totalSec);
   const dot=document.createElement('span');dot.className='voice-unread-dot'+(isListened?' hidden':'');
@@ -1011,7 +994,6 @@ function buildVoiceBubble(m,isSent){
   right.appendChild(wf);right.appendChild(bot);
   wrap.appendChild(btn);wrap.appendChild(right);
 
-  // Playback logic
   let audio=null;let isPlaying=false;
   function updateProgress(pct){
     barEls.forEach((b,i)=>{
@@ -1029,7 +1011,6 @@ function buildVoiceBubble(m,isSent){
     requestAnimationFrame(rafTick);
   }
   function doPlay(){
-    // Pause any other
     if(currentAudio&&currentAudio!==audio&&!currentAudio.paused)currentAudio.pause();
     if(!audio){
       audio=new Audio(m.voice.data);
@@ -1040,30 +1021,21 @@ function buildVoiceBubble(m,isSent){
     audio.play().then(()=>{
       isPlaying=true;btn.innerHTML='⏸';btn.classList.add('playing');currentAudio=audio;
       rafTick();
-      // Mark as listened ONLY for received messages (not sent)
-      if (!isSent) {
-        if (!m.voiceListened) {
-          m.voiceListened = true;
-          // Persist
-          const msgs = loadMsgs(activePid);
-          const mm = msgs.find(x => x.id === m.id);
-          if (mm) {
-            mm.voiceListened = true;
-            saveMsgs(activePid, msgs);
-          }
-          // Hide dot
-          dot.classList.add('hidden');
-          // Notify sender
-          if (activePid !== MY_ID) {
-            wsSend({ type: 'voice-listened', target: activePid, voiceMsgId: m.id });
-          }
+      // Mark as listened ONLY for received messages (not sent by us)
+      if(!isSent && !m.voiceListened){
+        m.voiceListened=true;
+        const msgs=loadMsgs(activePid); const mm=msgs.find(x=>x.id===m.id);
+        if(mm){mm.voiceListened=true; saveMsgs(activePid,msgs);}
+        dot.classList.add('hidden');
+        // Notify sender
+        if(activePid!==MY_ID){
+          wsSend({type:'voice-listened',target:activePid,voiceMsgId:m.id});
         }
       }
     }).catch(e=>console.error(e));
   }
   function doPause(){audio.pause();}
   btn.addEventListener('click',e=>{e.stopPropagation();if(isPlaying)doPause();else doPlay();});
-  // Seek by clicking waveform
   wf.addEventListener('click',e=>{
     if(!audio){doPlay();return;}
     if(audio.duration){const r=wf.getBoundingClientRect();const p=(e.clientX-r.left)/r.width;audio.currentTime=p*audio.duration;}
@@ -1144,11 +1116,8 @@ function buildRow(m){
   }
 
   if(m.voice?.data){
-    // Voice bubble — no default meta float, voice-bubble handles it
     bubble.style.padding='0';bubble.style.overflow='visible';bubble.style.background='transparent';bubble.style.border='none';
-    // Re-apply the coloured background on the voice-bubble instead
     const vb=buildVoiceBubble(m,isSent);
-    // Wrap in a styled container that matches bubble colours
     const vcont=document.createElement('div');
     vcont.style.cssText=`border-radius:18px;overflow:hidden;border:1px solid ${isSent?'rgba(0,255,136,.28)':'rgba(255,255,255,.1)'};background:${isSent?'linear-gradient(135deg,rgba(0,185,100,.52),rgba(0,160,90,.38))':'rgba(255,255,255,.07)'};`;
     if(isSent)vcont.style.borderBottomRightRadius='4px';else vcont.style.borderBottomLeftRadius='4px';
