@@ -1040,17 +1040,23 @@ function buildVoiceBubble(m,isSent){
     audio.play().then(()=>{
       isPlaying=true;btn.innerHTML='⏸';btn.classList.add('playing');currentAudio=audio;
       rafTick();
-      // Mark as listened
-      if(!m.voiceListened){
-        m.voiceListened=true;
-        // Persist
-        const msgs=loadMsgs(activePid);const mm=msgs.find(x=>x.id===m.id);
-        if(mm){mm.voiceListened=true;saveMsgs(activePid,msgs);}
-        // Hide dot
-        dot.classList.add('hidden');
-        // Notify sender (if this is a received message)
-        if(!isSent&&activePid!==MY_ID){
-          wsSend({type:'voice-listened',target:activePid,voiceMsgId:m.id});
+      // Mark as listened ONLY for received messages (not sent)
+      if (!isSent) {
+        if (!m.voiceListened) {
+          m.voiceListened = true;
+          // Persist
+          const msgs = loadMsgs(activePid);
+          const mm = msgs.find(x => x.id === m.id);
+          if (mm) {
+            mm.voiceListened = true;
+            saveMsgs(activePid, msgs);
+          }
+          // Hide dot
+          dot.classList.add('hidden');
+          // Notify sender
+          if (activePid !== MY_ID) {
+            wsSend({ type: 'voice-listened', target: activePid, voiceMsgId: m.id });
+          }
         }
       }
     }).catch(e=>console.error(e));
@@ -1298,4 +1304,4 @@ initAvt();renderChatList();renderContacts();ensureWS();
 })();
 </script>
 </body>
-    </html>
+  </html>
