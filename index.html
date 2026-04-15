@@ -690,9 +690,13 @@ async function onWS(msg){
       const pid=(msg.from||'').toLowerCase();
       const msgs=loadMsgs(pid);const m=msgs.find(x=>x.id===msg.voiceMsgId);
       if(m&&!m.voiceListened){m.voiceListened=true;saveMsgs(pid,msgs);}
-      // update dot in DOM
-      const dot=document.querySelector(`.msg-row[data-msgid="${msg.voiceMsgId}"] .voice-unread-dot`);
-      if(dot)dot.classList.add('hidden');
+      // Обновляем DOM: заменяем всю строку сообщения, чтобы гарантированно скрыть точку
+      const row=document.querySelector(`.msg-row[data-msgid="${msg.voiceMsgId}"]`);
+      if(row){
+        const newRow=buildRow(m);
+        row.parentNode.replaceChild(newRow,row);
+        // Восстанавливаем обработчики контекстного меню и выбора (они уже в buildRow)
+      }
       break;
     }
   }
@@ -1273,4 +1277,4 @@ initAvt();renderChatList();renderContacts();ensureWS();
 })();
 </script>
 </body>
-  </html>
+      </html>
