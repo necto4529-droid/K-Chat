@@ -764,14 +764,25 @@ function updateRecTimer(){
 window.toggleRecording=async function(){
   if(isRecording){stopAndSendRecording();return;}
   try{
-    const stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,sampleRate:16000,echoCancellation:true,noiseSuppression:true}});
+    const stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,sampleRate:24000,echoCancellation:true,noiseSuppression:true}});
     micStream=stream;
     try{audioCtx=new(window.AudioContext||window.webkitAudioContext)();analyser=audioCtx.createAnalyser();analyser.fftSize=64;audioCtx.createMediaStreamSource(stream).connect(analyser);}catch(e){analyser=null;}
-    let mime='audio/webm;codecs=opus';
-    if(!MediaRecorder.isTypeSupported(mime))mime='audio/webm';
-    if(!MediaRecorder.isTypeSupported(mime))mime='audio/ogg;codecs=opus';
-    if(!MediaRecorder.isTypeSupported(mime))mime='';
-    mediaRecorder=new MediaRecorder(stream,mime?{mimeType:mime,audioBitsPerSecond:16000}:{audioBitsPerSecond:16000});
+    // ─── УЛУЧШЕННАЯ НАСТРОЙКА (БИТРЕЙТ 24 kbps, ЧАСТОТА 24 kHz) ───
+let mime = 'audio/webm;codecs=opus';
+let bitrate = 24000;
+if (!MediaRecorder.isTypeSupported(mime)) {
+    mime = 'audio/webm';
+    bitrate = 32000;
+}
+if (!MediaRecorder.isTypeSupported(mime)) {
+    mime = 'audio/ogg;codecs=opus';
+    bitrate = 24000;
+}
+if (!MediaRecorder.isTypeSupported(mime)) {
+    mime = '';
+    bitrate = 32000;
+}
+mediaRecorder = new MediaRecorder(stream, mime ? {mimeType: mime, audioBitsPerSecond: bitrate} : {audioBitsPerSecond: bitrate});
     audioChunks=[];
     mediaRecorder.ondataavailable=e=>{if(e.data?.size>0)audioChunks.push(e.data);};
     mediaRecorder.start(100);
