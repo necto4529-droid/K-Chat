@@ -1,29 +1,24 @@
 {
   "name": "K-Chat",
   "short_name": "K-Chat",
-  "description": "Защищённый E2EE мессенджер",
-  "start_url": "/",
-  "scope": "/",
+  "description": "Защищённый мессенджер",
+  "theme_color": "#07070f",
+  "background_color": "#07070f",
   "display": "standalone",
   "orientation": "portrait",
-  "theme_color": "#00ff88",
-  "background_color": "#07070f",
+  "scope": "/",
+  "start_url": "/",
   "icons": [
     {
-      "src": "icons/icon-192.png",
+      "src": "/icon-192.png",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "icons/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png"
-    },
-    {
-      "src": "icons/icon-maskable.png",
+      "src": "/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "maskable"
+      "purpose": "any maskable"
     }
   ]
 }
