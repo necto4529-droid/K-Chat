@@ -4,10 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
   <title>K-Chat · E2EE</title>
+  <!-- SQLite Wasm + Argon2 -->
+  <script src="https://cdn.jsdelivr.net/npm/@sqlite.org/sqlite-wasm@3.49.0/sqlite-wasm/sqlite3.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/argon2-browser@1.18.0/dist/argon2-bundled.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
   <style>
-    /* --- ТВОИ СТИЛИ (без изменений) --- */
+    /* === ПОЛНЫЕ СТИЛИ (БЕЗ ИЗМЕНЕНИЙ) === */
     :root {
       --g:#00ff88;--b:#00d9ff;--bg:#07070f;
       --panel:rgba(255,255,255,0.035);
@@ -174,7 +176,7 @@
     .lightbox-img{max-width:95vw;max-height:95vh;object-fit:contain;border-radius:16px}
     .lightbox-close{position:absolute;top:20px;right:20px;color:white;font-size:30px;cursor:pointer}
 
-    /* VOICE BUBBLE */
+    /* ══ VOICE BUBBLE — compact Telegram style ══ */
     .voice-bubble{display:flex;align-items:center;gap:10px;padding:8px 12px 8px 8px}
     .voice-play-btn{width:42px;height:42px;min-width:42px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .15s,filter .2s;font-size:15px;flex-shrink:0;position:relative}
     .msg-row.sent .voice-play-btn{background:rgba(0,255,136,.85);color:#000;box-shadow:0 2px 8px rgba(0,255,136,.35)}
@@ -194,6 +196,7 @@
     .voice-bottom{display:flex;align-items:center;gap:5px}
     .voice-timer{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:rgba(255,255,255,.5);white-space:nowrap}
     .msg-row.sent .voice-timer{color:rgba(180,255,210,.65)}
+    /* Unread dot */
     .voice-unread-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;transition:opacity .35s,transform .35s}
     .msg-row.sent .voice-unread-dot{background:rgba(0,255,136,.85)}
     .msg-row.recv .voice-unread-dot{background:rgba(0,217,255,.85)}
@@ -202,7 +205,7 @@
     .voice-meta-inline .msg-time-inline{color:rgba(255,255,255,.4)}
     .msg-row.sent .voice-meta-inline .msg-time-inline{color:rgba(180,255,210,.55)}
 
-    /* RECORDING OVERLAY */
+    /* ══ RECORDING OVERLAY ══ */
     .voice-record-overlay{position:absolute;inset:0;z-index:50;display:flex;align-items:center;background:rgba(7,7,15,.97);backdrop-filter:blur(12px);padding:0 12px;gap:12px;opacity:0;pointer-events:none;transition:opacity .25s;border-top:1px solid rgba(255,79,106,.18)}
     .voice-record-overlay.active{opacity:1;pointer-events:all}
     .rec-cancel-btn{width:42px;height:42px;border-radius:50%;background:rgba(255,79,106,.12);border:1px solid rgba(255,79,106,.28);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;transition:background .2s,transform .15s;flex-shrink:0}
@@ -452,7 +455,7 @@
 (function(){
 'use strict';
 
-const SIGNAL_URL='wss://signal-server-aipd.onrender.com'; // ✅ ИСПРАВЛЕНО на wss
+const SIGNAL_URL='wss://signal-server-aipd.onrender.com';
 const A2_MEM=65536,A2_TIME=3,A2_PAR=1;
 const QUICK_EMOJIS=['❤️','👍','😂','🔥','👏','😮','😢','🤯'];
 const PAGE_SIZE=50;
@@ -484,24 +487,155 @@ async function copyToClipboard(text){
   document.body.appendChild(ta);ta.focus();ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);
 }
 
-const lsGet=(k,fb)=>{try{return JSON.parse(localStorage.getItem(k)||'null')??fb;}catch{return fb;}};
-const lsSet=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
-const loadContacts=()=>lsGet('bc_contacts',[]);
-const saveContacts=a=>lsSet('bc_contacts',a);
-const loadChats=()=>lsGet('bc_chats',[]);
-const saveChats=a=>lsSet('bc_chats',a);
-const loadMsgs=id=>lsGet(`bc_msgs_${id}`,[]);
-const saveMsgs=(id,a)=>lsSet(`bc_msgs_${id}`,a);
-const clearMsgs=id=>localStorage.removeItem(`bc_msgs_${id}`);
+// ---------- SQLite OPFS Database Setup ----------
+let db = null;
+const DB_NAME = '/kchat.db';
 
-function initFavoritesChat(){
-  let chats=loadChats();
-  if(!chats.find(c=>c.peerId===MY_ID)){chats.push({peerId:MY_ID,peerName:'⭐ Избранное',avatar:'⭐',lastMsg:null,lastMsgTime:null,unread:0});saveChats(chats);}
+async function initDatabase() {
+  if (db) return db;
+  const sqlite3 = await window.sqlite3InitModule({
+    locateFile: file => `https://cdn.jsdelivr.net/npm/@sqlite.org/sqlite-wasm@3.49.0/sqlite-wasm/${file}`
+  });
+  db = new sqlite3.oo1.OpfsDb(DB_NAME);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS contacts (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      avatar TEXT DEFAULT '👤',
+      added INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS chats (
+      peerId TEXT PRIMARY KEY,
+      peerName TEXT NOT NULL,
+      avatar TEXT DEFAULT '👤',
+      lastMsg TEXT,
+      lastMsgTime INTEGER,
+      unread INTEGER DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS messages (
+      id TEXT PRIMARY KEY,
+      peerId TEXT NOT NULL,
+      type TEXT NOT NULL,
+      time TEXT NOT NULL,
+      text TEXT DEFAULT '',
+      edited INTEGER DEFAULT 0,
+      delivered INTEGER DEFAULT 0,
+      forwarded INTEGER DEFAULT 0,
+      replyTo TEXT,
+      media TEXT,
+      caption TEXT,
+      voice TEXT,
+      voiceDuration INTEGER,
+      voiceListened INTEGER DEFAULT 0,
+      reactions TEXT DEFAULT '{}'
+    );
+    CREATE INDEX IF NOT EXISTS idx_msg_peer ON messages(peerId);
+    CREATE INDEX IF NOT EXISTS idx_msg_time ON messages(time);
+  `);
+  await migrateFromLocalStorage();
+  console.log('✅ SQLite OPFS database ready');
+  return db;
 }
-initFavoritesChat();
 
-function upsertMsg(pid,m){let a=loadMsgs(pid);const i=a.findIndex(x=>x.id===m.id);if(i!==-1)a[i]={...a[i],...m};else{a.push(m);if(a.length>500)a=a.slice(-500);}saveMsgs(pid,a);}
+async function migrateFromLocalStorage() {
+  try {
+    const oldContacts = localStorage.getItem('bc_contacts');
+    if (oldContacts) {
+      const contacts = JSON.parse(oldContacts);
+      const stmt = db.prepare('INSERT OR REPLACE INTO contacts VALUES (?, ?, ?, ?)');
+      for (const c of contacts) stmt.run(c.id, c.name, c.avatar || '👤', c.added || Date.now());
+      stmt.finalize();
+      localStorage.removeItem('bc_contacts');
+    }
+    const oldChats = localStorage.getItem('bc_chats');
+    if (oldChats) {
+      const chats = JSON.parse(oldChats);
+      const stmt = db.prepare('INSERT OR REPLACE INTO chats VALUES (?, ?, ?, ?, ?, ?)');
+      for (const c of chats) stmt.run(c.peerId, c.peerName, c.avatar || '👤', c.lastMsg || null, c.lastMsgTime || null, c.unread || 0);
+      stmt.finalize();
+      localStorage.removeItem('bc_chats');
+    }
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('bc_msgs_')) {
+        const peerId = key.replace('bc_msgs_', '');
+        const msgs = JSON.parse(localStorage.getItem(key));
+        const stmt = db.prepare(`INSERT OR REPLACE INTO messages (id,peerId,type,time,text,edited,delivered,forwarded,replyTo,media,caption,voice,voiceDuration,voiceListened,reactions) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+        for (const m of msgs) {
+          stmt.run(m.id, peerId, m.type, m.time, m.text||'', m.edited?1:0, m.delivered?1:0, m.forwarded?1:0, m.replyTo?JSON.stringify(m.replyTo):null, m.media?JSON.stringify(m.media):null, m.caption||null, m.voice?JSON.stringify(m.voice):null, m.voiceDuration||null, m.voiceListened?1:0, JSON.stringify(m.reactions||{}));
+        }
+        stmt.finalize();
+        localStorage.removeItem(key);
+      }
+    }
+    console.log('📦 Migration from localStorage completed');
+  } catch (e) { console.warn('Migration error (ignored):', e); }
+}
 
+// ---------- Database API (замена localStorage) ----------
+async function loadContacts() {
+  await initDatabase();
+  const rows = db.exec('SELECT * FROM contacts', { rowMode: 'object' });
+  return rows.map(c => ({ ...c, added: c.added }));
+}
+async function saveContacts(contacts) {
+  await initDatabase();
+  db.exec('DELETE FROM contacts');
+  const stmt = db.prepare('INSERT INTO contacts VALUES (?, ?, ?, ?)');
+  for (const c of contacts) stmt.run(c.id, c.name, c.avatar || '👤', c.added || Date.now());
+  stmt.finalize();
+}
+async function loadChats() {
+  await initDatabase();
+  const rows = db.exec('SELECT * FROM chats', { rowMode: 'object' });
+  return rows.map(c => ({ peerId: c.peerId, peerName: c.peerName, avatar: c.avatar, lastMsg: c.lastMsg, lastMsgTime: c.lastMsgTime, unread: c.unread }));
+}
+async function saveChats(chats) {
+  await initDatabase();
+  db.exec('DELETE FROM chats');
+  const stmt = db.prepare('INSERT INTO chats VALUES (?, ?, ?, ?, ?, ?)');
+  for (const c of chats) stmt.run(c.peerId, c.peerName, c.avatar || '👤', c.lastMsg || null, c.lastMsgTime || null, c.unread || 0);
+  stmt.finalize();
+}
+async function loadMsgs(peerId) {
+  await initDatabase();
+  const rows = db.exec(`SELECT * FROM messages WHERE peerId = ? ORDER BY time ASC`, { bind: [peerId], rowMode: 'object' });
+  return rows.map(m => ({
+    id: m.id, type: m.type, time: m.time, text: m.text, edited: !!m.edited, delivered: !!m.delivered, forwarded: !!m.forwarded,
+    replyTo: m.replyTo ? JSON.parse(m.replyTo) : null, media: m.media ? JSON.parse(m.media) : null, caption: m.caption,
+    voice: m.voice ? JSON.parse(m.voice) : null, voiceDuration: m.voiceDuration, voiceListened: !!m.voiceListened,
+    reactions: JSON.parse(m.reactions || '{}')
+  }));
+}
+async function saveMsgs(peerId, msgs) {
+  await initDatabase();
+  db.exec('DELETE FROM messages WHERE peerId = ?', { bind: [peerId] });
+  const stmt = db.prepare(`INSERT INTO messages (id,peerId,type,time,text,edited,delivered,forwarded,replyTo,media,caption,voice,voiceDuration,voiceListened,reactions) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+  for (const m of msgs) {
+    stmt.run(m.id, peerId, m.type, m.time, m.text||'', m.edited?1:0, m.delivered?1:0, m.forwarded?1:0, m.replyTo?JSON.stringify(m.replyTo):null, m.media?JSON.stringify(m.media):null, m.caption||null, m.voice?JSON.stringify(m.voice):null, m.voiceDuration||null, m.voiceListened?1:0, JSON.stringify(m.reactions||{}));
+  }
+  stmt.finalize();
+}
+async function upsertMsg(peerId, m) {
+  await initDatabase();
+  const stmt = db.prepare(`INSERT OR REPLACE INTO messages (id,peerId,type,time,text,edited,delivered,forwarded,replyTo,media,caption,voice,voiceDuration,voiceListened,reactions) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+  stmt.run(m.id, peerId, m.type, m.time, m.text||'', m.edited?1:0, m.delivered?1:0, m.forwarded?1:0, m.replyTo?JSON.stringify(m.replyTo):null, m.media?JSON.stringify(m.media):null, m.caption||null, m.voice?JSON.stringify(m.voice):null, m.voiceDuration||null, m.voiceListened?1:0, JSON.stringify(m.reactions||{}));
+  stmt.finalize();
+}
+async function clearMsgs(peerId) {
+  await initDatabase();
+  db.exec('DELETE FROM messages WHERE peerId = ?', { bind: [peerId] });
+}
+
+async function initFavoritesChat(){
+  let chats = await loadChats();
+  if(!chats.find(c=>c.peerId===MY_ID)){
+    chats.push({peerId:MY_ID, peerName:'⭐ Избранное', avatar:'⭐', lastMsg:null, lastMsgTime:null, unread:0});
+    await saveChats(chats);
+  }
+}
+
+// ---------- Шифрование и ключи ----------
 const keyCache={};
 async function deriveKey(pwd,peerId){
   const saltStr=[MY_ID,peerId].sort().join(':');const saltBuf=new Uint8Array(32);const encoded=ENC.encode(saltStr);saltBuf.set(encoded.slice(0,32));
@@ -516,7 +650,7 @@ async function encData(data,key){const iv=crypto.getRandomValues(new Uint8Array(
 async function decData(buf,key){const d=new Uint8Array(buf);return crypto.subtle.decrypt({name:'AES-GCM',iv:d.slice(0,12)},key,d.slice(12));}
 
 let _kmResolve=null,_kmReject=null,_kmPid=null;
-function promptKey(pid){return new Promise((res,rej)=>{_kmResolve=res;_kmReject=rej;_kmPid=pid;const chat=loadChats().find(c=>c.peerId===pid)||{};$('keyModalTitle').textContent=`🔑 Ключ для «${chat.peerName||pid}»`;$('keyModalPwd').value='';$('keySpinner').style.display='none';$('keyModalBtn').disabled=false;$('keyModalBtn').textContent='Продолжить';$('keyModalOverlay').classList.add('open');setTimeout(()=>$('keyModalPwd').focus(),300);});}
+function promptKey(pid){return new Promise((res,rej)=>{_kmResolve=res;_kmReject=rej;_kmPid=pid;loadChats().then(chats=>{const chat=chats.find(c=>c.peerId===pid)||{};$('keyModalTitle').textContent=`🔑 Ключ для «${chat.peerName||pid}»`;});$('keyModalPwd').value='';$('keySpinner').style.display='none';$('keyModalBtn').disabled=false;$('keyModalBtn').textContent='Продолжить';$('keyModalOverlay').classList.add('open');setTimeout(()=>$('keyModalPwd').focus(),300);});}
 $('keyModalPwd')?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submitKeyModal();}});
 window.submitKeyModal=async function(){
   const pwd=$('keyModalPwd').value;if(pwd.length<16){toast('Пароль должен быть не менее 16 символов','err');return;}
@@ -529,6 +663,7 @@ window.submitKeyModal=async function(){
 window.cancelKeyModal=function(){$('keyModalOverlay').classList.remove('open');if(_kmReject){_kmReject(new Error('cancelled'));_kmReject=null;}};
 async function ensureKey(pid){let key=await getKey(pid);if(key)return key;return promptKey(pid);}
 
+// ---------- WebSocket ----------
 let ws=null,wsUp=false,wsRetry=0;
 const WS_DELAYS=[2000,3000,5000,8000,15000,30000];
 function ensureWS(){
@@ -543,51 +678,36 @@ function ensureWS(){
 function wsSend(obj){if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(obj));}
 
 const online={};
-// ✅ НОВАЯ ФУНКЦИЯ: Пометить сообщение как отправленное (убрать ошибку)
 function markMessageAsSent(msgId) {
   const row = document.querySelector(`.msg-row[data-msgid="${msgId}"]`);
   if (row) {
-    row.classList.remove('sending-error'); // если есть класс ошибки
+    row.classList.remove('sending-error');
     const statusIcon = row.querySelector('.msg-ticks');
-    if (statusIcon) {
-      statusIcon.textContent = '✔'; // одна галочка (отправлено)
-      statusIcon.className = 'msg-ticks single';
-    }
+    if (statusIcon) { statusIcon.textContent = '✔'; statusIcon.className = 'msg-ticks single'; }
   }
 }
-
 async function onWS(msg){
   if(msg.type==='incoming-msg'&&msg.from===MY_ID)return;
   switch(msg.type){
     case 'registered':updateSendBtn();if(activePid)wsSend({type:'query-presence',target:activePid});break;
     case 'presence':setOnline(msg.peerId.toLowerCase(),!!msg.online);break;
     case 'presence-reply':setOnline((msg.target||'').toLowerCase(),!!msg.online);break;
-
-    // ✅ НОВЫЙ ОБРАБОТЧИК
-    case 'msg-queued':
-      markMessageAsSent(msg.msgId);
-      break;
-
+    case 'msg-queued': markMessageAsSent(msg.msgId); break;
     case 'incoming-msg':{
       const from=(msg.from||'').toLowerCase();
       wsSend({type:'ack-msg',msgId:msg.msgId});
       let key=keyCache[from]||await loadPersistedKey(from);
       if(!key){const pwd=localStorage.getItem(`bc_pwd_${from}`)||sessionStorage.getItem(`bc_pwd_${from}`);if(pwd){try{key=await deriveKey(pwd,from);keyCache[from]=key;await persistKey(from,key);}catch(e){}}}
-      if(!key){const pending=lsGet(`bc_pending_${from}`,[]);pending.push({msgId:msg.msgId,payload:msg.payload,ts:Date.now()});lsSet(`bc_pending_${from}`,pending);const chat=loadChats().find(c=>c.peerId===from);const ct=loadContacts().find(c=>c.id===from);getOrCreateChat(from,ct?.name,ct?.avatar);updateChat(from,{unread:(chat?.unread||0)+1,lastMsg:'🔒 Зашифровано',lastMsgTime:Date.now()});toast(`💬 ${ct?.name||from}: (зашифровано)`);break;}
+      if(!key){const pending=JSON.parse(localStorage.getItem(`bc_pending_${from}`)||'[]');pending.push({msgId:msg.msgId,payload:msg.payload,ts:Date.now()});localStorage.setItem(`bc_pending_${from}`,JSON.stringify(pending));const chat=(await loadChats()).find(c=>c.peerId===from);const ct=(await loadContacts()).find(c=>c.id===from);await getOrCreateChat(from,ct?.name,ct?.avatar);await updateChat(from,{unread:(chat?.unread||0)+1,lastMsg:'🔒 Зашифровано',lastMsgTime:Date.now()});toast(`💬 ${ct?.name||from}: (зашифровано)`);break;}
       await decryptAndStore(from,msg.msgId,msg.payload,key);break;
     }
     case 'msg-delivered':markDelivered(msg.msgId);break;
-
-    // ── ПОЛУЧАТЕЛЬ прослушал голосовое → убираем точку у ОТПРАВИТЕЛЯ ──
     case 'voice-listened':{
       const listenedMsgId = msg.voiceMsgId;
       const senderPid = (msg.from||'').toLowerCase();
-      const msgs = loadMsgs(senderPid);
+      const msgs = await loadMsgs(senderPid);
       const m = msgs.find(x => x.id === listenedMsgId);
-      if(m && !m.voiceListened){
-        m.voiceListened = true;
-        saveMsgs(senderPid, msgs);
-      }
+      if(m && !m.voiceListened){ m.voiceListened = true; await upsertMsg(senderPid, m); }
       const dot = document.querySelector(`.msg-row[data-msgid="${listenedMsgId}"] .voice-unread-dot`);
       if(dot) dot.classList.add('hidden');
       break;
@@ -600,22 +720,26 @@ async function handleEnvelope(from,env){
     const m={id:env.id,text:env.text||'',type:'recv',time:new Date(env.ts||Date.now()).toISOString(),reactions:{},edited:false,replyTo:env.replyTo||null,delivered:true,forwarded:env.forwarded||false};
     if(env.type==='media'){m.media=env.media;m.caption=env.caption;}
     if(env.type==='voice'){m.voice=env.voice;m.voiceDuration=env.voiceDuration;m.voiceListened=false;}
-    const ct=loadContacts().find(c=>c.id===from);getOrCreateChat(from,ct?.name,ct?.avatar);upsertMsg(from,m);
+    const ct=(await loadContacts()).find(c=>c.id===from);
+    await getOrCreateChat(from,ct?.name,ct?.avatar);
+    await upsertMsg(from,m);
     const lastPreview=env.type==='media'?'📷 Фото':env.type==='voice'?'🎙 Голосовое':(env.text||'').slice(0,28);
-    updateChat(from,{lastMsg:lastPreview,lastMsgTime:new Date(m.time).getTime()});
-    if(currentScreen==='scr-chat'&&activePid===from)appendOrReloadMsg(from,m);
-    else{const chat=loadChats().find(c=>c.peerId===from);updateChat(from,{unread:(chat?.unread||0)+1});toast(`💬 ${chat?.peerName||from}: ${lastPreview}`);}
-  }else if(env.type==='reaction')handleInReaction(from,env.msgId,env.emoji);
-  else if(env.type==='edit')handleInEdit(from,env.msgId,env.newText,env.ts);
-  else if(env.type==='delete')handleInDelete(from,env.msgId);
+    await updateChat(from,{lastMsg:lastPreview,lastMsgTime:new Date(m.time).getTime()});
+    if(currentScreen==='scr-chat'&&activePid===from) appendOrReloadMsg(from,m);
+    else{const chat=(await loadChats()).find(c=>c.peerId===from);await updateChat(from,{unread:(chat?.unread||0)+1});toast(`💬 ${chat?.peerName||from}: ${lastPreview}`);}
+  }else if(env.type==='reaction') handleInReaction(from,env.msgId,env.emoji);
+  else if(env.type==='edit') handleInEdit(from,env.msgId,env.newText,env.ts);
+  else if(env.type==='delete') handleInDelete(from,env.msgId);
   else if(env.type==='typing'){if(from===activePid&&currentScreen==='scr-chat')handleTyping(env.isTyping);}
 }
-async function drainPending(pid,key){const pending=lsGet(`bc_pending_${pid}`,[]);if(!pending.length)return;localStorage.removeItem(`bc_pending_${pid}`);for(const p of pending)await decryptAndStore(pid,p.msgId,p.payload,key);}
+async function drainPending(pid,key){const pending=JSON.parse(localStorage.getItem(`bc_pending_${pid}`)||'[]');if(!pending.length)return;localStorage.removeItem(`bc_pending_${pid}`);for(const p of pending)await decryptAndStore(pid,p.msgId,p.payload,key);}
 
-function markDelivered(msgId){
-  for(const chat of loadChats()){
-    const msgs=loadMsgs(chat.peerId);const m=msgs.find(m=>m.id===msgId);
-    if(m){m.delivered=true;saveMsgs(chat.peerId,msgs);const row=document.querySelector(`.msg-row[data-msgid="${msgId}"]`);if(row){const tk=row.querySelector('.msg-ticks');if(tk){tk.textContent='✔✔';tk.className='msg-ticks double';}}break;}
+async function markDelivered(msgId){
+  const chats = await loadChats();
+  for(const chat of chats){
+    const msgs = await loadMsgs(chat.peerId);
+    const m = msgs.find(m=>m.id===msgId);
+    if(m){m.delivered=true;await upsertMsg(chat.peerId, m);const row=document.querySelector(`.msg-row[data-msgid="${msgId}"]`);if(row){const tk=row.querySelector('.msg-ticks');if(tk){tk.textContent='✔✔';tk.className='msg-ticks double';}}break;}
   }
 }
 function setOnline(pid,isOnline){online[pid]=isOnline;if(pid===activePid&&currentScreen==='scr-chat')updateBar();renderChatList();renderContacts();}
@@ -629,17 +753,44 @@ function updateBar(){
 }
 function updateSendBtn(){if(!activePid){$('sendBtn').disabled=true;return;}$('sendBtn').disabled=!wsUp;updateBar();}
 
-function getOrCreateChat(pid,peerName,avatar){let chats=loadChats();let c=chats.find(c=>c.peerId===pid);if(!c){c={peerId:pid,peerName:peerName||(pid===MY_ID?'⭐ Избранное':pid),avatar:avatar||(pid===MY_ID?'⭐':'👤'),lastMsg:null,lastMsgTime:null,unread:0};chats.push(c);saveChats(chats);}else{if(peerName)c.peerName=peerName;if(avatar)c.avatar=avatar;saveChats(chats);}return c;}
-function updateChat(pid,upd){let c=loadChats();const i=c.findIndex(x=>x.peerId===pid);if(i!==-1){c[i]={...c[i],...upd};saveChats(c);}renderChatList();}
-function deleteChatData(pid){saveChats(loadChats().filter(c=>c.peerId!==pid));renderChatList();}
-window.clearAllData=()=>{if(confirm('Удалить все данные?')){localStorage.clear();location.reload();}};
+async function getOrCreateChat(pid,peerName,avatar){
+  let chats = await loadChats();
+  let c = chats.find(c=>c.peerId===pid);
+  if(!c){
+    c={peerId:pid, peerName:peerName||(pid===MY_ID?'⭐ Избранное':pid), avatar:avatar||(pid===MY_ID?'⭐':'👤'), lastMsg:null, lastMsgTime:null, unread:0};
+    chats.push(c);
+    await saveChats(chats);
+  }else{ if(peerName) c.peerName=peerName; if(avatar) c.avatar=avatar; await saveChats(chats); }
+  return c;
+}
+async function updateChat(pid,upd){
+  let chats = await loadChats();
+  const i = chats.findIndex(x=>x.peerId===pid);
+  if(i!==-1){ chats[i]={...chats[i],...upd}; await saveChats(chats); }
+  renderChatList();
+}
+async function deleteChatData(pid){
+  let chats = await loadChats();
+  chats = chats.filter(c=>c.peerId!==pid);
+  await saveChats(chats);
+  renderChatList();
+}
+window.clearAllData=async ()=>{
+  if(confirm('Удалить все данные?')){
+    await initDatabase();
+    db.exec('DELETE FROM contacts; DELETE FROM chats; DELETE FROM messages;');
+    localStorage.clear();
+    location.reload();
+  }
+};
 
 function hl(str,q){if(!q)return str;const re=new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})`,'gi');return str.replace(re,'<span class="search-highlight">$1</span>');}
-function renderChatList(){
+async function renderChatList(){
   const list=$('chatList'),empty=$('emptyChatsPlaceholder');
   const q=($('homeSearch')?.value||'').toLowerCase().trim();
-  let chats=loadChats().sort((a,b)=>a.peerId===MY_ID?-1:b.peerId===MY_ID?1:(b.lastMsgTime||0)-(a.lastMsgTime||0));
-  if(q)chats=chats.filter(c=>c.peerName.toLowerCase().includes(q)||c.peerId.toLowerCase().includes(q)||(c.lastMsg||'').toLowerCase().includes(q));
+  let chats = await loadChats();
+  chats = chats.sort((a,b)=>a.peerId===MY_ID?-1:b.peerId===MY_ID?1:(b.lastMsgTime||0)-(a.lastMsgTime||0));
+  if(q) chats = chats.filter(c=>c.peerName.toLowerCase().includes(q)||c.peerId.toLowerCase().includes(q)||(c.lastMsg||'').toLowerCase().includes(q));
   if(!chats.length){list.innerHTML='';empty.style.display='block';return;}
   empty.style.display='none';
   list.innerHTML=chats.map(c=>{const on=!!online[c.peerId];
@@ -647,20 +798,37 @@ function renderChatList(){
       <div class="chat-avatar">${c.avatar}<span class="presence-dot${on?' online':''}"></span></div>
       <div class="chat-info"><div class="chat-name-row"><span class="chat-name">${q?hl(esc(c.peerName),q):esc(c.peerName)}</span></div><div class="chat-last-msg">${q?hl(esc(c.lastMsg||''),q):esc(c.lastMsg||'Нет сообщений')}</div></div>
       <div class="chat-meta"><span class="chat-time">${fmtTime(c.lastMsgTime)}</span>${c.unread>0?`<span class="chat-badge">${c.unread}</span>`:''}</div>
-    </div>`;}).join('');
+    </div>`;
+  }).join('');
 }
-function renderContacts(){
-  const q=($('contactsSearch')?.value||'').toLowerCase();let contacts=loadContacts();if(q)contacts=contacts.filter(c=>c.name.toLowerCase().includes(q)||c.id.toLowerCase().includes(q));
+async function renderContacts(){
+  const q=($('contactsSearch')?.value||'').toLowerCase();
+  let contacts = await loadContacts();
+  if(q) contacts = contacts.filter(c=>c.name.toLowerCase().includes(q)||c.id.toLowerCase().includes(q));
   const list=$('contactsList');
   if(!contacts.length){list.innerHTML=`<div class="empty-state"><div class="empty-state-icon">👤</div><div class="empty-state-text">Нет контактов.<br>Нажмите «+ Добавить»</div></div>`;return;}
   list.innerHTML=contacts.map((c,i)=>{const on=!!online[c.id];
     return`<div class="contact-item"><div class="contact-avatar">${c.avatar||'👤'}<span class="presence-dot${on?' online':''}"></span></div>
       <div class="contact-info" onclick="startChatWithContact('${esc(c.id)}')"><div class="contact-name">${esc(c.name)}</div><div class="contact-id">${esc(c.id)}</div></div>
-      <div class="contact-actions"><div class="icon-btn-sm" onclick="startChatWithContact('${esc(c.id)}')">💬</div><div class="contact-del-btn" onclick="delContact(${i},event)">🗑</div></div>
-    </div>`;}).join('');
+      <div class="contact-actions"><div class="icon-btn-sm" onclick="startChatWithContact('${esc(c.id)}')">💬</div><div class="contact-del-btn" onclick="delContact('${esc(c.id)}',event)">🗑</div></div>
+    </div>`;
+  }).join('');
 }
-window.delContact=(i,e)=>{e?.stopPropagation();const c=loadContacts();c.splice(i,1);saveContacts(c);renderContacts();toast('Контакт удалён');};
-window.startChatWithContact=id=>{const ct=loadContacts().find(c=>c.id===id);getOrCreateChat(id,ct?.name,ct?.avatar);renderChatList();goHome();setTimeout(()=>openChatById(id),120);};
+window.delContact=async (id,e)=>{
+  e?.stopPropagation();
+  let contacts = await loadContacts();
+  contacts = contacts.filter(c=>c.id!==id);
+  await saveContacts(contacts);
+  renderContacts();
+  toast('Контакт удалён');
+};
+window.startChatWithContact=async id=>{
+  const ct = (await loadContacts()).find(c=>c.id===id);
+  await getOrCreateChat(id,ct?.name,ct?.avatar);
+  await renderChatList();
+  goHome();
+  setTimeout(()=>openChatById(id),120);
+};
 
 const AVTS=['👤','🤖','🦊','🐱','🐶','🦁','🐼','🦄','🔥','⭐','🌊','🍄','❤️','🌚'];
 function initAvt(){$('avatarSelector').innerHTML=AVTS.map(e=>`<div class="icon-btn-sm" style="width:36px;height:36px;font-size:18px" onclick="selAvt('${e}',event)">${e}</div>`).join('');}
@@ -669,12 +837,17 @@ let _openChatAfterSave=false;
 window.openAddContact=()=>{$('newContactId').value='';$('newContactName').value='';$('newContactAvatar').value='👤';document.querySelectorAll('#avatarSelector .icon-btn-sm').forEach(el=>{el.style.borderColor='var(--border)';el.style.background='rgba(0,255,136,.08)';});$('addContactModal').classList.add('open');setTimeout(()=>$('newContactName').focus(),300);};
 window.closeAddContact=()=>{$('addContactModal').classList.remove('open');_openChatAfterSave=false;};
 window.closeAddContactOverlay=e=>{if(e.target===$('addContactModal'))closeAddContact();};
-window.saveContact=()=>{
+window.saveContact=async ()=>{
   const name=$('newContactName').value.trim(),id=$('newContactId').value.trim().toLowerCase(),avatar=$('newContactAvatar').value;
   if(!name){toast('Введите имя','err');return;}if(!id){toast('Введите ID','err');return;}if(id===MY_ID){toast('Нельзя добавить себя','err');return;}
-  const contacts=loadContacts();if(contacts.find(c=>c.id===id)){toast('Такой ID уже есть','err');return;}
-  contacts.push({name,id,added:Date.now(),avatar});saveContacts(contacts);renderContacts();toast(`«${name}» добавлен`);closeAddContact();
-  if(_openChatAfterSave){_openChatAfterSave=false;getOrCreateChat(id,name,avatar);renderChatList();openChatById(id);}
+  let contacts = await loadContacts();
+  if(contacts.find(c=>c.id===id)){toast('Такой ID уже есть','err');return;}
+  contacts.push({name,id,added:Date.now(),avatar});
+  await saveContacts(contacts);
+  renderContacts();
+  toast(`«${name}» добавлен`);
+  closeAddContact();
+  if(_openChatAfterSave){ _openChatAfterSave=false; await getOrCreateChat(id,name,avatar); await renderChatList(); openChatById(id); }
 };
 
 let currentScreen='scr-home';
@@ -684,12 +857,14 @@ window.showContacts=()=>{renderContacts();goScreen('scr-contacts');};
 window.startNewChat=function(){_openChatAfterSave=true;openAddContact();};
 
 let activePid='';let renderedCount=0;
-window.openChatById=function(pid){
-  updateChat(pid,{unread:0});resetMsgSearch();exitSelectionMode();goScreen('scr-chat');activePid=pid;
-  const chat=loadChats().find(c=>c.peerId===pid)||{};$('peerName').textContent=chat.peerName||pid;
+window.openChatById=async function(pid){
+  await updateChat(pid,{unread:0});
+  resetMsgSearch();exitSelectionMode();goScreen('scr-chat');activePid=pid;
+  const chat=(await loadChats()).find(c=>c.peerId===pid)||{};
+  $('peerName').textContent=chat.peerName||pid;
   setPeerStatus('offline','Не в сети');$('sendBtn').disabled=true;setBar('wait','Подключение…');
   renderedCount=0;clearMediaPreview();
-  loadChatHistory(pid,true);
+  await loadChatHistory(pid,true);
   ensureWS();warmKey(pid);
   if(wsUp){updateSendBtn();wsSend({type:'query-presence',target:pid});}
   getKey(pid).then(key=>{if(key)drainPending(pid,key);});
@@ -704,14 +879,16 @@ function formatText(text){
 }
 
 async function forwardToFavorites(msgId){
-  const msgs=loadMsgs(activePid);const m=msgs.find(m=>m.id===msgId);if(!m)return;
+  const msgs = await loadMsgs(activePid);
+  const m = msgs.find(m=>m.id===msgId);
+  if(!m)return;
   const newMsg={id:uid(),text:m.text||'',type:'sent',time:new Date().toISOString(),reactions:{},edited:false,delivered:true,forwarded:true};
   if(m.media){newMsg.media=m.media;newMsg.caption=m.caption;}
   if(m.voice){newMsg.voice=m.voice;newMsg.voiceDuration=m.voiceDuration;newMsg.voiceListened=true;}
-  upsertMsg(MY_ID,newMsg);
+  await upsertMsg(MY_ID,newMsg);
   const lastPreview=m.voice?'🎙 Голосовое':m.media?'📷 Фото':(m.text||'').slice(0,28);
-  updateChat(MY_ID,{lastMsg:lastPreview,lastMsgTime:Date.now()});
-  if(activePid===MY_ID)appendOrReloadMsg(MY_ID,newMsg);
+  await updateChat(MY_ID,{lastMsg:lastPreview,lastMsgTime:Date.now()});
+  if(activePid===MY_ID) appendOrReloadMsg(MY_ID,newMsg);
   toast('Переслано в Избранное');
 }
 
@@ -755,9 +932,7 @@ function animateRecWaveform(){
     const data=new Uint8Array(analyser.frequencyBinCount);analyser.getByteFrequencyData(data);
     const step=Math.floor(data.length/REC_WAVE_BARS);
     for(let i=0;i<REC_WAVE_BARS;i++){const h=Math.max(3,Math.round((data[i*step]/255)*26));if(bars[i])bars[i].style.height=h+'px';}
-  }else{
-    for(let i=0;i<bars.length;i++)bars[i].style.height=Math.max(3,Math.round(Math.random()*24))+'px';
-  }
+  }else{ for(let i=0;i<bars.length;i++)bars[i].style.height=Math.max(3,Math.round(Math.random()*24))+'px'; }
   recAnimFrame=requestAnimationFrame(animateRecWaveform);
 }
 function updateRecTimer(){
@@ -775,12 +950,11 @@ window.toggleRecording=async function(){
     const stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,sampleRate:24000,echoCancellation:true,noiseSuppression:true}});
     micStream=stream;
     try{audioCtx=new(window.AudioContext||window.webkitAudioContext)();analyser=audioCtx.createAnalyser();analyser.fftSize=64;audioCtx.createMediaStreamSource(stream).connect(analyser);}catch(e){analyser=null;}
-let mime = 'audio/webm;codecs=opus';
-let bitrate = 24000;
-if (!MediaRecorder.isTypeSupported(mime)) { mime = 'audio/webm'; bitrate = 32000; }
-if (!MediaRecorder.isTypeSupported(mime)) { mime = 'audio/ogg;codecs=opus'; bitrate = 24000; }
-if (!MediaRecorder.isTypeSupported(mime)) { mime = ''; bitrate = 32000; }
-mediaRecorder = new MediaRecorder(stream, mime ? {mimeType: mime, audioBitsPerSecond: bitrate} : {audioBitsPerSecond: bitrate});
+    let mime = 'audio/webm;codecs=opus'; let bitrate = 24000;
+    if (!MediaRecorder.isTypeSupported(mime)) { mime = 'audio/webm'; bitrate = 32000; }
+    if (!MediaRecorder.isTypeSupported(mime)) { mime = 'audio/ogg;codecs=opus'; bitrate = 24000; }
+    if (!MediaRecorder.isTypeSupported(mime)) { mime = ''; bitrate = 32000; }
+    mediaRecorder = new MediaRecorder(stream, mime ? {mimeType: mime, audioBitsPerSecond: bitrate} : {audioBitsPerSecond: bitrate});
     audioChunks=[];
     mediaRecorder.ondataavailable=e=>{if(e.data?.size>0)audioChunks.push(e.data);};
     mediaRecorder.start(100);
@@ -825,34 +999,30 @@ function stopRecordingInternal(){
   });
 }
 
-function generateWaveform(){
-  const arr=[];for(let i=0;i<WF_BARS;i++)arr.push(Math.max(0.08,Math.min(1,Math.random()*0.9+0.08)));
-  return arr;
-}
+function generateWaveform(){ const arr=[];for(let i=0;i<WF_BARS;i++)arr.push(Math.max(0.08,Math.min(1,Math.random()*0.9+0.08))); return arr; }
 
 async function sendVoiceMessage(dataURL,duration,waveform){
   const selfChat=(activePid===MY_ID);
   if(selfChat){
     const msgId=uid(),ts=Date.now();
     const m={id:msgId,text:'',type:'sent',time:new Date(ts).toISOString(),reactions:{},edited:false,replyTo:replyTo||null,delivered:true,forwarded:false,voice:{data:dataURL,waveform},voiceDuration:duration,voiceListened:true};
-    upsertMsg(MY_ID,m);updateChat(MY_ID,{lastMsg:'🎙 Голосовое',lastMsgTime:ts});appendOrReloadMsg(MY_ID,m);cancelReply();return;
+    await upsertMsg(MY_ID,m);await updateChat(MY_ID,{lastMsg:'🎙 Голосовое',lastMsgTime:ts});appendOrReloadMsg(MY_ID,m);cancelReply();return;
   }
   if(!wsUp){toast('Нет связи с сервером','err');return;}
   let key;try{key=await ensureKey(activePid);}catch(e){return;}
-  drainPending(activePid,key);
+  await drainPending(activePid,key);
   const msgId=uid(),ts=Date.now();
   const env={type:'voice',id:msgId,text:'',ts,replyTo:replyTo||null,forwarded:false,voice:{data:dataURL,waveform},voiceDuration:duration};
   try{
     const enc=await encData(ENC.encode(JSON.stringify(env)),key);
     wsSend({type:'send-msg',target:activePid,msgId,payload:Array.from(new Uint8Array(enc))});
     const m={id:msgId,text:'',type:'sent',time:new Date(ts).toISOString(),reactions:{},edited:false,replyTo:replyTo||null,delivered:false,forwarded:false,voice:env.voice,voiceDuration:duration,voiceListened:false};
-    upsertMsg(activePid,m);updateChat(activePid,{lastMsg:'🎙 Голосовое',lastMsgTime:ts});appendOrReloadMsg(activePid,m);cancelReply();
+    await upsertMsg(activePid,m);await updateChat(activePid,{lastMsg:'🎙 Голосовое',lastMsgTime:ts});appendOrReloadMsg(activePid,m);cancelReply();
   }catch(e){toast('Ошибка отправки голосового','err');}
 }
 
 // ── VOICE PLAYBACK ──
 let currentAudio=null;
-
 function buildVoiceBubble(m,isSent){
   const totalSec=m.voiceDuration||0;
   const dotHidden = !!m.voiceListened;
@@ -861,60 +1031,28 @@ function buildVoiceBubble(m,isSent){
   const right=document.createElement('div');right.className='voice-right';
   const wf=document.createElement('div');wf.className='voice-waveform';
   const waveform=m.voice?.waveform||Array.from({length:WF_BARS},()=>Math.random());
-  const barEls=[];
-  const DISP=Math.min(waveform.length,WF_BARS);
-  for(let i=0;i<DISP;i++){
-    const b=document.createElement('div');b.className='wf-bar';
-    b.style.height=Math.max(3,Math.round((waveform[i]||0.2)*22))+'px';
-    wf.appendChild(b);barEls.push(b);
-  }
+  const barEls=[]; const DISP=Math.min(waveform.length,WF_BARS);
+  for(let i=0;i<DISP;i++){ const b=document.createElement('div');b.className='wf-bar'; b.style.height=Math.max(3,Math.round((waveform[i]||0.2)*22))+'px'; wf.appendChild(b);barEls.push(b); }
   const bot=document.createElement('div');bot.className='voice-bottom';
   const timerEl=document.createElement('span');timerEl.className='voice-timer';timerEl.textContent=fmtDur(totalSec);
-  const dot=document.createElement('span');
-  dot.className='voice-unread-dot'+(dotHidden?' hidden':'');
+  const dot=document.createElement('span'); dot.className='voice-unread-dot'+(dotHidden?' hidden':'');
   const metaWrap=document.createElement('span');metaWrap.className='voice-meta-inline';
   const timeEl=document.createElement('span');timeEl.className='msg-time-inline';
   timeEl.textContent=new Date(m.time).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});
   metaWrap.appendChild(timeEl);
-  if(isSent){
-    const tk=document.createElement('span');
-    tk.className='msg-ticks'+(m.delivered?' double':' single');tk.textContent=m.delivered?'✔✔':'✔';
-    metaWrap.appendChild(tk);
-  }
+  if(isSent){ const tk=document.createElement('span'); tk.className='msg-ticks'+(m.delivered?' double':' single');tk.textContent=m.delivered?'✔✔':'✔'; metaWrap.appendChild(tk); }
   bot.appendChild(timerEl);bot.appendChild(dot);bot.appendChild(metaWrap);
-  right.appendChild(wf);right.appendChild(bot);
-  wrap.appendChild(btn);wrap.appendChild(right);
+  right.appendChild(wf);right.appendChild(bot); wrap.appendChild(btn);wrap.appendChild(right);
 
   let audio=null;let isPlaying=false;
-  function updateProgress(pct){
-    barEls.forEach((b,i)=>{
-      const played=i<Math.round(pct*DISP);
-      b.classList.toggle('played',played);
-      b.classList.toggle('active-bar',played&&i===Math.round(pct*DISP)-1);
-    });
-  }
-  function rafTick(){
-    if(!audio||audio.paused)return;
-    const pct=audio.duration?audio.currentTime/audio.duration:0;
-    timerEl.textContent=`${fmtDur(Math.floor(audio.currentTime))} / ${fmtDur(totalSec)}`;
-    updateProgress(pct);
-    requestAnimationFrame(rafTick);
-  }
+  function updateProgress(pct){ barEls.forEach((b,i)=>{ const played=i<Math.round(pct*DISP); b.classList.toggle('played',played); b.classList.toggle('active-bar',played&&i===Math.round(pct*DISP)-1); }); }
+  function rafTick(){ if(!audio||audio.paused)return; const pct=audio.duration?audio.currentTime/audio.duration:0; timerEl.textContent=`${fmtDur(Math.floor(audio.currentTime))} / ${fmtDur(totalSec)}`; updateProgress(pct); requestAnimationFrame(rafTick); }
   function doPlay(){
     if(currentAudio&&currentAudio!==audio&&!currentAudio.paused)currentAudio.pause();
-    if(!audio){audio=new Audio(m.voice.data);currentAudio=audio;
-      audio.onended=()=>{isPlaying=false;btn.innerHTML='▶';btn.classList.remove('playing');timerEl.textContent=fmtDur(totalSec);updateProgress(1);};
-      audio.onpause=()=>{isPlaying=false;btn.innerHTML='▶';btn.classList.remove('playing');};
-    }
-    audio.play().then(()=>{
+    if(!audio){audio=new Audio(m.voice.data);currentAudio=audio; audio.onended=()=>{isPlaying=false;btn.innerHTML='▶';btn.classList.remove('playing');timerEl.textContent=fmtDur(totalSec);updateProgress(1);}; audio.onpause=()=>{isPlaying=false;btn.innerHTML='▶';btn.classList.remove('playing');}; }
+    audio.play().then(async ()=>{
       isPlaying=true;btn.innerHTML='⏸';btn.classList.add('playing');currentAudio=audio;rafTick();
-      if(!isSent&&!m.voiceListened){
-        m.voiceListened=true;
-        const msgs=loadMsgs(activePid);const mm=msgs.find(x=>x.id===m.id);
-        if(mm){mm.voiceListened=true;saveMsgs(activePid,msgs);}
-        dot.classList.add('hidden');
-        if(activePid!==MY_ID) wsSend({type:'voice-listened',target:activePid,voiceMsgId:m.id});
-      }
+      if(!isSent&&!m.voiceListened){ m.voiceListened=true; await upsertMsg(activePid, m); dot.classList.add('hidden'); if(activePid!==MY_ID) wsSend({type:'voice-listened',target:activePid,voiceMsgId:m.id}); }
     }).catch(e=>console.error(e));
   }
   function doPause(){audio.pause();}
@@ -927,17 +1065,17 @@ function buildVoiceBubble(m,isSent){
 async function sendMsg(){
   const inp=$('messageInput');const text=inp.value.trim();
   if(!text&&!pendingMedia)return;
-  if(editId){commitEdit(text);return;}
+  if(editId){await commitEdit(text);return;}
   if(activePid===MY_ID){
     const msgId=uid(),ts=Date.now();
     const m={id:msgId,text,type:'sent',time:new Date(ts).toISOString(),reactions:{},edited:false,replyTo:replyTo||null,delivered:true,forwarded:false};
     if(pendingMedia){m.media={type:pendingMedia.type,data:pendingMedia.dataURL};m.caption=text;}
-    upsertMsg(MY_ID,m);updateChat(MY_ID,{lastMsg:pendingMedia?'📷 Фото':text.slice(0,28),lastMsgTime:ts});appendOrReloadMsg(MY_ID,m);
+    await upsertMsg(MY_ID,m);await updateChat(MY_ID,{lastMsg:pendingMedia?'📷 Фото':text.slice(0,28),lastMsgTime:ts});appendOrReloadMsg(MY_ID,m);
     inp.value='';inp.style.height='';cancelReply();clearMediaPreview();return;
   }
   if(!wsUp){toast('Нет связи с сервером','err');return;}
   let key;try{key=await ensureKey(activePid);}catch(e){return;}
-  drainPending(activePid,key);
+  await drainPending(activePid,key);
   const msgId=uid(),ts=Date.now();
   const env={type:pendingMedia?'media':'msg',id:msgId,text,ts,replyTo:replyTo||null,forwarded:false};
   if(pendingMedia){env.media={type:pendingMedia.type,data:pendingMedia.dataURL};env.caption=text;}
@@ -946,7 +1084,7 @@ async function sendMsg(){
     wsSend({type:'send-msg',target:activePid,msgId,payload:Array.from(new Uint8Array(enc))});
     const m={id:msgId,text,type:'sent',time:new Date(ts).toISOString(),reactions:{},edited:false,replyTo:replyTo||null,delivered:false,forwarded:false};
     if(pendingMedia){m.media=env.media;m.caption=text;}
-    upsertMsg(activePid,m);updateChat(activePid,{lastMsg:pendingMedia?'📷 Фото':text.slice(0,28),lastMsgTime:ts});appendOrReloadMsg(activePid,m);
+    await upsertMsg(activePid,m);await updateChat(activePid,{lastMsg:pendingMedia?'📷 Фото':text.slice(0,28),lastMsgTime:ts});appendOrReloadMsg(activePid,m);
     inp.value='';inp.style.height='';cancelReply();clearMediaPreview();
   }catch(e){toast('Ошибка отправки','err');}
 }
@@ -958,27 +1096,63 @@ let _typTmr=null;
 function handleTyping(isTyping){clearTimeout(_typTmr);if(isTyping){setPeerStatus('typing','печатает…');_typTmr=setTimeout(()=>updateBar(),4000);}else updateBar();}
 
 async function toggleReaction(msgId,emoji){
-  const msgs=loadMsgs(activePid);const m=msgs.find(m=>m.id===msgId);if(!m)return;
-  if(!m.reactions)m.reactions={};if(!m.reactions[emoji])m.reactions[emoji]=[];
-  const idx=m.reactions[emoji].indexOf(MY_ID);if(idx===-1)m.reactions[emoji].push(MY_ID);else m.reactions[emoji].splice(idx,1);
-  if(!m.reactions[emoji].length)delete m.reactions[emoji];saveMsgs(activePid,msgs);rerenderMessages();
+  let msgs = await loadMsgs(activePid); const m = msgs.find(m=>m.id===msgId); if(!m)return;
+  if(!m.reactions)m.reactions={}; if(!m.reactions[emoji])m.reactions[emoji]=[];
+  const idx=m.reactions[emoji].indexOf(MY_ID); if(idx===-1)m.reactions[emoji].push(MY_ID); else m.reactions[emoji].splice(idx,1);
+  if(!m.reactions[emoji].length)delete m.reactions[emoji];
+  await upsertMsg(activePid, m); rerenderMessages();
   if(activePid===MY_ID)return;
-  const key=keyCache[activePid];if(!key)return;
-  const enc=await encData(ENC.encode(JSON.stringify({type:'reaction',msgId,emoji,ts:Date.now()})),key);wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:Array.from(new Uint8Array(enc))});
+  const key=keyCache[activePid]; if(!key)return;
+  const enc=await encData(ENC.encode(JSON.stringify({type:'reaction',msgId,emoji,ts:Date.now()})),key);
+  wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:Array.from(new Uint8Array(enc))});
 }
-function handleInReaction(from,msgId,emoji){const msgs=loadMsgs(from);const m=msgs.find(m=>m.id===msgId);if(!m)return;if(!m.reactions)m.reactions={};if(!m.reactions[emoji])m.reactions[emoji]=[];const idx=m.reactions[emoji].indexOf(from);if(idx===-1)m.reactions[emoji].push(from);else m.reactions[emoji].splice(idx,1);if(!m.reactions[emoji].length)delete m.reactions[emoji];saveMsgs(from,msgs);if(activePid===from)rerenderMessages();}
+async function handleInReaction(from,msgId,emoji){
+  let msgs = await loadMsgs(from); const m = msgs.find(m=>m.id===msgId); if(!m)return;
+  if(!m.reactions)m.reactions={}; if(!m.reactions[emoji])m.reactions[emoji]=[];
+  const idx=m.reactions[emoji].indexOf(from); if(idx===-1)m.reactions[emoji].push(from); else m.reactions[emoji].splice(idx,1);
+  if(!m.reactions[emoji].length)delete m.reactions[emoji];
+  await upsertMsg(from, m); if(activePid===from) rerenderMessages();
+}
 
 let editId=null;
-function startEdit(msgId){const msgs=loadMsgs(activePid);const m=msgs.find(m=>m.id===msgId);if(!m||m.media||m.voice)return;editId=msgId;$('editBar').classList.add('visible');$('editBarPreview').textContent=m.text;const inp=$('messageInput');inp.value=m.text;inp.focus();inp.style.height='auto';inp.style.height=Math.min(inp.scrollHeight,120)+'px';$('sendBtn').innerHTML='✓';}
+async function startEdit(msgId){
+  const msgs = await loadMsgs(activePid); const m = msgs.find(m=>m.id===msgId); if(!m||m.media||m.voice)return;
+  editId=msgId; $('editBar').classList.add('visible'); $('editBarPreview').textContent=m.text;
+  const inp=$('messageInput'); inp.value=m.text;inp.focus();inp.style.height='auto';inp.style.height=Math.min(inp.scrollHeight,120)+'px';
+  $('sendBtn').innerHTML='✓';
+}
 window.cancelEdit=()=>{editId=null;$('editBar').classList.remove('visible');$('messageInput').value='';$('messageInput').style.height='';$('sendBtn').innerHTML='➤';};
-async function commitEdit(newText){const msgs=loadMsgs(activePid);const m=msgs.find(m=>m.id===editId);if(!m)return;m.text=newText;m.edited=true;m.editedTs=Date.now();saveMsgs(activePid,msgs);rerenderMessages();updateChat(activePid,{lastMsg:newText,lastMsgTime:m.editedTs});if(activePid!==MY_ID){const key=keyCache[activePid];if(key){const enc=await encData(ENC.encode(JSON.stringify({type:'edit',msgId:editId,newText,ts:m.editedTs})),key);wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:Array.from(new Uint8Array(enc))});}}cancelEdit();}
-function handleInEdit(from,msgId,newText,ts){const msgs=loadMsgs(from);const m=msgs.find(m=>m.id===msgId);if(!m)return;m.text=newText;m.edited=true;m.editedTs=ts||Date.now();saveMsgs(from,msgs);if(activePid===from)rerenderMessages();}
+async function commitEdit(newText){
+  let msgs = await loadMsgs(activePid); const m = msgs.find(m=>m.id===editId); if(!m)return;
+  m.text=newText;m.edited=true;m.editedTs=Date.now();
+  await upsertMsg(activePid, m); rerenderMessages(); await updateChat(activePid,{lastMsg:newText,lastMsgTime:m.editedTs});
+  if(activePid!==MY_ID){ const key=keyCache[activePid]; if(key){ const enc=await encData(ENC.encode(JSON.stringify({type:'edit',msgId:editId,newText,ts:m.editedTs})),key); wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:Array.from(new Uint8Array(enc))}); } }
+  cancelEdit();
+}
+async function handleInEdit(from,msgId,newText,ts){
+  let msgs = await loadMsgs(from); const m = msgs.find(m=>m.id===msgId); if(!m)return;
+  m.text=newText;m.edited=true;m.editedTs=ts||Date.now();
+  await upsertMsg(from, m); if(activePid===from) rerenderMessages();
+}
 
-async function deleteMsg(msgId){if(!confirm('Удалить сообщение?'))return;const msgs=loadMsgs(activePid);const idx=msgs.findIndex(m=>m.id===msgId);if(idx===-1)return;msgs.splice(idx,1);saveMsgs(activePid,msgs);rerenderMessages();const last=msgs[msgs.length-1];updateChat(activePid,{lastMsg:last?.text||(last?.voice?'🎙 Голосовое':last?.media?'📷 Фото':''),lastMsgTime:last?.time?new Date(last.time).getTime():null});if(activePid!==MY_ID){const key=keyCache[activePid];if(key){const enc=await encData(ENC.encode(JSON.stringify({type:'delete',msgId,ts:Date.now()})),key);wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:Array.from(new Uint8Array(enc))});}}}
-function handleInDelete(from,msgId){const msgs=loadMsgs(from);const idx=msgs.findIndex(m=>m.id===msgId);if(idx===-1)return;msgs.splice(idx,1);saveMsgs(from,msgs);if(activePid===from)rerenderMessages();}
+async function deleteMsg(msgId){
+  if(!confirm('Удалить сообщение?'))return;
+  let msgs = await loadMsgs(activePid); const idx = msgs.findIndex(m=>m.id===msgId); if(idx===-1)return;
+  msgs.splice(idx,1); await saveMsgs(activePid, msgs); rerenderMessages();
+  const last = msgs[msgs.length-1]; await updateChat(activePid,{lastMsg:last?.text||(last?.voice?'🎙 Голосовое':last?.media?'📷 Фото':''),lastMsgTime:last?.time?new Date(last.time).getTime():null});
+  if(activePid!==MY_ID){ const key=keyCache[activePid]; if(key){ const enc=await encData(ENC.encode(JSON.stringify({type:'delete',msgId,ts:Date.now()})),key); wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:Array.from(new Uint8Array(enc))}); } }
+}
+async function handleInDelete(from,msgId){
+  let msgs = await loadMsgs(from); const idx = msgs.findIndex(m=>m.id===msgId); if(idx===-1)return;
+  msgs.splice(idx,1); await saveMsgs(from, msgs); if(activePid===from) rerenderMessages();
+}
 
 let replyTo=null;
-function startReply(msgId){const msgs=loadMsgs(activePid);const m=msgs.find(m=>m.id===msgId);if(!m)return;replyTo={id:m.id,text:m.voice?'🎙 Голосовое':m.text||'📷 Фото'};$('replyBarPreview').textContent=replyTo.text.slice(0,80);$('replyBar').classList.add('visible');$('messageInput').focus();}
+async function startReply(msgId){
+  const msgs = await loadMsgs(activePid); const m = msgs.find(m=>m.id===msgId); if(!m)return;
+  replyTo={id:m.id,text:m.voice?'🎙 Голосовое':m.text||'📷 Фото'};
+  $('replyBarPreview').textContent=replyTo.text.slice(0,80); $('replyBar').classList.add('visible'); $('messageInput').focus();
+}
 window.cancelReply=()=>{replyTo=null;$('replyBar').classList.remove('visible');};
 
 // ── BUILD ROW ──
@@ -987,25 +1161,17 @@ function buildRow(m){
   const row=document.createElement('div');row.className=`msg-row ${m.type}`;row.dataset.msgid=m.id;
   const check=document.createElement('div');check.className='msg-check';check.innerHTML='✓';row.appendChild(check);
   const bubble=document.createElement('div');bubble.className='bubble';
-
   if(m.forwarded){const fl=document.createElement('span');fl.className='forwarded-label';fl.textContent='↪️ переслано';bubble.appendChild(fl);}
-  if(m.replyTo){
-    const rd=document.createElement('div');rd.className='reply-preview-inline';rd.textContent='↩️ '+(m.replyTo.text||'').slice(0,50);
-    rd.onclick=e=>{e.stopPropagation();document.querySelector(`[data-msgid="${m.replyTo.id}"]`)?.scrollIntoView({behavior:'smooth',block:'center'});};
-    bubble.appendChild(rd);
-  }
-
+  if(m.replyTo){ const rd=document.createElement('div');rd.className='reply-preview-inline';rd.textContent='↩️ '+(m.replyTo.text||'').slice(0,50); rd.onclick=e=>{e.stopPropagation();document.querySelector(`[data-msgid="${m.replyTo.id}"]`)?.scrollIntoView({behavior:'smooth',block:'center'});}; bubble.appendChild(rd); }
   if(m.voice?.data){
     bubble.style.cssText='padding:0;overflow:visible;background:transparent;border:none';
-    const vb=buildVoiceBubble(m,isSent);
-    const vcont=document.createElement('div');
+    const vb=buildVoiceBubble(m,isSent); const vcont=document.createElement('div');
     vcont.style.cssText=`border-radius:18px;overflow:hidden;border:1px solid ${isSent?'rgba(0,255,136,.28)':'rgba(255,255,255,.1)'};background:${isSent?'linear-gradient(135deg,rgba(0,185,100,.52),rgba(0,160,90,.38))':'rgba(255,255,255,.07)'};${isSent?'border-bottom-right-radius:4px':'border-bottom-left-radius:4px'}`;
     vcont.appendChild(vb);bubble.appendChild(vcont);
   } else if(m.media?.data){
     const mediaDiv=document.createElement('div');mediaDiv.className='media-content';
     const img=document.createElement('img');img.className='media-img';img.src=m.media.data;
-    img.addEventListener('click',e=>{e.stopPropagation();openLightbox(m.media.data);});
-    mediaDiv.appendChild(img);
+    img.addEventListener('click',e=>{e.stopPropagation();openLightbox(m.media.data);}); mediaDiv.appendChild(img);
     if(m.caption){const cap=document.createElement('div');cap.className='media-caption bubble-text';cap.innerHTML=formatText(m.caption);mediaDiv.appendChild(cap);}
     bubble.appendChild(mediaDiv);bubble.appendChild(mkMeta(m,isSent));
   } else {
@@ -1013,9 +1179,7 @@ function buildRow(m){
     if(m.edited){const ed=document.createElement('span');ed.className='msg-edited';ed.textContent=' ред.';textNode.appendChild(ed);}
     bubble.appendChild(textNode);bubble.appendChild(mkMeta(m,isSent));
   }
-
   row.appendChild(bubble);
-
   const reactions=m.reactions||{};
   if(Object.keys(reactions).some(k=>reactions[k].length>0)){
     const strip=document.createElement('div');strip.className='reactions-strip';
@@ -1025,7 +1189,6 @@ function buildRow(m){
       chip.onclick=e=>{e.stopPropagation();toggleReaction(m.id,em);};strip.appendChild(chip);
     });row.appendChild(strip);
   }
-
   row.addEventListener('click',e=>{if(selectionMode){e.stopPropagation();toggleSelectMessage(m.id,row);}});
   bubble.addEventListener('contextmenu',e=>{e.preventDefault();if(!selectionMode)showCtx(m,bubble,e.clientX,e.clientY);});
   let pt=null;
@@ -1035,12 +1198,10 @@ function buildRow(m){
   row.querySelectorAll('.spoiler').forEach(el=>{el.addEventListener('click',e=>{e.stopPropagation();el.classList.toggle('revealed');});});
   return row;
 }
-
 function mkMeta(m,isSent){
   const meta=document.createElement('span');meta.className='msg-meta';
   const timeEl=document.createElement('span');timeEl.className='msg-time-inline';
-  timeEl.textContent=new Date(m.time).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});
-  meta.appendChild(timeEl);
+  timeEl.textContent=new Date(m.time).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'}); meta.appendChild(timeEl);
   if(isSent){const tk=document.createElement('span');tk.className='msg-ticks'+(m.delivered?' double':' single');tk.textContent=m.delivered?'✔✔':'✔';meta.appendChild(tk);}
   return meta;
 }
@@ -1053,33 +1214,37 @@ function toggleSelectMessage(msgId,rowEl){const check=rowEl.querySelector('.msg-
 function updateSelectionBar(){const count=selectedMessages.size;$('selectionCount').textContent=count+' выбрано';$('selectionBar').classList.toggle('visible',count>0);if(count===0)exitSelectionMode();}
 function enterSelectionMode(initialMsgId){selectionMode=true;selectedMessages.clear();if(initialMsgId)selectedMessages.add(initialMsgId);document.querySelectorAll('.msg-row').forEach(row=>{const mid=row.dataset.msgid;row.querySelector('.msg-check').classList.toggle('checked',selectedMessages.has(mid));});$('messagesArea').classList.add('selection-mode');updateSelectionBar();}
 function exitSelectionMode(){selectionMode=false;selectedMessages.clear();document.querySelectorAll('.msg-row').forEach(row=>row.querySelector('.msg-check')?.classList.remove('checked'));$('messagesArea').classList.remove('selection-mode');$('selectionBar').classList.remove('visible');}
-function deleteSelectedMessages(){
-  if(!selectedMessages.size)return;if(!confirm(`Удалить ${selectedMessages.size} сообщ.?`))return;
-  const msgs=loadMsgs(activePid);const newMsgs=msgs.filter(m=>!selectedMessages.has(m.id));saveMsgs(activePid,newMsgs);
-  selectedMessages.forEach(id=>{if(activePid!==MY_ID){const key=keyCache[activePid];if(key)encData(ENC.encode(JSON.stringify({type:'delete',msgId:id,ts:Date.now()})),key).then(enc=>wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:Array.from(new Uint8Array(enc))})).catch(()=>{});}});
-  rerenderMessages();const last=newMsgs[newMsgs.length-1];updateChat(activePid,{lastMsg:last?.text||(last?.voice?'🎙 Голосовое':last?.media?'📷 Фото':''),lastMsgTime:last?.time?new Date(last.time).getTime():null});exitSelectionMode();toast('Сообщения удалены');
+async function deleteSelectedMessages(){
+  if(!selectedMessages.size)return; if(!confirm(`Удалить ${selectedMessages.size} сообщ.?`))return;
+  let msgs = await loadMsgs(activePid); const newMsgs = msgs.filter(m=>!selectedMessages.has(m.id));
+  await saveMsgs(activePid, newMsgs);
+  for(const id of selectedMessages){ if(activePid!==MY_ID){ const key=keyCache[activePid]; if(key){ const enc=await encData(ENC.encode(JSON.stringify({type:'delete',msgId:id,ts:Date.now()})),key); wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:Array.from(new Uint8Array(enc))}); } } }
+  rerenderMessages(); const last = newMsgs[newMsgs.length-1];
+  await updateChat(activePid,{lastMsg:last?.text||(last?.voice?'🎙 Голосовое':last?.media?'📷 Фото':''),lastMsgTime:last?.time?new Date(last.time).getTime():null});
+  exitSelectionMode(); toast('Сообщения удалены');
 }
-window.deleteSelectedMessages=deleteSelectedMessages;window.exitSelectionMode=exitSelectionMode;
+window.deleteSelectedMessages=deleteSelectedMessages;
+window.exitSelectionMode=exitSelectionMode;
 
-function loadChatHistory(pid,reset=false){
+async function loadChatHistory(pid,reset=false){
   const area=$('messagesArea');const scrollBtn=$('scrollDownBtn');
   if(reset){area.innerHTML='';area.appendChild(scrollBtn);renderedCount=0;}
-  const msgs=loadMsgs(pid);const total=msgs.length;
-  const start=Math.max(0,total-(renderedCount+PAGE_SIZE));const slice=msgs.slice(start,total-renderedCount);
-  if(!slice.length&&reset&&!total){const empty=document.createElement('div');empty.className='empty-chat';empty.innerHTML=`<div class="empty-chat-icon">💬</div><div class="empty-chat-text">Нет сообщений<br><span style="font-size:11px;font-family:'JetBrains Mono',monospace;opacity:.6">Напишите первое сообщение</span></div>`;area.insertBefore(empty,scrollBtn);}
-  for(let i=slice.length-1;i>=0;i--)area.insertBefore(buildRow(slice[i]),area.firstChild);
+  const msgs = await loadMsgs(pid); const total = msgs.length;
+  const start = Math.max(0,total-(renderedCount+PAGE_SIZE)); const slice = msgs.slice(start,total-renderedCount);
+  if(!slice.length&&reset&&!total){ const empty=document.createElement('div'); empty.className='empty-chat'; empty.innerHTML=`<div class="empty-chat-icon">💬</div><div class="empty-chat-text">Нет сообщений<br><span style="font-size:11px;font-family:'JetBrains Mono',monospace;opacity:.6">Напишите первое сообщение</span></div>`; area.insertBefore(empty,scrollBtn); }
+  for(let i=slice.length-1;i>=0;i--) area.insertBefore(buildRow(slice[i]),area.firstChild);
   renderedCount+=slice.length;
   if(reset){area.scrollTop=area.scrollHeight;updateScrollBtn();}
 }
-function rerenderMessages(){
+async function rerenderMessages(){
   if(!activePid)return;
   const area=$('messagesArea');const scrollBtn=$('scrollDownBtn');
-  const wasBot=area.scrollHeight-area.scrollTop-area.clientHeight<80;const scrollPos=area.scrollTop;
+  const wasBot=area.scrollHeight-area.scrollTop-area.clientHeight<80; const scrollPos=area.scrollTop;
   area.innerHTML='';area.appendChild(scrollBtn);
-  const msgs=loadMsgs(activePid);
-  if(!msgs.length){const empty=document.createElement('div');empty.className='empty-chat';empty.innerHTML=`<div class="empty-chat-icon">💬</div><div class="empty-chat-text">Нет сообщений<br><span style="font-size:11px;font-family:'JetBrains Mono',monospace;opacity:.6">Напишите первое сообщение</span></div>`;area.insertBefore(empty,scrollBtn);}
+  const msgs = await loadMsgs(activePid);
+  if(!msgs.length){ const empty=document.createElement('div'); empty.className='empty-chat'; empty.innerHTML=`<div class="empty-chat-icon">💬</div><div class="empty-chat-text">Нет сообщений<br><span style="font-size:11px;font-family:'JetBrains Mono',monospace;opacity:.6">Напишите первое сообщение</span></div>`; area.insertBefore(empty,scrollBtn); }
   else msgs.forEach(m=>area.appendChild(buildRow(m)));
-  if(wasBot)area.scrollTop=area.scrollHeight;else area.scrollTop=scrollPos;
+  if(wasBot) area.scrollTop=area.scrollHeight; else area.scrollTop=scrollPos;
   updateScrollBtn();
 }
 function appendOrReloadMsg(pid,m){
@@ -1098,10 +1263,10 @@ function updateScrollBtn(){
   if(near){const badge=$('scrollBadge');if(badge)badge.textContent='';btn.classList.remove('has-badge');}
 }
 window.scrollToBottom=()=>{const area=$('messagesArea');area.scrollTo({top:area.scrollHeight,behavior:'smooth'});const badge=$('scrollBadge');if(badge)badge.textContent='';$('scrollDownBtn').classList.remove('has-badge');};
-$('messagesArea').addEventListener('scroll',()=>{
+$('messagesArea').addEventListener('scroll',async ()=>{
   updateScrollBtn();
   const area=$('messagesArea');
-  if(area.scrollTop===0&&renderedCount<loadMsgs(activePid).length){const oh=area.scrollHeight;loadChatHistory(activePid,false);area.scrollTop=area.scrollHeight-oh;}
+  if(area.scrollTop===0&&renderedCount<(await loadMsgs(activePid)).length){ const oh=area.scrollHeight; await loadChatHistory(activePid,false); area.scrollTop=area.scrollHeight-oh; }
 });
 new ResizeObserver(()=>updateScrollBtn()).observe($('messagesArea'));
 
@@ -1138,13 +1303,28 @@ function hlSrch(){srchM.forEach(b=>b.classList.remove('search-current'));if(!src
 window.searchNav=d=>{if(!srchM.length)return;srchI=(srchI+d+srchM.length)%srchM.length;hlSrch();};
 
 window.leaveChat=()=>{activePid='';cancelEdit();cancelReply();resetMsgSearch();exitSelectionMode();closeAll();clearMediaPreview();if(isRecording)cancelRecording();goHome();};
-window.deleteChat=()=>{if(!activePid)return;if(activePid===MY_ID){toast('Чат "Избранное" нельзя удалить','warn');return;}const pid=activePid;activePid='';cancelEdit();cancelReply();resetMsgSearch();exitSelectionMode();closeAll();clearMsgs(pid);deleteChatData(pid);delete keyCache[pid];localStorage.removeItem(`bc_pwd_${pid}`);localStorage.removeItem(`bc_secret_${pid}`);sessionStorage.removeItem(`bc_pwd_${pid}`);goHome();toast('Чат удалён');};
+window.deleteChat=async ()=>{
+  if(!activePid)return; if(activePid===MY_ID){toast('Чат "Избранное" нельзя удалить','warn');return;}
+  const pid=activePid; activePid=''; cancelEdit();cancelReply();resetMsgSearch();exitSelectionMode();closeAll();
+  await clearMsgs(pid); await deleteChatData(pid);
+  delete keyCache[pid]; localStorage.removeItem(`bc_pwd_${pid}`); localStorage.removeItem(`bc_secret_${pid}`); sessionStorage.removeItem(`bc_pwd_${pid}`);
+  goHome(); toast('Чат удалён');
+};
 
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){ensureWS();if(activePid&&wsUp)wsSend({type:'query-presence',target:activePid});}});
 $('contactsSearch')?.addEventListener('input',renderContacts);
 
-initAvt();renderChatList();renderContacts();ensureWS();
+// Старт
+(async function(){
+  await initDatabase();
+  await initFavoritesChat();
+  initAvt();
+  await renderChatList();
+  await renderContacts();
+  ensureWS();
+})();
+
 })();
 </script>
 </body>
-    </html>
+                                 </html>
