@@ -9,7 +9,8 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#07070f">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <link rel="manifest" href="data:application/manifest+json,{{MANIFEST}}">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icon-192.png">
   
   <title>K-Chat · E2EE</title>
   
@@ -495,10 +496,10 @@ async function copyToClipboard(text){
   document.body.appendChild(ta);ta.focus();ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);
 }
 
-// ---------- PWA Service Worker (встроен) ----------
+// ---------- PWA Service Worker ----------
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('data:application/javascript,{{SW_SCRIPT}}', { scope: './' })
+    navigator.serviceWorker.register('/sw.js', { scope: '/' })
       .then(reg => console.log('SW registered', reg))
       .catch(err => console.warn('SW registration failed', err));
   });
