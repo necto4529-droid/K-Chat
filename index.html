@@ -7,6 +7,7 @@
   <script src="https://cdn.jsdelivr.net/npm/argon2-browser@1.18.0/dist/argon2-bundled.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
   <style>
+    /* --- ТВОИ СТИЛИ (без изменений) --- */
     :root {
       --g:#00ff88;--b:#00d9ff;--bg:#07070f;
       --panel:rgba(255,255,255,0.035);
@@ -173,7 +174,7 @@
     .lightbox-img{max-width:95vw;max-height:95vh;object-fit:contain;border-radius:16px}
     .lightbox-close{position:absolute;top:20px;right:20px;color:white;font-size:30px;cursor:pointer}
 
-    /* ══ VOICE BUBBLE — compact Telegram style ══ */
+    /* VOICE BUBBLE */
     .voice-bubble{display:flex;align-items:center;gap:10px;padding:8px 12px 8px 8px}
     .voice-play-btn{width:42px;height:42px;min-width:42px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .15s,filter .2s;font-size:15px;flex-shrink:0;position:relative}
     .msg-row.sent .voice-play-btn{background:rgba(0,255,136,.85);color:#000;box-shadow:0 2px 8px rgba(0,255,136,.35)}
@@ -193,7 +194,6 @@
     .voice-bottom{display:flex;align-items:center;gap:5px}
     .voice-timer{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:rgba(255,255,255,.5);white-space:nowrap}
     .msg-row.sent .voice-timer{color:rgba(180,255,210,.65)}
-    /* Unread dot */
     .voice-unread-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;transition:opacity .35s,transform .35s}
     .msg-row.sent .voice-unread-dot{background:rgba(0,255,136,.85)}
     .msg-row.recv .voice-unread-dot{background:rgba(0,217,255,.85)}
@@ -202,7 +202,7 @@
     .voice-meta-inline .msg-time-inline{color:rgba(255,255,255,.4)}
     .msg-row.sent .voice-meta-inline .msg-time-inline{color:rgba(180,255,210,.55)}
 
-    /* ══ RECORDING OVERLAY ══ */
+    /* RECORDING OVERLAY */
     .voice-record-overlay{position:absolute;inset:0;z-index:50;display:flex;align-items:center;background:rgba(7,7,15,.97);backdrop-filter:blur(12px);padding:0 12px;gap:12px;opacity:0;pointer-events:none;transition:opacity .25s;border-top:1px solid rgba(255,79,106,.18)}
     .voice-record-overlay.active{opacity:1;pointer-events:all}
     .rec-cancel-btn{width:42px;height:42px;border-radius:50%;background:rgba(255,79,106,.12);border:1px solid rgba(255,79,106,.28);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;transition:background .2s,transform .15s;flex-shrink:0}
@@ -452,7 +452,7 @@
 (function(){
 'use strict';
 
-const SIGNAL_URL='https://signal-server-aipd.onrender.com';
+const SIGNAL_URL='wss://signal-server-aipd.onrender.com'; // ✅ ИСПРАВЛЕНО на wss
 const A2_MEM=65536,A2_TIME=3,A2_PAR=1;
 const QUICK_EMOJIS=['❤️','👍','😂','🔥','👏','😮','😢','🤯'];
 const PAGE_SIZE=50;
@@ -543,12 +543,31 @@ function ensureWS(){
 function wsSend(obj){if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(obj));}
 
 const online={};
+// ✅ НОВАЯ ФУНКЦИЯ: Пометить сообщение как отправленное (убрать ошибку)
+function markMessageAsSent(msgId) {
+  const row = document.querySelector(`.msg-row[data-msgid="${msgId}"]`);
+  if (row) {
+    row.classList.remove('sending-error'); // если есть класс ошибки
+    const statusIcon = row.querySelector('.msg-ticks');
+    if (statusIcon) {
+      statusIcon.textContent = '✔'; // одна галочка (отправлено)
+      statusIcon.className = 'msg-ticks single';
+    }
+  }
+}
+
 async function onWS(msg){
   if(msg.type==='incoming-msg'&&msg.from===MY_ID)return;
   switch(msg.type){
     case 'registered':updateSendBtn();if(activePid)wsSend({type:'query-presence',target:activePid});break;
     case 'presence':setOnline(msg.peerId.toLowerCase(),!!msg.online);break;
     case 'presence-reply':setOnline((msg.target||'').toLowerCase(),!!msg.online);break;
+
+    // ✅ НОВЫЙ ОБРАБОТЧИК
+    case 'msg-queued':
+      markMessageAsSent(msg.msgId);
+      break;
+
     case 'incoming-msg':{
       const from=(msg.from||'').toLowerCase();
       wsSend({type:'ack-msg',msgId:msg.msgId});
@@ -561,20 +580,14 @@ async function onWS(msg){
 
     // ── ПОЛУЧАТЕЛЬ прослушал голосовое → убираем точку у ОТПРАВИТЕЛЯ ──
     case 'voice-listened':{
-      // msg.from = получатель (тот, кто слушал)
-      // msg.voiceMsgId = ID нашего голосового сообщения
-      // msg.originalSender = мы (отправитель), добавляется при отправке сигнала
       const listenedMsgId = msg.voiceMsgId;
-
-      // Ищем это сообщение в нашем чате с тем, кто слушал
-      const senderPid = (msg.from||'').toLowerCase(); // получатель сообщения = peer
+      const senderPid = (msg.from||'').toLowerCase();
       const msgs = loadMsgs(senderPid);
       const m = msgs.find(x => x.id === listenedMsgId);
       if(m && !m.voiceListened){
         m.voiceListened = true;
         saveMsgs(senderPid, msgs);
       }
-      // Убираем точку в DOM у нашего отправленного сообщения
       const dot = document.querySelector(`.msg-row[data-msgid="${listenedMsgId}"] .voice-unread-dot`);
       if(dot) dot.classList.add('hidden');
       break;
@@ -586,12 +599,7 @@ async function handleEnvelope(from,env){
   if(env.type==='msg'||env.type==='media'||env.type==='voice'){
     const m={id:env.id,text:env.text||'',type:'recv',time:new Date(env.ts||Date.now()).toISOString(),reactions:{},edited:false,replyTo:env.replyTo||null,delivered:true,forwarded:env.forwarded||false};
     if(env.type==='media'){m.media=env.media;m.caption=env.caption;}
-    if(env.type==='voice'){
-      m.voice=env.voice;
-      m.voiceDuration=env.voiceDuration;
-      // voiceListened=false — получатель ещё не прослушал
-      m.voiceListened=false;
-    }
+    if(env.type==='voice'){m.voice=env.voice;m.voiceDuration=env.voiceDuration;m.voiceListened=false;}
     const ct=loadContacts().find(c=>c.id===from);getOrCreateChat(from,ct?.name,ct?.avatar);upsertMsg(from,m);
     const lastPreview=env.type==='media'?'📷 Фото':env.type==='voice'?'🎙 Голосовое':(env.text||'').slice(0,28);
     updateChat(from,{lastMsg:lastPreview,lastMsgTime:new Date(m.time).getTime()});
@@ -767,21 +775,11 @@ window.toggleRecording=async function(){
     const stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,sampleRate:24000,echoCancellation:true,noiseSuppression:true}});
     micStream=stream;
     try{audioCtx=new(window.AudioContext||window.webkitAudioContext)();analyser=audioCtx.createAnalyser();analyser.fftSize=64;audioCtx.createMediaStreamSource(stream).connect(analyser);}catch(e){analyser=null;}
-    // ─── УЛУЧШЕННАЯ НАСТРОЙКА (БИТРЕЙТ 24 kbps, ЧАСТОТА 24 kHz) ───
 let mime = 'audio/webm;codecs=opus';
 let bitrate = 24000;
-if (!MediaRecorder.isTypeSupported(mime)) {
-    mime = 'audio/webm';
-    bitrate = 32000;
-}
-if (!MediaRecorder.isTypeSupported(mime)) {
-    mime = 'audio/ogg;codecs=opus';
-    bitrate = 24000;
-}
-if (!MediaRecorder.isTypeSupported(mime)) {
-    mime = '';
-    bitrate = 32000;
-}
+if (!MediaRecorder.isTypeSupported(mime)) { mime = 'audio/webm'; bitrate = 32000; }
+if (!MediaRecorder.isTypeSupported(mime)) { mime = 'audio/ogg;codecs=opus'; bitrate = 24000; }
+if (!MediaRecorder.isTypeSupported(mime)) { mime = ''; bitrate = 32000; }
 mediaRecorder = new MediaRecorder(stream, mime ? {mimeType: mime, audioBitsPerSecond: bitrate} : {audioBitsPerSecond: bitrate});
     audioChunks=[];
     mediaRecorder.ondataavailable=e=>{if(e.data?.size>0)audioChunks.push(e.data);};
@@ -836,7 +834,6 @@ async function sendVoiceMessage(dataURL,duration,waveform){
   const selfChat=(activePid===MY_ID);
   if(selfChat){
     const msgId=uid(),ts=Date.now();
-    // В избранном точки нет (voiceListened=true сразу)
     const m={id:msgId,text:'',type:'sent',time:new Date(ts).toISOString(),reactions:{},edited:false,replyTo:replyTo||null,delivered:true,forwarded:false,voice:{data:dataURL,waveform},voiceDuration:duration,voiceListened:true};
     upsertMsg(MY_ID,m);updateChat(MY_ID,{lastMsg:'🎙 Голосовое',lastMsgTime:ts});appendOrReloadMsg(MY_ID,m);cancelReply();return;
   }
@@ -848,7 +845,6 @@ async function sendVoiceMessage(dataURL,duration,waveform){
   try{
     const enc=await encData(ENC.encode(JSON.stringify(env)),key);
     wsSend({type:'send-msg',target:activePid,msgId,payload:Array.from(new Uint8Array(enc))});
-    // voiceListened=false: точка будет стоять пока получатель не прослушает
     const m={id:msgId,text:'',type:'sent',time:new Date(ts).toISOString(),reactions:{},edited:false,replyTo:replyTo||null,delivered:false,forwarded:false,voice:env.voice,voiceDuration:duration,voiceListened:false};
     upsertMsg(activePid,m);updateChat(activePid,{lastMsg:'🎙 Голосовое',lastMsgTime:ts});appendOrReloadMsg(activePid,m);cancelReply();
   }catch(e){toast('Ошибка отправки голосового','err');}
@@ -859,22 +855,7 @@ let currentAudio=null;
 
 function buildVoiceBubble(m,isSent){
   const totalSec=m.voiceDuration||0;
-
-  // ──────────────────────────────────────────────────────────────
-  // ЛОГИКА ТОЧКИ (•):
-  //
-  // Для ОТПРАВИТЕЛЯ (isSent=true):
-  //   voiceListened=false  → точка видна  (получатель ещё не слушал)
-  //   voiceListened=true   → точка скрыта (получатель прослушал — пришёл voice-listened)
-  //   При собственном прослушивании отправителем — точка НЕ скрывается!
-  //
-  // Для ПОЛУЧАТЕЛЯ (isSent=false):
-  //   voiceListened=false  → точка видна  (сам ещё не слушал)
-  //   voiceListened=true   → точка скрыта (уже прослушал)
-  //   При прослушивании — точка скрывается + шлём voice-listened отправителю
-  // ──────────────────────────────────────────────────────────────
   const dotHidden = !!m.voiceListened;
-
   const wrap=document.createElement('div');wrap.className='voice-bubble';
   const btn=document.createElement('button');btn.className='voice-play-btn';btn.innerHTML='▶';
   const right=document.createElement('div');right.className='voice-right';
@@ -904,7 +885,6 @@ function buildVoiceBubble(m,isSent){
   right.appendChild(wf);right.appendChild(bot);
   wrap.appendChild(btn);wrap.appendChild(right);
 
-  // Playback
   let audio=null;let isPlaying=false;
   function updateProgress(pct){
     barEls.forEach((b,i)=>{
@@ -928,32 +908,18 @@ function buildVoiceBubble(m,isSent){
     }
     audio.play().then(()=>{
       isPlaying=true;btn.innerHTML='⏸';btn.classList.add('playing');currentAudio=audio;rafTick();
-
-      // ── Логика при прослушивании ──
-      if(!isSent){
-        // ПОЛУЧАТЕЛЬ прослушал → скрываем его точку + уведомляем отправителя
-        if(!m.voiceListened){
-          m.voiceListened=true;
-          const msgs=loadMsgs(activePid);const mm=msgs.find(x=>x.id===m.id);
-          if(mm){mm.voiceListened=true;saveMsgs(activePid,msgs);}
-          dot.classList.add('hidden');
-          // Отправляем сигнал отправителю чтобы убрать точку у него
-          if(activePid!==MY_ID){
-            wsSend({type:'voice-listened',target:activePid,voiceMsgId:m.id});
-          }
-        }
+      if(!isSent&&!m.voiceListened){
+        m.voiceListened=true;
+        const msgs=loadMsgs(activePid);const mm=msgs.find(x=>x.id===m.id);
+        if(mm){mm.voiceListened=true;saveMsgs(activePid,msgs);}
+        dot.classList.add('hidden');
+        if(activePid!==MY_ID) wsSend({type:'voice-listened',target:activePid,voiceMsgId:m.id});
       }
-      // Если ОТПРАВИТЕЛЬ сам прослушал — точка НЕ убирается (она ждёт сигнала от получателя)
-      // Ничего не делаем для isSent=true
-
     }).catch(e=>console.error(e));
   }
   function doPause(){audio.pause();}
   btn.addEventListener('click',e=>{e.stopPropagation();if(isPlaying)doPause();else doPlay();});
-  wf.addEventListener('click',e=>{
-    if(!audio){doPlay();return;}
-    if(audio.duration){const r=wf.getBoundingClientRect();audio.currentTime=(e.clientX-r.left)/r.width*audio.duration;}
-  });
+  wf.addEventListener('click',e=>{if(!audio){doPlay();return;}if(audio.duration){const r=wf.getBoundingClientRect();audio.currentTime=(e.clientX-r.left)/r.width*audio.duration;}});
   return wrap;
 }
 
@@ -1181,4 +1147,4 @@ initAvt();renderChatList();renderContacts();ensureWS();
 })();
 </script>
 </body>
-  </html>
+    </html>
