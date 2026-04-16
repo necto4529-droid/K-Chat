@@ -48,7 +48,7 @@
     #scr-contacts,#scr-chat{transform:translateX(100%);opacity:0}
     #scr-contacts.active,#scr-chat.active{transform:translateX(0);opacity:1}
     #scr-contacts.hidden,#scr-chat.hidden{transform:translateX(100%);opacity:0}
-    .top-bar{display:flex;align-items:center;gap:12px;padding:14px 16px;padding-top:calc(14px + var(--safe-t));background:rgba(7,7,15,.88);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);flex-shrink:0;z-index:20}
+    .top-bar{display:flex;align-items:center;gap:12px;padding:8px 16px;padding-top:max(8px, env(safe-area-inset-top));background:rgba(7,7,15,.88);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);flex-shrink:0;z-index:20}
     .back-btn{width:36px;height:36px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;transition:background .2s;flex-shrink:0}
     .back-btn:hover{background:rgba(255,255,255,.09)}
     .bar-title{font-size:16px;font-weight:700;flex:1;min-width:0}
@@ -66,7 +66,7 @@
     .icon-btn-sm:hover{background:rgba(0,255,136,.14);border-color:var(--border-hi)}
     #scr-home{justify-content:flex-start;overflow-y:auto;padding-bottom:calc(20px + var(--safe-b))}
     #scr-home::-webkit-scrollbar{display:none}
-    .home-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;padding-top:calc(16px + var(--safe-t));background:rgba(7,7,15,.8);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:20}
+    .home-header{display:flex;align-items:center;justify-content:space-between;padding:8px 20px;padding-top:max(8px, env(safe-area-inset-top));background:rgba(7,7,15,.8);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:20}
     .home-title{font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700;color:var(--g);letter-spacing:-.5px}
     .my-id-chip{background:rgba(0,255,136,.08);border:1px solid var(--border);border-radius:30px;padding:6px 14px;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--g);display:flex;align-items:center;gap:6px;cursor:pointer;transition:background .2s}
     .my-id-chip:hover{background:rgba(0,255,136,.14)}
@@ -113,7 +113,7 @@
     .modal-handle{width:36px;height:4px;border-radius:2px;background:rgba(255,255,255,.15);margin:0 auto -4px;flex-shrink:0}
     .modal-title{font-size:17px;font-weight:700;text-align:center}
     #scr-chat{flex-direction:column}
-    .chat-header{display:flex;align-items:center;gap:10px;padding:14px 16px;padding-top:calc(14px + var(--safe-t));background:rgba(7,7,15,.88);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);flex-shrink:0;z-index:20}
+    .chat-header{display:flex;align-items:center;gap:10px;padding:8px 16px;padding-top:max(8px, env(safe-area-inset-top));background:rgba(7,7,15,.88);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);flex-shrink:0;z-index:20}
     .chat-peer-info{flex:1;min-width:0}
     .chat-peer-name{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .chat-peer-status{font-size:11px;display:flex;align-items:center;gap:5px;margin-top:2px;transition:color .3s}
