@@ -3,10 +3,21 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
-  <title>K-Chat · E2EE</title>
+  <title>K-Chat · E2EE + Push</title>
   <script src="https://cdn.jsdelivr.net/npm/argon2-browser@1.18.0/dist/argon2-bundled.min.js"></script>
+  <!-- OneSignal -->
+  <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+  <script>
+    window.OneSignalDeferred = window.OneSignalDeferred || [];
+    OneSignalDeferred.push(async function(OneSignal) {
+      await OneSignal.init({
+        appId: "c5b0ecd0-3e67-47a0-823d-771a7c4de3be",
+      });
+    });
+  </script>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
   <style>
+    /* Все стили без изменений */
     :root {
       --g:#00ff88;--b:#00d9ff;--bg:#07070f;
       --panel:rgba(255,255,255,0.035);
@@ -251,7 +262,7 @@
     .attach-btn:hover{background:rgba(0,255,136,.15)}
     .msg-input-wrap{flex:1;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:22px;padding:10px 16px;transition:border-color .2s;min-height:44px;display:flex;align-items:center}
     .msg-input-wrap:focus-within{border-color:rgba(0,255,136,.3)}
-    .msg-input{background:transparent;border:none;outline:none;color:var(--text);font-family:'Syne',sans-serif;font-size:14px;width:100%;resize:none;line-height:1.4;max-height:120px;overflow-y:auto}
+    .msg-input{background:transparent;border:none;outline:none;color:var(--text);font-family:'Syne',sans-serif;font-size:14px;width:100%;resize:none;line-height:1.4;max-height:120px;overflow-y:40}
     .msg-input::placeholder{color:rgba(255,255,255,.22)}
     .media-preview-container{display:flex;padding:6px 12px 0;gap:8px;align-items:center;background:rgba(7,7,15,.9);border-top:1px solid var(--border)}
     .media-preview{display:flex;align-items:center;gap:10px;flex:1}
@@ -635,7 +646,7 @@ window.submitKeyModal=async function(){
 window.cancelKeyModal=function(){$('keyModalOverlay').classList.remove('open');if(_kmReject){_kmReject(new Error('cancelled'));_kmReject=null;}};
 async function ensureKey(pid){let key=await getKey(pid);if(key)return key;return promptKey(pid);}
 
-// ========== WEBSOCKET ==========
+// ========== WEBSOCKET + PUSH ==========
 let ws=null,wsUp=false,wsRetry=0;
 const WS_DELAYS=[2000,3000,5000,8000,15000,30000];
 function ensureWS(){
@@ -649,11 +660,31 @@ function ensureWS(){
 }
 function wsSend(obj){if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(obj));}
 
+// Push-регистрация
+async function registerPushNotifications(){
+  if(!window.OneSignal) return;
+  try {
+    const granted = await OneSignal.Notifications.requestPermission();
+    if (granted) {
+      const playerId = await OneSignal.User.getOnesignalId();
+      console.log('[push] Player ID:', playerId);
+      wsSend({ type: 'register-push', playerId });
+    }
+  } catch (e) {
+    console.warn('[push] Ошибка регистрации:', e);
+  }
+}
+
 const online={};
 async function onWS(msg){
   if(msg.type==='incoming-msg'&&msg.from===MY_ID)return;
   switch(msg.type){
-    case 'registered':updateSendBtn();if(activePid)wsSend({type:'query-presence',target:activePid});break;
+    case 'registered':
+      updateSendBtn();
+      if(activePid) wsSend({type:'query-presence',target:activePid});
+      // Запрашиваем push-уведомления после успешной регистрации
+      registerPushNotifications().catch(console.warn);
+      break;
     case 'presence':setOnline(msg.peerId.toLowerCase(),!!msg.online);break;
     case 'presence-reply':setOnline((msg.target||'').toLowerCase(),!!msg.online);break;
     case 'incoming-msg':{
