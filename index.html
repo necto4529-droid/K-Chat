@@ -17,7 +17,7 @@
   </script>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
   <style>
-    /* Все стили без изменений */
+    /* Все стили без изменений (как в вопросе) */
     :root {
       --g:#00ff88;--b:#00d9ff;--bg:#07070f;
       --panel:rgba(255,255,255,0.035);
@@ -675,9 +675,25 @@ async function registerPushNotifications(){
   }
 }
 
+// Вспомогательная функция: ждёт появления сообщения в DOM
+function waitForMessageRendered(msgId, timeout = 3000) {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    const check = () => {
+      const el = document.querySelector(`.msg-row[data-msgid="${msgId}"]`);
+      if (el) resolve();
+      else if (Date.now() - start > timeout) resolve();
+      else setTimeout(check, 50);
+    };
+    check();
+  });
+}
+
 const online={};
 async function onWS(msg){
   if(msg.type==='incoming-msg'&&msg.from===MY_ID)return;
+  const eventId = msg.eventId;
+  
   switch(msg.type){
     case 'registered':
       updateSendBtn();
@@ -692,11 +708,14 @@ async function onWS(msg){
       let key=keyCache[from]||await loadPersistedKey(from);
       if(!key){const pwd=localStorage.getItem(`bc_pwd_${from}`)||sessionStorage.getItem(`bc_pwd_${from}`);if(pwd){try{key=await deriveKey(pwd,from);keyCache[from]=key;await persistKey(from,key);}catch(e){}}}
       if(!key){const pending=lsGet(`bc_pending_${from}`,[]);pending.push({msgId:msg.msgId,payload:msg.payload,ts:Date.now()});lsSet(`bc_pending_${from}`,pending);const chat=loadChats().find(c=>c.peerId===from);const ct=loadContacts().find(c=>c.id===from);getOrCreateChat(from,ct?.name,ct?.avatar);updateChat(from,{unread:(chat?.unread||0)+1,lastMsg:'🔒 Зашифровано',lastMsgTime:Date.now()});toast(`💬 ${ct?.name||from}: (зашифровано)`);break;}
-      await decryptAndStore(from,msg.msgId,msg.payload,key);break;
+      await decryptAndStore(from,msg.msgId,msg.payload,key);
+      if(eventId) wsSend({type:'ack-event',eventId});
+      break;
     }
     case 'msg-delivered':
+      await waitForMessageRendered(msg.msgId);
       markDelivered(msg.msgId);
-      if (msg.eventId) wsSend({ type: 'ack-event', eventId: msg.eventId });
+      if(eventId) wsSend({type:'ack-event',eventId});
       break;
     case 'voice-listened':{
       const listenedMsgId = msg.voiceMsgId;
@@ -704,12 +723,12 @@ async function onWS(msg){
       const msgs = await loadMsgs(senderPid);
       const m = msgs.find(x => x.id === listenedMsgId);
       if(m && !m.voiceListened){ m.voiceListened = true; await saveMsgs(senderPid, msgs); }
+      await waitForMessageRendered(listenedMsgId);
       const dot = document.querySelector(`.msg-row[data-msgid="${listenedMsgId}"] .voice-unread-dot`);
       if(dot) dot.classList.add('hidden');
-      if (msg.eventId) wsSend({ type: 'ack-event', eventId: msg.eventId });
+      if(eventId) wsSend({type:'ack-event',eventId});
       break;
     }
-    // Также можно добавить обработку других событий с eventId, если сервер их шлёт
   }
 }
 async function decryptAndStore(from,msgId,payload,key){try{const buf=new Uint8Array(payload).buffer;const pt=DEC.decode(await decData(buf,key));await handleEnvelope(from,JSON.parse(pt));}catch(e){console.warn('decrypt fail',e);}}
