@@ -17,7 +17,7 @@
   </script>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
   <style>
-    /* Все стили без изменений (как в вопросе) */
+    /* Все стили без изменений (точно как в предыдущих версиях) */
     :root {
       --g:#00ff88;--b:#00d9ff;--bg:#07070f;
       --panel:rgba(255,255,255,0.035);
@@ -610,12 +610,30 @@ function initFavoritesChat(){
 }
 initFavoritesChat();
 
-async function upsertMsg(pid,m){
-  let a=await loadMsgs(pid);
-  const i=a.findIndex(x=>x.id===m.id);
-  if(i!==-1)a[i]={...a[i],...m};
-  else{a.push(m);if(a.length>500)a=a.slice(-500);}
-  await saveMsgs(pid,a);
+// ✅ БЛОКИРОВКА ДЛЯ ПОСЛЕДОВАТЕЛЬНОГО ОБНОВЛЕНИЯ СООБЩЕНИЙ
+const upsertLocks = new Map();
+
+async function upsertMsg(pid, m) {
+  while (upsertLocks.get(pid)) {
+    await upsertLocks.get(pid);
+  }
+  let resolveLock;
+  const lockPromise = new Promise(res => { resolveLock = res; });
+  upsertLocks.set(pid, lockPromise);
+  try {
+    let a = await loadMsgs(pid);
+    const i = a.findIndex(x => x.id === m.id);
+    if (i !== -1) {
+      a[i] = { ...a[i], ...m };
+    } else {
+      a.push(m);
+      if (a.length > 500) a = a.slice(-500);
+    }
+    await saveMsgs(pid, a);
+  } finally {
+    upsertLocks.delete(pid);
+    resolveLock();
+  }
 }
 
 // ========== КРИПТОГРАФИЯ ==========
@@ -714,7 +732,7 @@ async function onWS(msg){
     }
     case 'msg-delivered':
       await waitForMessageRendered(msg.msgId);
-      markDelivered(msg.msgId);
+      await markDelivered(msg.msgId);
       if(eventId) wsSend({type:'ack-event',eventId});
       break;
     case 'voice-listened':{
@@ -722,7 +740,10 @@ async function onWS(msg){
       const senderPid = (msg.from||'').toLowerCase();
       const msgs = await loadMsgs(senderPid);
       const m = msgs.find(x => x.id === listenedMsgId);
-      if(m && !m.voiceListened){ m.voiceListened = true; await saveMsgs(senderPid, msgs); }
+      if(m && !m.voiceListened){
+        m.voiceListened = true;
+        await upsertMsg(senderPid, m);
+      }
       await waitForMessageRendered(listenedMsgId);
       const dot = document.querySelector(`.msg-row[data-msgid="${listenedMsgId}"] .voice-unread-dot`);
       if(dot) dot.classList.add('hidden');
@@ -752,8 +773,18 @@ async function drainPending(pid,key){const pending=lsGet(`bc_pending_${pid}`,[])
 async function markDelivered(msgId){
   const chats=loadChats();
   for(const chat of chats){
-    const msgs=await loadMsgs(chat.peerId);const m=msgs.find(m=>m.id===msgId);
-    if(m){m.delivered=true;await saveMsgs(chat.peerId,msgs);const row=document.querySelector(`.msg-row[data-msgid="${msgId}"]`);if(row){const tk=row.querySelector('.msg-ticks');if(tk){tk.textContent='✔✔';tk.className='msg-ticks double';}}break;}
+    const msgs=await loadMsgs(chat.peerId);
+    const m=msgs.find(m=>m.id===msgId);
+    if(m){
+      m.delivered = true;
+      await upsertMsg(chat.peerId, m);
+      const row=document.querySelector(`.msg-row[data-msgid="${msgId}"]`);
+      if(row){
+        const tk=row.querySelector('.msg-ticks');
+        if(tk){tk.textContent='✔✔'; tk.className='msg-ticks double';}
+      }
+      break;
+    }
   }
 }
 function setOnline(pid,isOnline){online[pid]=isOnline;if(pid===activePid&&currentScreen==='scr-chat')updateBar();renderChatList();renderContacts();}
@@ -1002,7 +1033,7 @@ function buildVoiceBubble(m,isSent){
       if(!isSent&&!m.voiceListened){
         m.voiceListened=true;
         const msgs=await loadMsgs(activePid); const mm=msgs.find(x=>x.id===m.id);
-        if(mm){mm.voiceListened=true; await saveMsgs(activePid,msgs);}
+        if(mm){mm.voiceListened=true; await upsertMsg(activePid, mm);}
         dot.classList.add('hidden');
         if(activePid!==MY_ID){ wsSend({type:'voice-listened',target:activePid,voiceMsgId:m.id}); }
       }
