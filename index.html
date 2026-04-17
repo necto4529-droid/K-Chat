@@ -17,7 +17,7 @@
   </script>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
   <style>
-    /* Все стили без изменений (точно как в предыдущих версиях) */
+    /* Все стили (оставлены без изменений, как в последней версии) */
     :root {
       --g:#00ff88;--b:#00d9ff;--bg:#07070f;
       --panel:rgba(255,255,255,0.035);
@@ -612,23 +612,16 @@ initFavoritesChat();
 
 // ✅ БЛОКИРОВКА ДЛЯ ПОСЛЕДОВАТЕЛЬНОГО ОБНОВЛЕНИЯ СООБЩЕНИЙ
 const upsertLocks = new Map();
-
 async function upsertMsg(pid, m) {
-  while (upsertLocks.get(pid)) {
-    await upsertLocks.get(pid);
-  }
+  while (upsertLocks.get(pid)) await upsertLocks.get(pid);
   let resolveLock;
   const lockPromise = new Promise(res => { resolveLock = res; });
   upsertLocks.set(pid, lockPromise);
   try {
     let a = await loadMsgs(pid);
     const i = a.findIndex(x => x.id === m.id);
-    if (i !== -1) {
-      a[i] = { ...a[i], ...m };
-    } else {
-      a.push(m);
-      if (a.length > 500) a = a.slice(-500);
-    }
+    if (i !== -1) a[i] = { ...a[i], ...m };
+    else { a.push(m); if (a.length > 500) a = a.slice(-500); }
     await saveMsgs(pid, a);
   } finally {
     upsertLocks.delete(pid);
@@ -665,16 +658,26 @@ window.cancelKeyModal=function(){$('keyModalOverlay').classList.remove('open');i
 async function ensureKey(pid){let key=await getKey(pid);if(key)return key;return promptKey(pid);}
 
 // ========== WEBSOCKET + PUSH ==========
-let ws=null,wsUp=false,wsRetry=0;
+let ws=null,wsUp=false,wsRetry=0,pingInterval=null;
 const WS_DELAYS=[2000,3000,5000,8000,15000,30000];
 function ensureWS(){
   if(ws&&(ws.readyState===WebSocket.OPEN||ws.readyState===WebSocket.CONNECTING))return;
   if(ws)try{ws.close();}catch(e){}
   ws=new WebSocket(SIGNAL_URL);
-  ws.onopen=()=>{wsUp=true;wsRetry=0;ws.send(JSON.stringify({type:'register',peerId:MY_ID}));updateSendBtn();if(activePid)wsSend({type:'query-presence',target:activePid});};
+  ws.onopen=()=>{
+    wsUp=true; wsRetry=0;
+    ws.send(JSON.stringify({type:'register',peerId:MY_ID}));
+    updateSendBtn(); if(activePid)wsSend({type:'query-presence',target:activePid});
+    if(pingInterval)clearInterval(pingInterval);
+    pingInterval=setInterval(()=>{ if(ws&&ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify({type:'ping'})); },30000);
+  };
   ws.onmessage=e=>{let d;try{d=JSON.parse(e.data);}catch{return;}onWS(d);};
-  ws.onclose=()=>{wsUp=false;updateSendBtn();setBar('connecting','Переподключение…');setTimeout(ensureWS,WS_DELAYS[Math.min(wsRetry++,WS_DELAYS.length-1)]);};
-  ws.onerror=()=>{wsUp=false;updateSendBtn();};
+  ws.onclose=()=>{
+    wsUp=false; updateSendBtn(); setBar('connecting','Переподключение…');
+    if(pingInterval){clearInterval(pingInterval); pingInterval=null;}
+    setTimeout(ensureWS,WS_DELAYS[Math.min(wsRetry++,WS_DELAYS.length-1)]);
+  };
+  ws.onerror=()=>{wsUp=false; updateSendBtn();};
 }
 function wsSend(obj){if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(obj));}
 
@@ -693,7 +696,7 @@ async function registerPushNotifications(){
   }
 }
 
-// Вспомогательная функция: ждёт появления сообщения в DOM
+// Вспомогательные функции
 function waitForMessageRendered(msgId, timeout = 3000) {
   return new Promise((resolve) => {
     const start = Date.now();
@@ -705,6 +708,35 @@ function waitForMessageRendered(msgId, timeout = 3000) {
     };
     check();
   });
+}
+
+async function markDelivered(msgId) {
+  for (let i = 0; i < 50; i++) {
+    const row = document.querySelector(`.msg-row[data-msgid="${msgId}"]`);
+    if (row) {
+      const tk = row.querySelector('.msg-ticks');
+      if (tk) { tk.textContent = '✔✔'; tk.className = 'msg-ticks double'; }
+      const msgs = await loadMsgs(activePid);
+      const m = msgs.find(m => m.id === msgId);
+      if (m && !m.delivered) { m.delivered = true; await upsertMsg(activePid, m); }
+      return;
+    }
+    await new Promise(r => setTimeout(r, 100));
+  }
+}
+
+async function syncDeliveredStatuses() {
+  if (!activePid) return;
+  const msgs = await loadMsgs(activePid);
+  for (const m of msgs) {
+    if (m.type === 'sent' && m.delivered) {
+      const row = document.querySelector(`.msg-row[data-msgid="${m.id}"]`);
+      if (row) {
+        const tk = row.querySelector('.msg-ticks');
+        if (tk && tk.textContent !== '✔✔') { tk.textContent = '✔✔'; tk.className = 'msg-ticks double'; }
+      }
+    }
+  }
 }
 
 const online={};
@@ -740,10 +772,7 @@ async function onWS(msg){
       const senderPid = (msg.from||'').toLowerCase();
       const msgs = await loadMsgs(senderPid);
       const m = msgs.find(x => x.id === listenedMsgId);
-      if(m && !m.voiceListened){
-        m.voiceListened = true;
-        await upsertMsg(senderPid, m);
-      }
+      if(m && !m.voiceListened){ m.voiceListened = true; await upsertMsg(senderPid, m); }
       await waitForMessageRendered(listenedMsgId);
       const dot = document.querySelector(`.msg-row[data-msgid="${listenedMsgId}"] .voice-unread-dot`);
       if(dot) dot.classList.add('hidden');
@@ -770,23 +799,6 @@ async function handleEnvelope(from,env){
 }
 async function drainPending(pid,key){const pending=lsGet(`bc_pending_${pid}`,[]);if(!pending.length)return;localStorage.removeItem(`bc_pending_${pid}`);for(const p of pending)await decryptAndStore(pid,p.msgId,p.payload,key);}
 
-async function markDelivered(msgId){
-  const chats=loadChats();
-  for(const chat of chats){
-    const msgs=await loadMsgs(chat.peerId);
-    const m=msgs.find(m=>m.id===msgId);
-    if(m){
-      m.delivered = true;
-      await upsertMsg(chat.peerId, m);
-      const row=document.querySelector(`.msg-row[data-msgid="${msgId}"]`);
-      if(row){
-        const tk=row.querySelector('.msg-ticks');
-        if(tk){tk.textContent='✔✔'; tk.className='msg-ticks double';}
-      }
-      break;
-    }
-  }
-}
 function setOnline(pid,isOnline){online[pid]=isOnline;if(pid===activePid&&currentScreen==='scr-chat')updateBar();renderChatList();renderContacts();}
 function setBar(cls,txt){const bar=$('statusBar'),t=$('statusBarText');if(bar)bar.className='status-bar s-'+cls;if(t)t.textContent=txt;}
 function setPeerStatus(cls,txt){const el=$('peerStatus');if(!el)return;el.textContent=txt;el.className='chat-peer-status '+cls;}
@@ -1214,6 +1226,7 @@ async function loadChatHistory(pid,reset=false){
   for(let i=slice.length-1;i>=0;i--)area.insertBefore(buildRow(slice[i]),area.firstChild);
   renderedCount+=slice.length;
   if(reset){area.scrollTop=area.scrollHeight;updateScrollBtn();}
+  syncDeliveredStatuses();
 }
 async function rerenderMessages(){
   if(!activePid)return;
@@ -1225,6 +1238,7 @@ async function rerenderMessages(){
   else msgs.forEach(m=>area.appendChild(buildRow(m)));
   if(wasBot)area.scrollTop=area.scrollHeight;else area.scrollTop=scrollPos;
   updateScrollBtn();
+  syncDeliveredStatuses();
 }
 function appendOrReloadMsg(pid,m){
   if(activePid!==pid){rerenderMessages();return;}
