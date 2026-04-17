@@ -682,7 +682,6 @@ async function onWS(msg){
     case 'registered':
       updateSendBtn();
       if(activePid) wsSend({type:'query-presence',target:activePid});
-      // Запрашиваем push-уведомления после успешной регистрации
       registerPushNotifications().catch(console.warn);
       break;
     case 'presence':setOnline(msg.peerId.toLowerCase(),!!msg.online);break;
@@ -695,7 +694,10 @@ async function onWS(msg){
       if(!key){const pending=lsGet(`bc_pending_${from}`,[]);pending.push({msgId:msg.msgId,payload:msg.payload,ts:Date.now()});lsSet(`bc_pending_${from}`,pending);const chat=loadChats().find(c=>c.peerId===from);const ct=loadContacts().find(c=>c.id===from);getOrCreateChat(from,ct?.name,ct?.avatar);updateChat(from,{unread:(chat?.unread||0)+1,lastMsg:'🔒 Зашифровано',lastMsgTime:Date.now()});toast(`💬 ${ct?.name||from}: (зашифровано)`);break;}
       await decryptAndStore(from,msg.msgId,msg.payload,key);break;
     }
-    case 'msg-delivered':markDelivered(msg.msgId);break;
+    case 'msg-delivered':
+      markDelivered(msg.msgId);
+      if (msg.eventId) wsSend({ type: 'ack-event', eventId: msg.eventId });
+      break;
     case 'voice-listened':{
       const listenedMsgId = msg.voiceMsgId;
       const senderPid = (msg.from||'').toLowerCase();
@@ -704,8 +706,10 @@ async function onWS(msg){
       if(m && !m.voiceListened){ m.voiceListened = true; await saveMsgs(senderPid, msgs); }
       const dot = document.querySelector(`.msg-row[data-msgid="${listenedMsgId}"] .voice-unread-dot`);
       if(dot) dot.classList.add('hidden');
+      if (msg.eventId) wsSend({ type: 'ack-event', eventId: msg.eventId });
       break;
     }
+    // Также можно добавить обработку других событий с eventId, если сервер их шлёт
   }
 }
 async function decryptAndStore(from,msgId,payload,key){try{const buf=new Uint8Array(payload).buffer;const pt=DEC.decode(await decData(buf,key));await handleEnvelope(from,JSON.parse(pt));}catch(e){console.warn('decrypt fail',e);}}
