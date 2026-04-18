@@ -14,7 +14,7 @@
   </script>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
   <style>
-    /* Стили оставлены без изменений (как в твоём последнем файле) */
+    /* === ОСНОВНЫЕ СТИЛИ (с исправлениями для голосовых) === */
     :root {
       --g:#00ff88;--b:#00d9ff;--bg:#07070f;
       --panel:rgba(255,255,255,0.035);
@@ -204,20 +204,22 @@
     .voice-meta-inline{display:flex;align-items:center;gap:3px;margin-left:auto}
     .voice-meta-inline .msg-time-inline{color:rgba(255,255,255,.4)}
     .msg-row.sent .voice-meta-inline .msg-time-inline{color:rgba(180,255,210,.55)}
+
+    /* === УЛУЧШЕННЫЙ ИНТЕРФЕЙС ЗАПИСИ ГОЛОСА === */
     .voice-record-overlay{position:absolute;inset:0;z-index:50;display:flex;align-items:center;background:rgba(7,7,15,.97);backdrop-filter:blur(12px);padding:0 12px;gap:12px;opacity:0;pointer-events:none;transition:opacity .25s;border-top:1px solid rgba(255,79,106,.18)}
     .voice-record-overlay.active{opacity:1;pointer-events:all}
     .rec-cancel-btn{width:42px;height:42px;border-radius:50%;background:rgba(255,79,106,.12);border:1px solid rgba(255,79,106,.28);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;transition:background .2s,transform .15s;flex-shrink:0}
     .rec-cancel-btn:hover{background:rgba(255,79,106,.22);transform:scale(1.06)}
-    .rec-center{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px}
-    .rec-label{font-size:10px;color:rgba(255,79,106,.8);font-family:'JetBrains Mono',monospace;display:flex;align-items:center;gap:6px;letter-spacing:1px}
+    .rec-center{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px}
+    .rec-label{font-size:10px;color:rgba(255,79,106,.8);font-family:'JetBrains Mono',monospace;display:flex;align-items:center;gap:6px;letter-spacing:1px;margin-bottom:5px}
     .rec-dot{width:7px;height:7px;border-radius:50%;background:var(--err);animation:recpulse 1s ease-in-out infinite}
     @keyframes recpulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.5);opacity:.55}}
-    .rec-waveform-live{display:flex;align-items:center;gap:2.5px;height:28px}
+    .rec-waveform-live{display:flex;align-items:center;gap:2.5px;height:28px;order:2}
     .rec-wave-bar{width:3px;border-radius:3px;background:var(--err);transition:height .09s ease;min-height:3px}
-    .rec-timer{font-family:'JetBrains Mono',monospace;font-size:17px;font-weight:700;color:var(--err);letter-spacing:2px}
-    .rec-limit-bar-wrap{width:100%;height:2px;background:rgba(255,79,106,.12);border-radius:2px;overflow:hidden}
-    .rec-limit-bar{height:100%;background:var(--err);border-radius:2px;width:0%;transition:width .4s linear,background .3s}
-    .rec-limit-bar.warn{background:var(--warn)}
+    .rec-timer{font-family:'JetBrains Mono',monospace;font-size:17px;font-weight:700;color:var(--err);letter-spacing:2px;order:1;margin-bottom:5px}
+    .rec-limit-bar-wrap{width:100%;height:4px;background:rgba(255,79,106,.12);border-radius:2px;overflow:hidden;order:3;margin-top:8px}
+    .rec-limit-bar{height:4px;background:var(--err);border-radius:2px;width:0%;transition:width .4s linear,background .3s}
+    .rec-limit-bar.warn{background:var(--warn);animation:flashbar .35s infinite}
     .rec-limit-bar.crit{background:var(--err);animation:flashbar .35s infinite}
     @keyframes flashbar{0%,100%{opacity:1}50%{opacity:.3}}
     .rec-send-btn{width:50px;height:50px;border-radius:50%;background:linear-gradient(135deg,var(--g),var(--b));border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:20px;color:#000;box-shadow:0 4px 18px rgba(0,255,136,.4);transition:transform .15s,box-shadow .2s;flex-shrink:0}
@@ -382,8 +384,8 @@
       <div class="rec-cancel-btn" onclick="cancelRecording()" title="Отмена">🗑</div>
       <div class="rec-center">
         <div class="rec-label"><span class="rec-dot"></span>ЗАПИСЬ</div>
-        <div class="rec-waveform-live" id="recWaveformLive"></div>
         <div class="rec-timer" id="recTimer">0:00</div>
+        <div class="rec-waveform-live" id="recWaveformLive"></div>
         <div class="rec-limit-bar-wrap"><div class="rec-limit-bar" id="recLimitBar"></div></div>
       </div>
       <div class="rec-send-btn" onclick="stopAndSendRecording()" title="Отправить">➤</div>
@@ -401,7 +403,7 @@
   <span class="lightbox-close">✕</span>
   <img class="lightbox-img" id="lightboxImg" src="" alt="">
 </div>
-<input type="file" id="fileInput" accept="image/*" style="display:none" onchange="handleFileSelect(event)">
+<input type="file" id="fileInput" accept="image/*" multiple style="display:none" onchange="handleFileSelect(event)">
 
 <!-- MODALS -->
 <div class="modal-overlay" id="addContactModal" onclick="closeAddContactOverlay(event)">
@@ -541,7 +543,7 @@ async function initFavoritesChat(){
   if(!chats.find(c=>c.peerId===MY_ID)){chats.push({peerId:MY_ID,peerName:'⭐ Избранное',avatar:'⭐',lastMsg:null,lastMsgTime:null,unread:0});await saveChats(chats);}
 }
 
-// ✅ БЛОКИРОВКА ДЛЯ ПОСЛЕДОВАТЕЛЬНОГО ОБНОВЛЕНИЯ
+// Блокировки для последовательного обновления
 const upsertLocks = new Map();
 async function upsertMsg(pid, m) {
   while (upsertLocks.get(pid)) await upsertLocks.get(pid);
@@ -613,9 +615,7 @@ async function registerPushNotifications(){
   try{const granted=await OneSignal.Notifications.requestPermission();if(granted){const pid=await OneSignal.User.getOnesignalId();if(pid)wsSend({type:'register-push',playerId:pid});}}catch(e){}
 }
 
-// ✅ ИСПРАВЛЕННАЯ markDelivered (ждёт появления элемента)
 async function markDelivered(msgId) {
-  // Ждём появления элемента в DOM до 3 секунд
   for (let i = 0; i < 30; i++) {
     const row = document.querySelector(`.msg-row[data-msgid="${msgId}"]`);
     if (row) {
@@ -625,7 +625,6 @@ async function markDelivered(msgId) {
     }
     await new Promise(r => setTimeout(r, 100));
   }
-  // Обновляем хранилище во всех чатах
   const chats = await loadChats();
   for (const chat of chats) {
     const msgs = await loadMsgs(chat.peerId);
@@ -817,23 +816,40 @@ function compressImage(file,maxWidth=1024,maxHeight=1024,quality=0.7){
     reader.onerror=reject;reader.readAsDataURL(file);
   });
 }
-let pendingMedia=null;
+let pendingMediaList = [];
 window.triggerFileSelect=()=>$('fileInput').click();
 window.handleFileSelect=async e=>{
-  const file=e.target.files[0];if(!file)return;
-  try{toast('Сжатие изображения…','warn');const c=await compressImage(file);pendingMedia=c;showMediaPreview(c.dataURL);toast('Фото готово','');}catch(err){toast('Ошибка фото','err');}
+  const files=Array.from(e.target.files);
+  if(!files.length)return;
   $('fileInput').value='';
+  for(const file of files){
+    try{toast(`Сжатие ${file.name}…`,'warn');const c=await compressImage(file);pendingMediaList.push(c);}catch(err){toast(`Ошибка: ${file.name}`,'err');}
+  }
+  if(pendingMediaList.length>0){
+    showMediaPreview(pendingMediaList[0].dataURL,pendingMediaList.length);
+    toast(`Готово ${pendingMediaList.length} фото`,'');
+  }
 };
-function showMediaPreview(dataURL){$('mediaPreview').innerHTML=`<img class="media-preview-img" src="${dataURL}"><span class="media-preview-info">Фото</span>`;$('mediaPreviewContainer').style.display='flex';}
-window.clearMediaPreview=()=>{pendingMedia=null;$('mediaPreviewContainer').style.display='none';$('mediaPreview').innerHTML='';};
+function showMediaPreview(dataURL,count=1){
+  $('mediaPreview').innerHTML=`<img class="media-preview-img" src="${dataURL}"><span class="media-preview-info">${count>1?`📷 ${count} фото`:'Фото'}</span>`;
+  $('mediaPreviewContainer').style.display='flex';
+}
+window.clearMediaPreview=()=>{pendingMediaList=[];$('mediaPreviewContainer').style.display='none';$('mediaPreview').innerHTML='';};
 
-// ── VOICE RECORDING ──
+// ── VOICE RECORDING (обновлённый UI) ──
 let mediaRecorder=null,audioChunks=[],isRecording=false;
 let recStartTime=0,recTimerInterval=null,recAnimFrame=null,audioCtx=null,analyser=null,micStream=null;
 const REC_WAVE_BARS=24;
 function initRecWaveform(){const w=$('recWaveformLive');w.innerHTML='';for(let i=0;i<REC_WAVE_BARS;i++){const b=document.createElement('div');b.className='rec-wave-bar';b.style.height='3px';w.appendChild(b);}}
 function animateRecWaveform(){if(!isRecording)return;const bars=$('recWaveformLive').children;if(analyser){const data=new Uint8Array(analyser.frequencyBinCount);analyser.getByteFrequencyData(data);const step=Math.floor(data.length/REC_WAVE_BARS);for(let i=0;i<REC_WAVE_BARS;i++){const h=Math.max(3,Math.round((data[i*step]/255)*26));if(bars[i])bars[i].style.height=h+'px';}}else{for(let i=0;i<bars.length;i++)bars[i].style.height=Math.max(3,Math.round(Math.random()*24))+'px';}recAnimFrame=requestAnimationFrame(animateRecWaveform);}
-function updateRecTimer(){const el=Date.now()-recStartTime;const s=Math.floor(el/1000);$('recTimer').textContent=fmtDur(s);const pct=(el/(MAX_VOICE_SEC*1000))*100;const bar=$('recLimitBar');bar.style.width=Math.min(pct,100)+'%';bar.className='rec-limit-bar'+(pct>80?' crit':pct>55?' warn':'');if(el>=MAX_VOICE_SEC*1000)stopAndSendRecording();}
+function updateRecTimer(){
+  const el=Date.now()-recStartTime;const s=Math.floor(el/1000);
+  $('recTimer').textContent=fmtDur(s);
+  const pct=(el/(MAX_VOICE_SEC*1000))*100;
+  const bar=$('recLimitBar');bar.style.width=Math.min(pct,100)+'%';
+  bar.className='rec-limit-bar'+(pct>80?' crit':pct>55?' warn':'');
+  if(el>=MAX_VOICE_SEC*1000)stopAndSendRecording();
+}
 window.toggleRecording=async function(){
   if(isRecording){stopAndSendRecording();return;}
   try{
@@ -941,31 +957,41 @@ function buildVoiceBubble(m,isSent){
   return wrap;
 }
 
-// ── SEND TEXT/MEDIA ──
-async function sendMsg(){
-  const inp=$('messageInput');const text=inp.value.trim();
-  if(!text&&!pendingMedia)return;if(editId){commitEdit(text);return;}
+// ── SEND TEXT/MEDIA (с поддержкой нескольких фото) ──
+async function sendSingleMsg(text, media = null) {
   if(activePid===MY_ID){
     const msgId=uid(),ts=Date.now();
     const m={id:msgId,text,type:'sent',time:new Date(ts).toISOString(),reactions:{},edited:false,replyTo:replyTo||null,delivered:true,forwarded:false};
-    if(pendingMedia){m.media={type:pendingMedia.type,data:pendingMedia.dataURL};m.caption=text;}
-    await upsertMsg(MY_ID,m);await updateChat(MY_ID,{lastMsg:pendingMedia?'📷 Фото':text.slice(0,28),lastMsgTime:ts});appendOrReloadMsg(MY_ID,m);
-    inp.value='';inp.style.height='';cancelReply();clearMediaPreview();return;
+    if(media){m.media={type:media.type,data:media.dataURL};m.caption=text;}
+    await upsertMsg(MY_ID,m);await updateChat(MY_ID,{lastMsg:media?'📷 Фото':text.slice(0,28),lastMsgTime:ts});appendOrReloadMsg(MY_ID,m);
+    return;
   }
   if(!wsUp){toast('Нет связи с сервером','err');return;}
   let key;try{key=await ensureKey(activePid);}catch(e){return;}
   await drainPending(activePid,key);
   const msgId=uid(),ts=Date.now();
-  const env={type:pendingMedia?'media':'msg',id:msgId,text,ts,replyTo:replyTo||null,forwarded:false};
-  if(pendingMedia){env.media={type:pendingMedia.type,data:pendingMedia.dataURL};env.caption=text;}
+  const env={type:media?'media':'msg',id:msgId,text,ts,replyTo:replyTo||null,forwarded:false};
+  if(media){env.media={type:media.type,data:media.dataURL};env.caption=text;}
   try{
     const enc=await encData(ENC.encode(JSON.stringify(env)),key);
     wsSend({type:'send-msg',target:activePid,msgId,payload:Array.from(new Uint8Array(enc))});
     const m={id:msgId,text,type:'sent',time:new Date(ts).toISOString(),reactions:{},edited:false,replyTo:replyTo||null,delivered:false,forwarded:false};
-    if(pendingMedia){m.media=env.media;m.caption=text;}
-    await upsertMsg(activePid,m);await updateChat(activePid,{lastMsg:pendingMedia?'📷 Фото':text.slice(0,28),lastMsgTime:ts});appendOrReloadMsg(activePid,m);
-    inp.value='';inp.style.height='';cancelReply();clearMediaPreview();
+    if(media){m.media=env.media;m.caption=text;}
+    await upsertMsg(activePid,m);await updateChat(activePid,{lastMsg:media?'📷 Фото':text.slice(0,28),lastMsgTime:ts});appendOrReloadMsg(activePid,m);
   }catch(e){toast('Ошибка отправки','err');}
+}
+
+async function sendMsg(){
+  const inp=$('messageInput');const text=inp.value.trim();
+  if(pendingMediaList.length>0){
+    for(const media of pendingMediaList){await sendSingleMsg(text,media);}
+    pendingMediaList=[];clearMediaPreview();inp.value='';inp.style.height='';cancelReply();
+    return;
+  }
+  if(!text)return;
+  if(editId){commitEdit(text);return;}
+  await sendSingleMsg(text);
+  inp.value='';inp.style.height='';cancelReply();
 }
 $('sendBtn').addEventListener('click',()=>sendMsg().catch(console.warn));
 $('messageInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg().catch(console.warn);}});
@@ -1153,9 +1179,10 @@ window.deleteChat=async()=>{
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){ensureWS();if(activePid&&wsUp)wsSend({type:'query-presence',target:activePid});}});
 $('contactsSearch')?.addEventListener('input',renderContacts);
 
-// Запуск
+// Старт с главного экрана
 initFavoritesChat().then(()=>{
   initAvt();
+  goScreen('scr-home');
   renderChatList();
   renderContacts();
   ensureWS();
@@ -1163,4 +1190,4 @@ initFavoritesChat().then(()=>{
 })();
 </script>
 </body>
-  </html>
+      </html>
