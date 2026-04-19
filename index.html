@@ -650,12 +650,12 @@ const QUICK_EMOJIS=['❤️','👍','😂','🔥','👏','😮','😢','🤯'];
 const PAGE_SIZE=50;
 const MAX_VOICE_SEC=120;
 const WF_BARS=40;
-const PREV_WF_BARS=25; // уменьшенное количество баров для превью
+const PREV_WF_BARS=25;
 
 document.addEventListener('touchstart',e=>{if(e.touches.length>1)e.preventDefault();},{passive:false});
 let _lt=0;
 document.addEventListener('touchend',e=>{const n=Date.now();if(n-_lt<=300)e.preventDefault();_lt=n;},{passive:false});
-document.addEventListener('gesturestart',e=>e.preventDefault(),{passive:false});
+document.addEventListener('gesturestart',e=>e.preventDefault(),{passive:20});
 
 const ENC=new TextEncoder(),DEC=new TextDecoder();
 const $=id=>document.getElementById(id);
@@ -765,7 +765,7 @@ window.cancelKeyModal=function(){$('keyModalOverlay').classList.remove('open');i
 async function ensureKey(pid){let key=await getKey(pid);if(key)return key;return promptKey(pid);}
 
 // ── WEBSOCKET ──
-let ws=null,wsUp=false,wsRetry=0,pingInterval=null,lastHiddenTime=0;
+let ws=null,wsUp=false,wsRetry=0,pingInterval=null,lastHiddenTime=0,ignoreNextVisibilityReturn=false;
 const WS_DELAYS=[2000,3000,5000,8000,15000,30000];
 function ensureWS(){
   if(ws&&(ws.readyState===WebSocket.OPEN||ws.readyState===WebSocket.CONNECTING))return;
@@ -926,7 +926,7 @@ function compressImage(file,maxWidth=1024,maxHeight=1024,quality=0.7){
   return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=e=>{const img=new Image();img.onload=()=>{let w=img.width,h=img.height;if(w>maxWidth||h>maxHeight){const r=Math.min(maxWidth/w,maxHeight/h);w=Math.round(w*r);h=Math.round(h*r);}const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);resolve({dataURL:c.toDataURL('image/jpeg',quality),type:'image/jpeg',name:file.name});};img.onerror=reject;img.src=e.target.result;};reader.onerror=reject;reader.readAsDataURL(file);});
 }
 let pendingMediaList=[];
-window.triggerFileSelect=()=>$('fileInput').click();
+window.triggerFileSelect=()=>{ignoreNextVisibilityReturn=true;$('fileInput').click();};
 window.handleFileSelect=async e=>{const files=Array.from(e.target.files);if(!files.length)return;$('fileInput').value='';for(const file of files){try{toast(`Сжатие ${file.name}…`,'warn');const c=await compressImage(file);pendingMediaList.push(c);}catch(err){toast(`Ошибка: ${file.name}`,'err');}}if(pendingMediaList.length>0){showMediaPreview(pendingMediaList[0].dataURL,pendingMediaList.length);toast(`Готово ${pendingMediaList.length} фото`,'');}};
 function showMediaPreview(dataURL,count=1){$('mediaPreview').innerHTML=`<img class="media-preview-img" src="${dataURL}"><span class="media-preview-info">${count>1?`📷 ${count} фото`:'Фото'}</span>`;$('mediaPreviewContainer').style.display='flex';}
 window.clearMediaPreview=()=>{pendingMediaList=[];$('mediaPreviewContainer').style.display='none';$('mediaPreview').innerHTML='';};
@@ -1360,8 +1360,19 @@ window.deleteChat=async()=>{
 };
 
 document.addEventListener('visibilitychange',()=>{
-  if(document.visibilityState==='hidden'){lastHiddenTime=Date.now();}
-  else{ensureWS();const hd=Date.now()-lastHiddenTime;if(hd>3000){if(activePid)leaveChat();else goHome();}else if(activePid&&wsUp)wsSend({type:'query-presence',target:activePid});}
+  if(document.visibilityState==='hidden'){
+    lastHiddenTime=Date.now();
+  }else{
+    ensureWS();
+    const hiddenDuration=Date.now()-lastHiddenTime;
+    if(ignoreNextVisibilityReturn){
+      ignoreNextVisibilityReturn=false;
+    }else if(hiddenDuration>3000){
+      if(activePid){leaveChat();}else{goHome();}
+    }else if(activePid&&wsUp){
+      wsSend({type:'query-presence',target:activePid});
+    }
+  }
 });
 $('contactsSearch')?.addEventListener('input',renderContacts);
 
@@ -1369,4 +1380,4 @@ initFavoritesChat().then(()=>{initAvt();goScreen('scr-home');renderChatList();re
 })();
 </script>
 </body>
-  </html>
+    </html>
