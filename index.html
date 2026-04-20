@@ -136,18 +136,18 @@
     .messages-area{flex:1;overflow-y:auto;padding:10px 10px 6px;display:flex;flex-direction:column;gap:3px;position:relative}
     .messages-area::-webkit-scrollbar{width:3px}
     .messages-area::-webkit-scrollbar-thumb{background:rgba(0,255,136,.2);border-radius:2px}
-    .msg-row{display:flex;flex-direction:column;max-width:80%;animation:mpop .22s cubic-bezier(.2,.9,.4,1.1);position:relative}
-    @keyframes mpop{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+    .msg-row{display:flex;flex-direction:column;max-width:80%;animation:mpop .25s cubic-bezier(.2,.9,.4,1.1);position:relative}
+    @keyframes mpop{from{opacity:0;transform:translateY(12px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
     .msg-row.sent{align-self:flex-end;align-items:flex-end}
     .msg-row.recv{align-self:flex-start;align-items:flex-start}
     .msg-check{position:absolute;left:-30px;top:50%;transform:translateY(-50%);width:22px;height:22px;border-radius:50%;border:2px solid rgba(255,255,255,.3);background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;color:var(--g);font-size:13px;transition:all .15s}
     .msg-check.checked{background:var(--g);border-color:var(--g);color:#000}
     .selection-mode .msg-check{display:flex}
     .selection-mode .msg-row{padding-left:36px}
-    .bubble{position:relative;padding:7px 10px 7px 12px;border-radius:18px;font-size:14.5px;line-height:1.45;word-break:break-word;cursor:pointer;transition:opacity .15s;overflow:hidden}
+    .bubble{position:relative;padding:7px 10px 7px 12px;border-radius:18px;font-size:14.5px;line-height:1.45;word-break:break-word;cursor:pointer;transition:opacity .15s,transform .1s;overflow:hidden}
     .msg-row.sent .bubble{background:linear-gradient(135deg,rgba(0,185,100,.52),rgba(0,160,90,.38));border:1px solid rgba(0,255,136,.28);border-bottom-right-radius:4px;color:rgba(255,255,255,.96)}
     .msg-row.recv .bubble{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-bottom-left-radius:4px;color:rgba(255,255,255,.92)}
-    .bubble:active{opacity:.75}
+    .bubble:active{opacity:.75;transform:scale(.99)}
     .bubble.search-match{outline:2px solid rgba(0,255,136,.4)}
     .bubble.search-current{outline:2px solid var(--g);box-shadow:0 0 14px rgba(0,255,136,.3)}
     .msg-meta{float:right;display:flex;align-items:flex-end;gap:3px;margin-left:8px;margin-bottom:-1px;margin-top:2px;line-height:1}
@@ -165,9 +165,9 @@
     .msg-edited{font-size:10px;color:rgba(255,255,255,.4);font-style:italic;margin-left:2px}
     .forwarded-label{display:block;font-size:11px;color:var(--g);margin-bottom:4px}
     .reply-preview-inline{display:block;background:rgba(0,255,136,.1);border-left:3px solid var(--g);padding:5px 9px;margin-bottom:6px;border-radius:8px;font-size:12px;color:var(--g);cursor:pointer}
-    .reactions-strip{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
-    .reaction-chip{display:flex;align-items:center;gap:3px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:30px;padding:3px 8px;font-size:13px;cursor:pointer;transition:background .2s}
-    .reaction-chip:hover{background:rgba(0,255,136,.12);border-color:var(--border-hi)}
+    .reactions-strip{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}
+    .reaction-chip{display:flex;align-items:center;gap:3px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:30px;padding:4px 9px;font-size:13px;cursor:pointer;transition:all .2s cubic-bezier(.2,.9,.4,1.1);}
+    .reaction-chip:hover{background:rgba(0,255,136,.12);border-color:var(--border-hi);transform:scale(1.05);}
     .reaction-chip.mine{background:rgba(0,255,136,.12);border-color:rgba(0,255,136,.3)}
     .reaction-chip .rc-count{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted)}
     .media-content{margin:5px -2px 0 -2px;border-radius:12px;overflow:hidden;max-width:260px}
@@ -406,6 +406,13 @@
     .emoji-picker{position:fixed;z-index:700;background:#0d0d1f;border:1px solid var(--border);border-radius:40px;padding:8px 12px;display:flex;gap:6px;box-shadow:0 8px 32px rgba(0,0,0,.7)}
     .emoji-pick-btn{font-size:22px;cursor:pointer;border-radius:50%;width:38px;height:38px;display:flex;align-items:center;justify-content:center;transition:background .15s,transform .1s}
     .emoji-pick-btn:hover{background:rgba(255,255,255,.1);transform:scale(1.2)}
+    /* Расширенная панель эмодзи (7 колонок, прокрутка) */
+    .emoji-picker-extended{position:fixed;z-index:750;background:#0d0d1f;border:1px solid var(--border-hi);border-radius:20px;padding:12px;box-shadow:0 8px 32px rgba(0,0,0,.7);max-width:320px;}
+    .emoji-picker-header{display:flex;justify-content:flex-end;margin-bottom:8px;}
+    .emoji-picker-close{cursor:pointer;font-size:18px;padding:4px 8px;color:var(--muted);}
+    .emoji-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;max-height:240px;overflow-y:auto;padding-right:4px;}
+    .emoji-grid-btn{font-size:24px;cursor:pointer;border-radius:12px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;transition:background .15s,transform .1s;}
+    .emoji-grid-btn:hover{background:rgba(255,255,255,.1);transform:scale(1.15);}
     .popup-backdrop{position:fixed;inset:0;z-index:590}
     .edit-bar,.reply-bar{display:none;align-items:center;gap:10px;padding:8px 14px;background:rgba(0,255,136,.06);border-top:1px solid rgba(0,255,136,.15);flex-shrink:0}
     .edit-bar.visible,.reply-bar.visible{display:flex}
@@ -436,10 +443,52 @@
     .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
     .toast.err{border-color:var(--err);color:var(--err)}
     .toast.warn{border-color:var(--warn);color:var(--warn)}
-    .scroll-down-btn{position:absolute;bottom:14px;right:14px;width:44px;height:44px;border-radius:50%;background:rgba(18,22,32,.94);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.08);box-shadow:0 2px 14px rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;pointer-events:none;transform:scale(.72) translateY(8px);transition:opacity .18s,transform .22s cubic-bezier(.34,1.56,.64,1);z-index:30}
-    .scroll-down-btn.visible{opacity:1;pointer-events:all;transform:scale(1) translateY(0)}
-    .scroll-down-btn svg{width:20px;height:20px;fill:none;stroke:rgba(255,255,255,.75);stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
-    .scroll-badge{position:absolute;top:-5px;right:-5px;min-width:20px;height:20px;border-radius:10px;background:var(--g);color:#000;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;display:none;align-items:center;justify-content:center;padding:0 5px;border:2px solid #07070f}
+    /* НОВАЯ КНОПКА ПРОКРУТКИ ВНИЗ — ЗАКРЕПЛЕНА НАД ПОЛЕМ ВВОДА */
+    .scroll-down-btn{
+      position:absolute;
+      bottom:calc(70px + var(--safe-b));
+      right:16px;
+      width:48px;height:48px;
+      border-radius:50%;
+      background:rgba(18,22,32,.94);
+      backdrop-filter:blur(16px);
+      -webkit-backdrop-filter:blur(16px);
+      border:1px solid rgba(255,255,255,.08);
+      box-shadow:0 4px 16px rgba(0,0,0,.6);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      cursor:pointer;
+      opacity:0;
+      pointer-events:none;
+      transform:scale(.8);
+      transition:opacity .18s,transform .22s cubic-bezier(.34,1.56,.64,1);
+      z-index:25;
+    }
+    .scroll-down-btn.visible{
+      opacity:1;
+      pointer-events:all;
+      transform:scale(1);
+    }
+    .scroll-down-btn svg{
+      width:22px;height:22px;
+      fill:none;stroke:rgba(255,255,255,.75);
+      stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;
+    }
+    .scroll-badge{
+      position:absolute;
+      top:-6px;right:-6px;
+      min-width:22px;height:22px;
+      border-radius:12px;
+      background:var(--g);color:#000;
+      font-family:'JetBrains Mono',monospace;
+      font-size:11px;font-weight:700;
+      display:none;
+      align-items:center;
+      justify-content:center;
+      padding:0 6px;
+      border:2px solid #07070f;
+    }
     .scroll-down-btn.has-badge .scroll-badge{display:flex}
     .selection-bar{display:none;align-items:center;justify-content:space-between;padding:8px 16px;background:rgba(0,0,0,.8);backdrop-filter:blur(12px);border-top:1px solid var(--border);flex-shrink:0}
     .selection-bar.visible{display:flex}
@@ -517,11 +566,14 @@
       <div class="empty-chat-icon">💬</div>
       <div class="empty-chat-text">Нет сообщений<br><span style="font-size:11px;font-family:'JetBrains Mono',monospace;opacity:.6">Напишите первое сообщение</span></div>
     </div>
-    <div class="scroll-down-btn" id="scrollDownBtn" onclick="scrollToBottom()">
-      <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-      <span class="scroll-badge" id="scrollBadge"></span>
-    </div>
   </div>
+  
+  <!-- КНОПКА ПРОКРУТКИ ВНИЗ (вне области сообщений) -->
+  <div class="scroll-down-btn" id="scrollDownBtn" onclick="scrollToBottom()">
+    <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+    <span class="scroll-badge" id="scrollBadge"></span>
+  </div>
+
   <div class="edit-bar" id="editBar">
     <div class="edit-bar-text">
       <div class="edit-bar-label">✏️ Редактирование</div>
@@ -646,11 +698,18 @@
 
 const SIGNAL_URL='wss://signal-server-aipd.onrender.com';
 const A2_MEM=65536,A2_TIME=3,A2_PAR=1;
-const QUICK_EMOJIS=['❤️','👍','😂','🔥','👏','😮','😢','🤯'];
+const QUICK_EMOJIS=['❤️','👍','😂','🔥','👏','😮','😢','➕'];
+const EXTENDED_EMOJIS=[
+  '❤️‍🔥','😁','👎','🥴','👌','😭','😱','💋','🤝','🥰','🤔','🤯','😡','🎉','🤩','🤮',
+  '💩','🙏','🕊️','🤡','🥱','😍','🐳','🌚','🌭','💯','⚡','🍌','🏆','💔','😑','🍓',
+  '🍾','🖕','😈','😴','🤓','👻','👨‍💻','👀','🎃','🙈','😇','✍️','🤗','🫡','💅','🤪',
+  '🗿','🆒','💘','🦄','😘','💊','😎','👾','🤨','🙉','🥺','☠️','💦','🫂','💪','🤧'
+];
 const PAGE_SIZE=50;
 const MAX_VOICE_SEC=120;
 const WF_BARS=40;
 const PREV_WF_BARS=25;
+const MAX_REACTIONS_PER_MSG=3;
 
 document.addEventListener('touchstart',e=>{if(e.touches.length>1)e.preventDefault();},{passive:false});
 let _lt=0;
@@ -1189,7 +1248,14 @@ function handleTyping(isTyping){clearTimeout(_typTmr);if(isTyping){setPeerStatus
 
 async function toggleReaction(msgId,emoji){
   const msgs=await loadMsgs(activePid);const m=msgs.find(m=>m.id===msgId);if(!m)return;
-  if(!m.reactions)m.reactions={};if(!m.reactions[emoji])m.reactions[emoji]=[];
+  if(!m.reactions)m.reactions={};
+  // Проверка лимита 3 реакции на сообщение
+  const currentReactionsCount=Object.keys(m.reactions).filter(k=>m.reactions[k].includes(MY_ID)).length;
+  if(currentReactionsCount>=MAX_REACTIONS_PER_MSG && !m.reactions[emoji]?.includes(MY_ID)){
+    toast(`Нельзя поставить больше ${MAX_REACTIONS_PER_MSG} реакций`,'warn');
+    return;
+  }
+  if(!m.reactions[emoji])m.reactions[emoji]=[];
   const idx=m.reactions[emoji].indexOf(MY_ID);if(idx===-1)m.reactions[emoji].push(MY_ID);else m.reactions[emoji].splice(idx,1);
   if(!m.reactions[emoji].length)delete m.reactions[emoji];await saveMsgs(activePid,msgs);
   const row=document.querySelector(`.msg-row[data-msgid="${msgId}"]`);
@@ -1296,14 +1362,15 @@ async function deleteSelectedMessages(){
 window.deleteSelectedMessages=deleteSelectedMessages;window.exitSelectionMode=exitSelectionMode;
 
 async function loadChatHistory(pid,reset=false){
-  const area=$('messagesArea');const scrollBtn=$('scrollDownBtn');
-  if(reset){area.innerHTML='';area.appendChild(scrollBtn);renderedCount=0;}
+  const area=$('messagesArea');
+  if(reset){area.innerHTML='';renderedCount=0;}
   const msgs=await loadMsgs(pid);const total=msgs.length;
   const start=Math.max(0,total-(renderedCount+PAGE_SIZE));const slice=msgs.slice(start,total-renderedCount);
-  if(!slice.length&&reset&&!total){const empty=document.createElement('div');empty.className='empty-chat';empty.innerHTML=`<div class="empty-chat-icon">💬</div><div class="empty-chat-text">Нет сообщений<br><span style="font-size:11px;font-family:'JetBrains Mono',monospace;opacity:.6">Напишите первое сообщение</span></div>`;area.insertBefore(empty,scrollBtn);}
+  if(!slice.length&&reset&&!total){const empty=document.createElement('div');empty.className='empty-chat';empty.innerHTML=`<div class="empty-chat-icon">💬</div><div class="empty-chat-text">Нет сообщений<br><span style="font-size:11px;font-family:'JetBrains Mono',monospace;opacity:.6">Напишите первое сообщение</span></div>`;area.insertBefore(empty,area.firstChild);}
   for(let i=slice.length-1;i>=0;i--)area.insertBefore(buildRow(slice[i]),area.firstChild);
   renderedCount+=slice.length;
-  if(reset){area.scrollTop=area.scrollHeight;updateScrollBtn();}
+  if(reset){area.scrollTop=area.scrollHeight;}
+  updateScrollBtn();
   syncDeliveredStatuses();
 }
 function appendOrReloadMsg(pid,m){
@@ -1315,16 +1382,118 @@ function appendOrReloadMsg(pid,m){
   else{const badge=$('scrollBadge');if(badge){badge.textContent=(parseInt(badge.textContent)||0)+1;$('scrollDownBtn').classList.add('has-badge');}}
   updateScrollBtn();
 }
-function updateScrollBtn(){const area=$('messagesArea');const btn=$('scrollDownBtn');if(!area||!btn)return;const near=area.scrollHeight-area.scrollTop-area.clientHeight<100;btn.classList.toggle('visible',!near&&area.scrollHeight>area.clientHeight+20);if(near){const badge=$('scrollBadge');if(badge)badge.textContent='';btn.classList.remove('has-badge');}}
-window.scrollToBottom=()=>{const area=$('messagesArea');area.scrollTo({top:area.scrollHeight,behavior:'smooth'});const badge=$('scrollBadge');if(badge)badge.textContent='';$('scrollDownBtn').classList.remove('has-badge');};
-$('messagesArea').addEventListener('scroll',async()=>{updateScrollBtn();const area=$('messagesArea');if(area.scrollTop===0&&renderedCount<(await loadMsgs(activePid)).length){const oh=area.scrollHeight;await loadChatHistory(activePid,false);area.scrollTop=area.scrollHeight-oh;}});
+// ═══════════════════════════════════════════════════════
+// ОБНОВЛЁННАЯ ЛОГИКА КНОПКИ ПРОКРУТКИ
+// ═══════════════════════════════════════════════════════
+function updateScrollBtn(){
+  const area=$('messagesArea');
+  const btn=$('scrollDownBtn');
+  if(!area||!btn)return;
+  const distanceFromBottom=area.scrollHeight-area.scrollTop-area.clientHeight;
+  const shouldShow=distanceFromBottom>100;
+  btn.classList.toggle('visible',shouldShow);
+  if(!shouldShow){
+    const badge=$('scrollBadge');
+    if(badge)badge.textContent='';
+    btn.classList.remove('has-badge');
+  }
+}
+window.scrollToBottom=()=>{
+  const area=$('messagesArea');
+  area.scrollTo({top:area.scrollHeight,behavior:'smooth'});
+  const badge=$('scrollBadge');
+  if(badge)badge.textContent='';
+  $('scrollDownBtn').classList.remove('has-badge');
+};
+$('messagesArea').addEventListener('scroll',async()=>{
+  updateScrollBtn();
+  const area=$('messagesArea');
+  if(area.scrollTop===0&&renderedCount<(await loadMsgs(activePid)).length){
+    const oh=area.scrollHeight;
+    await loadChatHistory(activePid,false);
+    area.scrollTop=area.scrollHeight-oh;
+  }
+});
 new ResizeObserver(()=>updateScrollBtn()).observe($('messagesArea'));
 
 let _ctx=null,_emo=null,_back=null;
 function rmBack(){if(_back){_back.remove();_back=null;}}function closeCtx(){if(_ctx){_ctx.remove();_ctx=null;}}function closeEmo(){if(_emo){_emo.remove();_emo=null;}}
 function closeAll(){closeCtx();closeEmo();rmBack();}
 function mkBack(){rmBack();_back=document.createElement('div');_back.className='popup-backdrop';_back.addEventListener('click',e=>{e.stopPropagation();closeAll();});document.body.appendChild(_back);}
-function showEmo(msgId,anchor){closeEmo();if(!_back)mkBack();const p=document.createElement('div');p.className='emoji-picker';QUICK_EMOJIS.forEach(em=>{const b=document.createElement('div');b.className='emoji-pick-btn';b.textContent=em;b.addEventListener('click',e=>{e.stopPropagation();toggleReaction(msgId,em);closeAll();});p.appendChild(b);});document.body.appendChild(p);_emo=p;requestAnimationFrame(()=>{const pw=p.offsetWidth||220,ph=p.offsetHeight||54;const r=anchor.getBoundingClientRect(),vw=window.innerWidth,vh=window.innerHeight;let l=r.left+r.width/2-pw/2,t=r.top-ph-10;if(t<8)t=r.bottom+10;l=Math.max(8,Math.min(l,vw-pw-8));p.style.left=l+'px';p.style.top=t+'px';});}
+function showEmo(msgId,anchor){
+  closeEmo();
+  if(!_back)mkBack();
+  const p=document.createElement('div');
+  p.className='emoji-picker';
+  QUICK_EMOJIS.forEach(em=>{
+    const b=document.createElement('div');
+    b.className='emoji-pick-btn';
+    b.textContent=em;
+    b.addEventListener('click',e=>{
+      e.stopPropagation();
+      if(em==='➕'){
+        closeAll();
+        showExtendedEmojiPicker(msgId,anchor);
+      }else{
+        toggleReaction(msgId,em);
+        closeAll();
+      }
+    });
+    p.appendChild(b);
+  });
+  document.body.appendChild(p);
+  _emo=p;
+  requestAnimationFrame(()=>{
+    const pw=p.offsetWidth||220,ph=p.offsetHeight||54;
+    const r=anchor.getBoundingClientRect(),vw=window.innerWidth,vh=window.innerHeight;
+    let l=r.left+r.width/2-pw/2,t=r.top-ph-10;
+    if(t<8)t=r.bottom+10;
+    l=Math.max(8,Math.min(l,vw-pw-8));
+    p.style.left=l+'px';p.style.top=t+'px';
+  });
+}
+// Расширенный picker с 56 эмодзи (сетка 7x8, прокрутка)
+function showExtendedEmojiPicker(msgId,anchor){
+  closeEmo();
+  if(!_back)mkBack();
+  const panel=document.createElement('div');
+  panel.className='emoji-picker-extended';
+  // шапка с крестиком
+  const header=document.createElement('div');
+  header.className='emoji-picker-header';
+  const closeBtn=document.createElement('span');
+  closeBtn.className='emoji-picker-close';
+  closeBtn.innerHTML='✕';
+  closeBtn.addEventListener('click',e=>{e.stopPropagation();closeAll();});
+  header.appendChild(closeBtn);
+  panel.appendChild(header);
+  // сетка
+  const grid=document.createElement('div');
+  grid.className='emoji-grid';
+  const emojisToShow=EXTENDED_EMOJIS.slice(0,56);
+  emojisToShow.forEach(em=>{
+    const btn=document.createElement('div');
+    btn.className='emoji-grid-btn';
+    btn.textContent=em;
+    btn.addEventListener('click',e=>{
+      e.stopPropagation();
+      toggleReaction(msgId,em);
+      closeAll();
+    });
+    grid.appendChild(btn);
+  });
+  panel.appendChild(grid);
+  document.body.appendChild(panel);
+  _emo=panel;
+  requestAnimationFrame(()=>{
+    const pw=panel.offsetWidth||320,ph=panel.offsetHeight||400;
+    const r=anchor.getBoundingClientRect(),vw=window.innerWidth,vh=window.innerHeight;
+    let l=r.left+r.width/2-pw/2,t=r.top-ph-10;
+    if(t<8)t=r.bottom+10;
+    l=Math.max(8,Math.min(l,vw-pw-8));
+    panel.style.left=l+'px';panel.style.top=t+'px';
+  });
+}
 function showCtx(m,anchor,tx,ty){
   closeAll();mkBack();const menu=document.createElement('div');menu.className='ctx-menu';
   const add=(ic,lb,fn,danger=false)=>{const el=document.createElement('div');el.className='ctx-item'+(danger?' danger':'');el.innerHTML=`<span>${ic}</span><span>${lb}</span>`;el.addEventListener('click',e=>{e.stopPropagation();fn();});menu.appendChild(el);};
