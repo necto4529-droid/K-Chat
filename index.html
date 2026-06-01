@@ -712,10 +712,110 @@ const lsGet=(k,fb)=>{try{return JSON.parse(localStorage.getItem(k)||'null')??fb;
 const lsSet=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
 const DB_NAME='KChatMessages',STORE_NAME='messages';
 let db=null;
-function openMessagesDB(){return new Promise((resolve,reject)=>{if(db){resolve(db);return;}const req=indexedDB.open(DB_NAME,1);req.onerror=()=>reject(req.error);req.onsuccess=()=>{db=req.result;resolve(db);};req.onupgradeneeded=ev=>{const d=ev.target.result;if(!d.objectStoreNames.contains(STORE_NAME))d.createObjectStore(STORE_NAME,{keyPath:'peerId'});};});}
-async function loadMsgs(peerId){try{const d=await openMessagesDB();return new Promise((res,rej)=>{const req=d.transaction(STORE_NAME,'readonly').objectStore(STORE_NAME).get(peerId);req.onerror=()=>rej(req.error);req.onsuccess=()=>res(req.result?req.result.messages:[]);});}catch(e){return lsGet(`bc_msgs_${peerId}`,[]);}}
-async function saveMsgs(peerId,messages){try{const d=await openMessagesDB();return new Promise((res,rej)=>{const tx=d.transaction(STORE_NAME,'readwrite');tx.objectStore(STORE_NAME).put({peerId,messages});tx.oncomplete=()=>res();tx.onerror=()=>rej();});}catch(e){lsSet(`bc_msgs_${peerId}`,messages);}}
-async function clearMsgs(peerId){try{const d=await openMessagesDB();return new Promise((res,rej)=>{const tx=d.transaction(STORE_NAME,'readwrite');tx.objectStore(STORE_NAME).delete(peerId);tx.oncomplete=()=>res();tx.onerror=()=>rej();});}catch(e){localStorage.removeItem(`bc_msgs_${peerId}`);}}
+let _dbOpenPromise=null;
+
+// ═══════════════════════════════════════════════════════════
+// НАДЁЖНЫЙ IDB — три проблемы исправлены:
+// 1. Кэшированный db может быть закрыт (мобильный браузер,
+//    другая вкладка, backgrounding) — проверяем и переоткрываем
+// 2. onversionchange / onclose — явно сбрасываем кэш
+// 3. saveMsgs + loadMsgs — двойное хранилище IDB + ls-backup
+// ═══════════════════════════════════════════════════════════
+function openMessagesDB(){
+  // Проверяем живость кэшированного соединения
+  if(db){
+    try{
+      // Если db закрыт — эта операция бросит исключение
+      db.transaction(STORE_NAME,'readonly').abort();
+      return Promise.resolve(db);
+    }catch(e){
+      db=null; _dbOpenPromise=null;
+    }
+  }
+  if(_dbOpenPromise) return _dbOpenPromise;
+  _dbOpenPromise=new Promise((resolve,reject)=>{
+    const req=indexedDB.open(DB_NAME,1);
+    req.onerror=()=>{_dbOpenPromise=null;reject(req.error);};
+    req.onsuccess=()=>{
+      db=req.result;
+      _dbOpenPromise=null;
+      // Другая вкладка запросила upgrade — уступаем
+      db.onversionchange=()=>{db.close();db=null;_dbOpenPromise=null;};
+      // Браузер принудительно закрыл (Chrome on Android при backgrounding)
+      db.onclose=()=>{db=null;_dbOpenPromise=null;};
+      resolve(db);
+    };
+    req.onupgradeneeded=ev=>{
+      const d=ev.target.result;
+      if(!d.objectStoreNames.contains(STORE_NAME))
+        d.createObjectStore(STORE_NAME,{keyPath:'peerId'});
+    };
+  });
+  return _dbOpenPromise;
+}
+
+async function _idbGet(peerId){
+  const d=await openMessagesDB();
+  return new Promise((res,rej)=>{
+    const tx=d.transaction(STORE_NAME,'readonly');
+    const req=tx.objectStore(STORE_NAME).get(peerId);
+    req.onsuccess=()=>res(req.result?req.result.messages:[]);
+    req.onerror=()=>rej(req.error);
+    tx.onerror=()=>rej(tx.error);
+  });
+}
+
+async function _idbPut(peerId,messages){
+  const d=await openMessagesDB();
+  return new Promise((res,rej)=>{
+    const tx=d.transaction(STORE_NAME,'readwrite');
+    tx.objectStore(STORE_NAME).put({peerId,messages});
+    tx.oncomplete=()=>res();
+    tx.onerror=()=>rej(tx.error);
+    tx.onabort=()=>rej(new Error('aborted'));
+  });
+}
+
+async function _idbDelete(peerId){
+  const d=await openMessagesDB();
+  return new Promise((res,rej)=>{
+    const tx=d.transaction(STORE_NAME,'readwrite');
+    tx.objectStore(STORE_NAME).delete(peerId);
+    tx.oncomplete=()=>res();
+    tx.onerror=()=>rej(tx.error);
+  });
+}
+
+async function loadMsgs(peerId){
+  // Попытка 1: IDB
+  try{ return await _idbGet(peerId); }catch(e){ db=null;_dbOpenPromise=null; }
+  // Небольшая пауза и retry (помогает при временных ошибках транзакций)
+  await new Promise(r=>setTimeout(r,100));
+  try{ return await _idbGet(peerId); }catch(e){ db=null;_dbOpenPromise=null; }
+  // Fallback: localStorage (там хранится срез последних 200 сообщений как backup)
+  const ls=lsGet(`bc_msgs_${peerId}`,null);
+  return ls&&ls.length?ls:[];
+}
+
+async function saveMsgs(peerId,messages){
+  // Всегда сохраняем backup в ls (последние 200 сообщений)
+  // Это дешево и спасает при падении IDB
+  try{lsSet(`bc_msgs_${peerId}`,messages.slice(-200));}catch(e){}
+  // Основное хранилище — IDB
+  for(let i=0;i<2;i++){
+    try{ await _idbPut(peerId,messages); return; }catch(e){ db=null;_dbOpenPromise=null; }
+    if(i===0) await new Promise(r=>setTimeout(r,100));
+  }
+  // IDB недоступен — ls уже записали выше
+}
+
+async function clearMsgs(peerId){
+  localStorage.removeItem(`bc_msgs_${peerId}`);
+  for(let i=0;i<2;i++){
+    try{ await _idbDelete(peerId); return; }catch(e){ db=null;_dbOpenPromise=null; }
+    if(i===0) await new Promise(r=>setTimeout(r,100));
+  }
+}
 const loadContacts=()=>lsGet('bc_contacts',[]);
 const saveContacts=a=>lsSet('bc_contacts',a);
 let _chatsCache=null;
@@ -2446,4 +2546,4 @@ async function migrateLocalStorageMessages(){
 })();
 </script>
 </body>
-      </html>
+        </html>
