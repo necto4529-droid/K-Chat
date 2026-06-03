@@ -483,24 +483,12 @@
     .audio-msg-meta .msg-meta{float:none;margin:0}
 
 
-    /* ── ЗАЩИТА ОТ СКРИНШОТОВ ──
-       FLAG_SECURE через Median.co JS Bridge (нативный Android).
-       Blur при уходе в фон — работает в любом браузере. */
-    body.app-blurred .screen{
-      filter:blur(22px) brightness(.7);
-      transition:filter .15s ease;
-    }
-    body:not(.app-blurred) .screen{
-      filter:none;
-      transition:filter .4s ease;
-    }
+
   </style>
 </head>
 <body>
 <div class="bg-orb bg-orb-1"></div>
 <div class="bg-orb bg-orb-2"></div>
-<!-- Screenshot protection via Median.co native FLAG_SECURE -->
-
 <!-- HOME -->
 <div class="screen active" id="scr-home">
   <div class="home-header">
@@ -863,6 +851,14 @@ let _chatsCache=null;
 async function loadChats(){if(_chatsCache!==null)return _chatsCache;_chatsCache=lsGet('bc_chats',[]);return _chatsCache;}
 async function saveChats(chats){_chatsCache=chats;lsSet('bc_chats',chats);}
 async function initFavoritesChat(){let chats=await loadChats();if(!chats.find(c=>c.peerId===MY_ID)){chats.push({peerId:MY_ID,peerName:'⭐ Избранное',avatar:'⭐',lastMsg:null,lastMsgTime:null,unread:0});await saveChats(chats);}}
+async function warmAllChatKeys() {
+  const chats = await loadChats();
+  for (const chat of chats) {
+    if (chat.peerId === MY_ID) continue; // Избранное не нужно
+    // Попытаться загрузить ключ – это заполнит keyCache, если ключ сохранён
+    await getKey(chat.peerId).catch(() => {});
+  }
+}
 const chatLocks=new Map();
 async function withChatLock(pid,fn){while(chatLocks.get(pid))await chatLocks.get(pid);let resolveLock;const lockPromise=new Promise(res=>{resolveLock=res;});chatLocks.set(pid,lockPromise);try{return await fn();}finally{chatLocks.delete(pid);resolveLock();}}
 async function upsertMsg(pid,m){return withChatLock(pid,async()=>{let a=await loadMsgs(pid);const i=a.findIndex(x=>x.id===m.id);if(i!==-1)a[i]={...a[i],...m};else{a.push(m);if(a.length>500)a=a.slice(-500);}await saveMsgs(pid,a);});}
@@ -1402,17 +1398,6 @@ function openSettingsModal(){
               <div class="toggle-thumb"></div>
             </label>
           </div>
-          <div class="settings-toggle-row" style="margin-top:8px">
-            <div class="settings-toggle-info">
-              <div class="settings-toggle-label">📵 Запретить скриншоты</div>
-              <div class="settings-toggle-desc">Блокирует создание скриншотов. Экран станет чёрным при попытке снимка (Android Chrome). Контент скрывается при переключении приложений</div>
-            </div>
-            <label class="toggle-switch">
-              <input type="checkbox" id="screenshotToggle">
-              <div class="toggle-track"></div>
-              <div class="toggle-thumb"></div>
-            </label>
-          </div>
         </div>
 
         <!-- ОПАСНАЯ ЗОНА -->
@@ -1499,22 +1484,6 @@ function openSettingsModal(){
       lsSet('bc_last_seen_enabled', this.checked);
       if(!this.checked){
         broadcastLastSeenOff().catch(()=>{});
-      }
-    };
-  }
-
-  // Screenshot protection toggle
-  const ssT = document.getElementById('screenshotToggle');
-  if(ssT){
-    ssT.checked = lsGet('bc_screenshot_protect', false);
-    ssT.onchange = function(){
-      if(this.checked){
-        enableScreenshotProtection().catch(e=>{
-          this.checked = false;
-          toast('Не удалось включить защиту','err');
-        });
-      } else {
-        disableScreenshotProtection();
       }
     };
   }
@@ -1981,156 +1950,7 @@ function buildRow(m){
 }
 
 
-// ══════════════════════════════════════════════════════
-// ── ЗАЩИТА ОТ СКРИНШОТОВ ──
-//
-// МНОГОУРОВНЕВАЯ ЗАЩИТА:
-//
-// Уровень 1 — Median.co (Gonative) JS Bridge:
-//   gonative.android.setSecureFlag({enable:true})
-//   Вызывает нативный Android FLAG_SECURE — скриншот
-//   даёт чёрный экран. Работает в APK собранном через Median.co.
-//
-// Уровень 2 — Android WebView window.secureFlag (некоторые WebView):
-//   window.Android?.setSecureFlag(true)
-//
-// Уровень 3 — Blur при уходе в фон:
-//   Работает везде, защищает превью в switcher приложений.
-//
-// ══════════════════════════════════════════════════════
-let _screenshotProtectActive = false;
 
-// ── Определяем среду выполнения ──
-function _detectEnvironment(){
-  const ua = navigator.userAgent || '';
-  const isAndroidWebView = /Android/.test(ua) && /wv/.test(ua);
-  const isMedianApp = typeof window.gonative !== 'undefined'
-    || typeof window.GoNativeAndroid !== 'undefined'
-    || typeof window.median !== 'undefined';
-  const hasAndroidBridge = typeof window.Android !== 'undefined';
-  return { isAndroidWebView, isMedianApp, hasAndroidBridge };
-}
-
-// ── Вызов нативного FLAG_SECURE через все известные интерфейсы ──
-function _setNativeSecureFlag(enable){
-  let handled = false;
-
-  // 1. Median.co / GoNative — официальный API
-  // Документация: https://median.co/docs/javascript-bridge
-  try{
-    if(typeof window.gonative !== 'undefined'){
-      // Новый API Median (2023+)
-      if(typeof window.gonative.android?.setSecureFlag === 'function'){
-        window.gonative.android.setSecureFlag({enable});
-        handled = true;
-        console.log('[Screenshot] gonative.android.setSecureFlag:', enable);
-      }
-      // Альтернативный путь через gonative.nativebridge
-      else if(typeof window.gonative.nativebridge?.postMessage === 'function'){
-        window.gonative.nativebridge.postMessage(JSON.stringify({
-          callbackFunction: null,
-          methodName: 'setSecureFlag',
-          params: {enable}
-        }));
-        handled = true;
-      }
-    }
-  }catch(e){ console.warn('[Screenshot] gonative error:', e); }
-
-  // 2. GoNative старый API (до ребрендинга в Median)
-  try{
-    if(!handled && typeof window.GoNativeAndroid !== 'undefined'){
-      if(typeof window.GoNativeAndroid.setSecureFlag === 'function'){
-        window.GoNativeAndroid.setSecureFlag(enable);
-        handled = true;
-        console.log('[Screenshot] GoNativeAndroid.setSecureFlag:', enable);
-      }
-    }
-  }catch(e){ console.warn('[Screenshot] GoNativeAndroid error:', e); }
-
-  // 3. Кастомный Android bridge (window.Android)
-  try{
-    if(!handled && typeof window.Android !== 'undefined'){
-      if(typeof window.Android.setSecureFlag === 'function'){
-        window.Android.setSecureFlag(enable);
-        handled = true;
-        console.log('[Screenshot] Android.setSecureFlag:', enable);
-      }
-    }
-  }catch(e){ console.warn('[Screenshot] Android bridge error:', e); }
-
-  // 4. Median postMessage bridge (iframe/webview messaging)
-  try{
-    if(!handled){
-      // Пробуем через postMessage — некоторые версии Median слушают его
-      window.postMessage(JSON.stringify({
-        type: 'median',
-        method: 'android.setSecureFlag',
-        params: {enable}
-      }), '*');
-      // Также пробуем через медиан-специфичный формат
-      if(typeof window.median?.android?.setSecureFlag === 'function'){
-        window.median.android.setSecureFlag({enable});
-        handled = true;
-      }
-    }
-  }catch(e){}
-
-  return handled;
-}
-
-function enableScreenshotProtection(){
-  if(_screenshotProtectActive) return;
-
-  const env = _detectEnvironment();
-  const nativeHandled = _setNativeSecureFlag(true);
-
-  _screenshotProtectActive = true;
-  lsSet('bc_screenshot_protect', true);
-
-  // Всегда добавляем blur при уходе в фон (работает везде)
-  document.addEventListener('visibilitychange', _onVisibilityForScreenshot);
-  window.addEventListener('blur', _onBlurForScreenshot);
-
-  if(nativeHandled || env.isMedianApp || env.isAndroidWebView){
-    toast('🔒 Защита от скриншотов включена');
-  } else {
-    // Браузер — нативная блокировка недоступна, но blur работает
-    toast('🔒 Защита включена (превью скрыто)','warn');
-  }
-}
-
-function disableScreenshotProtection(){
-  if(!_screenshotProtectActive) return;
-
-  _setNativeSecureFlag(false);
-
-  _screenshotProtectActive = false;
-  lsSet('bc_screenshot_protect', false);
-  document.body.classList.remove('app-blurred');
-  document.removeEventListener('visibilitychange', _onVisibilityForScreenshot);
-  window.removeEventListener('blur', _onBlurForScreenshot);
-  toast('Защита от скриншотов выключена');
-}
-
-function _onVisibilityForScreenshot(){
-  if(document.hidden){
-    document.body.classList.add('app-blurred');
-  } else {
-    setTimeout(()=>document.body.classList.remove('app-blurred'), 500);
-  }
-}
-
-function _onBlurForScreenshot(){
-  if(_screenshotProtectActive) document.body.classList.add('app-blurred');
-}
-
-function initScreenshotProtection(){
-  if(lsGet('bc_screenshot_protect', false)){
-    // Небольшая задержка чтобы Median JS Bridge успел инициализироваться
-    setTimeout(()=>enableScreenshotProtection(), 500);
-  }
-}
 // ══════════════════════════════════════════════════════
 // ── LIGHTBOX + PINCH-TO-ZOOM + PAN ──
 // ══════════════════════════════════════════════════════
@@ -2431,7 +2251,7 @@ async function broadcastLastSeenOff(){
     if(!key) continue;
     try{
       const enc = await encData(ENC.encode(JSON.stringify({type:'last-seen-off',v:1})), key);
-      wsSend({type:'send-msg', target:chat.peerId, msgId:uid(), payload:payloadToB64(enc), ephemeral:true});
+      wsSend({type:'send-msg', target:chat.peerId, msgId:uid(), payload:payloadToB64(enc)});
     }catch(e){}
   }
 }
@@ -2447,7 +2267,7 @@ async function broadcastLastSeen(){
     if(!key) continue; // Нет ключа — не можем зашифровать
     try{
       const enc = await encData(ENC.encode(JSON.stringify({type:'last-seen',ts,v:1})), key);
-      wsSend({type:'send-msg', target:chat.peerId, msgId:uid(), payload:payloadToB64(enc), ephemeral:true});
+      wsSend({type:'send-msg', target:chat.peerId, msgId:uid(), payload:payloadToB64(enc)});
     }catch(e){}
   }
 }
@@ -2894,9 +2714,9 @@ function buildVoiceBubble(m,isSent){
 
 // ── INIT ──
 loadSavedTheme();
-initScreenshotProtection();
 initFavoritesChat().then(async()=>{
   await migrateLocalStorageMessages();
+  await warmAllChatKeys();            // ← ДОБАВЬТЕ ЭТУ СТРОКУ
   initAvt();goScreen('scr-home');renderChatList();renderContacts();ensureWS();
 });
 
@@ -2927,4 +2747,4 @@ async function migrateLocalStorageMessages(){
 })();
 </script>
 </body>
-      </html>
+</html>
