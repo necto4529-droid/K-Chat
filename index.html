@@ -703,7 +703,7 @@ const A2_MEM=65536,A2_TIME=3,A2_PAR=1;
 const QUICK_EMOJIS=['❤️','👍','😂','🔥','👏','😮','😢','➕'];
 const EXTENDED_EMOJIS=['❤️‍🔥','😁','👎','🥴','👌','😭','😱','💋','🤝','🥰','🤔','🤯','😡','🎉','🤩','🤮','💩','🙏','🕊️','🤡','🥱','😍','🐳','🌚','🌭','💯','⚡','🍌','🏆','💔','😑','🍓','🍾','🖕','😈','😴','🤓','👻','👨‍💻','👀','🎃','🙈','😇','✍️','🤗','🫡','💅','🤪','🗿','🆒','💘','🦄','😘','💊','😎','👾','🤨','🙉','🥺','☠️','💦','🫂','💪','🤧'];
 const WF_BARS=40,PREV_WF_BARS=25,MAX_VOICE_SEC=120,MAX_REACTIONS_PER_MSG=3;
-const MAX_FILE_SIZE=500*1024*1024,CHUNK_SIZE=768*1024,STORE_BATCH=10;
+const MAX_FILE_SIZE=500*1024*1024,CHUNK_SIZE=256*1024,STORE_BATCH=3;
 
 const ENC=new TextEncoder(),DEC=new TextDecoder();
 const $=id=>document.getElementById(id);
@@ -763,7 +763,7 @@ function openMessagesDB(){
   }
   if(_dbOpenPromise) return _dbOpenPromise;
   _dbOpenPromise=new Promise((resolve,reject)=>{
-    const req=indexedDB.open(DB_NAME,1);
+    const req=indexedDB.open(DB_NAME,2);
     req.onerror=()=>{_dbOpenPromise=null;reject(req.error);};
     req.onsuccess=()=>{
       db=req.result;
@@ -778,6 +778,8 @@ function openMessagesDB(){
       const d=ev.target.result;
       if(!d.objectStoreNames.contains(STORE_NAME))
         d.createObjectStore(STORE_NAME,{keyPath:'peerId'});
+      if(!d.objectStoreNames.contains('blobs'))
+        d.createObjectStore('blobs');
     };
   });
   return _dbOpenPromise;
@@ -845,18 +847,75 @@ async function clearMsgs(peerId){
     if(i===0) await new Promise(r=>setTimeout(r,100));
   }
 }
+
+// ══════════════════════════════════════════════════════
+// ── BLOB STORAGE (медиа/файлы/голосовые в IDB 'blobs') ──
+// ══════════════════════════════════════════════════════
+function _blobStore(mode){
+  return openMessagesDB().then(d=>d.transaction('blobs',mode).objectStore('blobs'));
+}
+
+async function saveBlob(blobId,buffer){
+  for(let i=0;i<2;i++){
+    try{
+      const d=await openMessagesDB();
+      await new Promise((res,rej)=>{
+        const tx=d.transaction('blobs','readwrite');
+        tx.objectStore('blobs').put(buffer,blobId);
+        tx.oncomplete=()=>res();
+        tx.onerror=()=>rej(tx.error);
+      });
+      return;
+    }catch(e){db=null;_dbOpenPromise=null;if(i===0)await new Promise(r=>setTimeout(r,80));}
+  }
+  console.warn('[blobs] saveBlob failed for',blobId);
+}
+
+async function loadBlob(blobId){
+  for(let i=0;i<2;i++){
+    try{
+      const d=await openMessagesDB();
+      const buf=await new Promise((res,rej)=>{
+        const tx=d.transaction('blobs','readonly');
+        const req=tx.objectStore('blobs').get(blobId);
+        req.onsuccess=()=>res(req.result);
+        req.onerror=()=>rej(req.error);
+      });
+      return buf||null;
+    }catch(e){db=null;_dbOpenPromise=null;if(i===0)await new Promise(r=>setTimeout(r,80));}
+  }
+  return null;
+}
+
+async function deleteBlob(blobId){
+  try{
+    const d=await openMessagesDB();
+    await new Promise((res,rej)=>{
+      const tx=d.transaction('blobs','readwrite');
+      tx.objectStore('blobs').delete(blobId);
+      tx.oncomplete=()=>res();
+      tx.onerror=()=>rej(tx.error);
+    });
+  }catch(e){console.warn('[blobs] deleteBlob failed',blobId,e);}
+}
+
+async function _blobToObjectURL(blobId,mimeType){
+  const buf=await loadBlob(blobId);
+  if(!buf)return null;
+  const blob=new Blob([buf],{type:mimeType||'application/octet-stream'});
+  return URL.createObjectURL(blob);
+}
 const loadContacts=()=>lsGet('bc_contacts',[]);
 const saveContacts=a=>lsSet('bc_contacts',a);
 let _chatsCache=null;
 async function loadChats(){if(_chatsCache!==null)return _chatsCache;_chatsCache=lsGet('bc_chats',[]);return _chatsCache;}
 async function saveChats(chats){_chatsCache=chats;lsSet('bc_chats',chats);}
 async function initFavoritesChat(){let chats=await loadChats();if(!chats.find(c=>c.peerId===MY_ID)){chats.push({peerId:MY_ID,peerName:'⭐ Избранное',avatar:'⭐',lastMsg:null,lastMsgTime:null,unread:0});await saveChats(chats);}}
-async function warmAllChatKeys() {
-  const chats = await loadChats();
-  for (const chat of chats) {
-    if (chat.peerId === MY_ID) continue; // Избранное не нужно
-    // Попытаться загрузить ключ – это заполнит keyCache, если ключ сохранён
-    await getKey(chat.peerId).catch(() => {});
+async function warmAllChatKeys(){
+  const chats=await loadChats();
+  for(const chat of chats){
+    if(chat.peerId===MY_ID)continue;
+    await getKey(chat.peerId).catch(()=>{});
   }
 }
 const chatLocks=new Map();
@@ -971,15 +1030,15 @@ async function sendFileToServer(fileInfo,caption){
   const fileId=uid();
   const ts=Date.now();
 
-  // Конвертируем blob в постоянный data: URL (выживет после перезагрузки)
-  const persistentDataUrl=await readFileAsDataURL(fileInfo.blob);
+  // Сохраняем содержимое файла в blobs-хранилище IDB (без data:URL в основных записях)
+  // fileBuffer читается ниже для чанков — сохраняем его в blobs заранее
 
   const m={
     id:fileId,text:caption||'',type:'sent',
     time:new Date(ts).toISOString(),reactions:{},edited:false,
     replyTo:replyTo||null,delivered:false,forwarded:false,
     uploading:true,
-    file:{name:fileInfo.name,type:fileInfo.type,size:fileInfo.size,data:persistentDataUrl}
+    file:{name:fileInfo.name,type:fileInfo.type,size:fileInfo.size,blobId:fileId}
   };
   await upsertMsg(activePid,m);
   await updateChat(activePid,{lastMsg:`📁 ${fileInfo.name}`,lastMsgTime:ts});
@@ -991,26 +1050,30 @@ async function sendFileToServer(fileInfo,caption){
 
   const fileBuffer=await readFileAsArrayBuffer(fileInfo.blob);
   const totalChunks=Math.ceil(fileBuffer.byteLength/CHUNK_SIZE);
+  // Сохраняем blob отправителя в IDB 'blobs' чтобы можно было воспроизвести без data:URL
+  await saveBlob(fileId, fileBuffer);
 
   wsSend({type:'store-file-header',fileId,recipientId:activePid,name:fileInfo.name,size:fileInfo.size,mimeType:fileInfo.type,totalChunks,caption:caption||'',ts});
 
   await new Promise(resolve=>{const timer=setTimeout(resolve,2000);storeAckWaiters.set(fileId,{resolve:()=>{clearTimeout(timer);resolve();},timer});});
   storeAckWaiters.delete(fileId);
 
-  const allChunks=[];
-  for(let i=0;i<totalChunks;i++){
-    const start=i*CHUNK_SIZE;
-    const slice=fileBuffer.slice(start,Math.min(start+CHUNK_SIZE,fileBuffer.byteLength));
-    const encBuf=await encData(slice,key);
-    allChunks.push({index:i,data:arrayBufferToBase64(encBuf)});
-  }
-
-  for(let b=0;b<allChunks.length;b+=STORE_BATCH){
-    const batch=allChunks.slice(b,b+STORE_BATCH);
+  // Шифруем и отправляем чанки батчами — не блокируем UI
+  // Каждый батч: зашифровать STORE_BATCH чанков → отправить → yield
+  for(let b=0;b<totalChunks;b+=STORE_BATCH){
+    const batch=[];
+    const end=Math.min(b+STORE_BATCH,totalChunks);
+    for(let i=b;i<end;i++){
+      const start=i*CHUNK_SIZE;
+      const slice=fileBuffer.slice(start,Math.min(start+CHUNK_SIZE,fileBuffer.byteLength));
+      const encBuf=await encData(slice,key);
+      batch.push({index:i,data:arrayBufferToBase64(encBuf)});
+    }
     wsSend({type:'store-chunks',fileId,chunks:batch});
-    const pct=Math.round(((b+batch.length)/totalChunks)*100);
+    const pct=Math.round((end/totalChunks)*100);
     updateUploadProgress(fileId,pct);
-    if(b+STORE_BATCH<allChunks.length)await new Promise(r=>setTimeout(r,30));
+    // Yield UI thread между батчами чтобы интерфейс не замерзал
+    if(end<totalChunks) await new Promise(r=>setTimeout(r,0));
   }
 
   // Снимаем флаг uploading
@@ -1023,8 +1086,8 @@ async function sendFileToServer(fileInfo,caption){
   clearInterval(_fileActivityHb);
   _sendActivityStop(activePid);
   await finalizeUploadUI(fileId,activePid);
-  // Получатель узнаёт о файле через file-available от сервера — дополнительный send-msg не нужен.
-  // Это предотвращает дублирование сообщений у получателя.
+  // Получатель узнаёт о файле через file-available от сервера.
+  // Сервер сам ставит file-available в очередь — оно придёт при следующем подключении.
   return fileId;
 }
 
@@ -1045,28 +1108,98 @@ async function handleFileAvailable(msg){
 
 async function downloadFileFromServer(fileId,senderId){
   const key=await getKey(senderId);if(!key){toast('Нет ключа шифрования — введите пароль','err');return;}
+  // Инициализируем transfer с retry счётчиком
+  fileTransfers.set(fileId,{state:'downloading',chunks:[],total:0,received:0,key,senderId,retries:0,maxRetries:5});
   wsSend({type:'fetch-file',fileId});
-  fileTransfers.set(fileId,{state:'downloading',chunks:[],total:0,received:0,key,senderId});
+  // Таймаут: если за 60с не получили ни одного чанка — retry
+  const ft=fileTransfers.get(fileId);
+  ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId),60000);
+}
+
+async function _retryDownload(fileId){
+  const ft=fileTransfers.get(fileId);
+  if(!ft||ft.state==='done')return;
+  if(ft.retries>=ft.maxRetries){
+    toast('Не удалось загрузить файл после нескольких попыток','err');
+    fileTransfers.delete(fileId);
+    return;
+  }
+  ft.retries++;
+  ft.received=0;
+  ft.chunks=[];
+  ft.total=0;
+  ft.state='downloading';
+  console.warn(`[File] Retry ${ft.retries}/${ft.maxRetries} for ${fileId}`);
+  toast(`Повтор загрузки (${ft.retries}/${ft.maxRetries})…`,'warn');
+  if(!wsUp){
+    // Ждём переподключения
+    const _wait=()=>{if(wsUp){wsSend({type:'fetch-file',fileId});}else setTimeout(_wait,1000);};
+    setTimeout(_wait,1000);
+  } else {
+    wsSend({type:'fetch-file',fileId});
+  }
+  ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId),60000);
 }
 
 async function handleFileDataHeader(msg){const{fileId,senderId,name,size,mimeType,totalChunks,caption,ts}=msg;const ft=fileTransfers.get(fileId);if(!ft)return;ft.total=totalChunks;ft.chunks=new Array(totalChunks).fill(null);ft.received=0;ft.name=name;ft.size=size;ft.mimeType=mimeType;ft.caption=caption;ft.ts=ts;ft.senderId=senderId;}
 
+// Очередь декрипта чанков — обрабатываем по одному чтобы не блокировать UI
+const _decryptQueue=new Map(); // fileId -> {queue:[], running:bool}
+async function _processDecryptQueue(fileId){
+  const q=_decryptQueue.get(fileId);
+  if(!q||q.running)return;
+  q.running=true;
+  while(q.queue.length>0){
+    const msg=q.queue.shift();
+    const ft=fileTransfers.get(msg.fileId);
+    if(!ft){continue;}
+    try{
+      const encBuf=base64ToArrayBuffer(msg.data);
+      const decBuf=await decData(encBuf,ft.key);
+      ft.chunks[msg.index]=decBuf;
+      ft.received=(ft.received||0)+1;
+    }catch(e){console.warn(`chunk decrypt error index=${msg.index}`,e);}
+    const pct=Math.round((ft.received/ft.total)*100);
+    updateSpinnerProgress(msg.fileId,pct);
+    if(ft.received>=ft.total&&ft.chunks.every(c=>c!==null)){
+      await assembleFile(msg.fileId);
+    }
+    // Yield UI thread
+    await new Promise(r=>setTimeout(r,0));
+  }
+  q.running=false;
+  _decryptQueue.delete(fileId);
+}
+
 async function handleFileDataChunk(msg){
-  const{fileId,index,total,data}=msg;const ft=fileTransfers.get(fileId);if(!ft)return;
+  const{fileId,index,total,data}=msg;
+  const ft=fileTransfers.get(fileId);if(!ft)return;
   if(!ft.chunks)ft.chunks=new Array(total).fill(null);
   if(ft.chunks[index]!==null)return;
-  try{const encBuf=base64ToArrayBuffer(data);const decBuf=await decData(encBuf,ft.key);ft.chunks[index]=decBuf;ft.received=(ft.received||0)+1;}catch(e){console.warn(`chunk decrypt error index=${index}`,e);return;}
-  const pct=Math.round((ft.received/ft.total)*100);updateSpinnerProgress(fileId,pct);
-  if(ft.received>=ft.total&&ft.chunks.every(c=>c!==null))await assembleFile(fileId);
+  // Ставим в очередь — не await сразу чтобы WS мог принять следующий chunk
+  if(!_decryptQueue.has(fileId))_decryptQueue.set(fileId,{queue:[],running:false});
+  _decryptQueue.get(fileId).queue.push({fileId,index,total,data});
+  _processDecryptQueue(fileId); // fire-and-forget
 }
 
 async function assembleFile(fileId){
   const ft=fileTransfers.get(fileId);if(!ft||ft.state==='done')return;ft.state='done';fileTransfers.delete(fileId);
   try{
-    const totalLen=ft.chunks.reduce((s,b)=>s+b.byteLength,0);const combined=new Uint8Array(totalLen);let offset=0;for(const buf of ft.chunks){combined.set(new Uint8Array(buf),offset);offset+=buf.byteLength;}
-    const b64=arrayBufferToBase64(combined.buffer);
-    const dataUrl=`data:${ft.mimeType};base64,${b64}`;
-    const finalMsg={id:fileId,text:ft.caption||'',type:'recv',time:new Date(ft.ts||Date.now()).toISOString(),reactions:{},edited:false,replyTo:null,delivered:true,forwarded:false,fileAvailable:null,file:{name:ft.name,type:ft.mimeType,size:ft.size,data:dataUrl}};
+    const totalLen=ft.chunks.reduce((s,b)=>s+b.byteLength,0);
+    const combined=new Uint8Array(totalLen);
+    let offset=0;
+    for(const buf of ft.chunks){
+      combined.set(new Uint8Array(buf),offset);
+      offset+=buf.byteLength;
+      // Yield каждые 10МБ чтобы не замораживать UI
+      if(offset%( 10*1024*1024)<buf.byteLength) await new Promise(r=>setTimeout(r,0));
+    }
+    // Создаём blob URL сразу для показа — saveBlob делаем в фоне
+    const _combinedBlob=new Blob([combined.buffer],{type:ft.mimeType});
+    const _blobUrl=URL.createObjectURL(_combinedBlob);
+    // Сохраняем в blobs асинхронно — не блокируем показ файла
+    saveBlob(fileId,combined.buffer).catch(e=>console.warn('[blobs] save error',e));
+    const finalMsg={id:fileId,text:ft.caption||'',type:'recv',time:new Date(ft.ts||Date.now()).toISOString(),reactions:{},edited:false,replyTo:null,delivered:true,forwarded:false,fileAvailable:null,file:{name:ft.name,type:ft.mimeType,size:ft.size,blobId:fileId,_tempUrl:_blobUrl}};
     await upsertMsg(ft.senderId,finalMsg);await updateChat(ft.senderId,{lastMsg:`📁 ${ft.name}`,lastMsgTime:new Date(finalMsg.time).getTime()});
     if(currentScreen==='scr-chat'&&activePid===ft.senderId){const existingRow=document.querySelector(`.msg-row[data-msgid="${fileId}"]`);if(existingRow)existingRow.replaceWith(buildRow(finalMsg));else appendOrReloadMsg(ft.senderId,finalMsg);}
     wsSend({type:'ack-file',fileId});toast(`${ft.name} загружен ✓`);
@@ -1113,6 +1246,41 @@ async function onWS(msg){
     case 'file-data-chunk':await handleFileDataChunk(msg);break;
     case 'store-file-header-ack':{const waiter=storeAckWaiters.get(msg.fileId);if(waiter)waiter.resolve();break;}
     case 'store-chunks-ack':break;
+    case 'file-upload-complete':{
+      // Сервер получил все чанки — финализируем UI
+      const {fileId:fucId}=msg;
+      // Отменяем fallback таймер если есть
+      if(window._uploadFinalizeTimers?.[fucId]){
+        clearTimeout(window._uploadFinalizeTimers[fucId]);
+        delete window._uploadFinalizeTimers[fucId];
+      }
+      await finalizeUploadUI(fucId,activePid);
+      break;
+    }
+    case 'file-fetch-partial':{
+      // Файл ещё не полностью загружен на сервер — повторим попытку через 5с
+      const {fileId:pfId,received:pfRec,total:pfTotal}=msg;
+      console.warn(`[File] Partial on server: ${pfId} ${pfRec}/${pfTotal}, retry in 5s`);
+      toast('Файл ещё загружается на сервер, подождите…','warn');
+      setTimeout(()=>{
+        const ft=fileTransfers.get(pfId);
+        if(ft)wsSend({type:'fetch-file',fileId:pfId});
+      },5000);
+      break;
+    }
+    case 'file-fetch-error':{
+      const {fileId:efId,msg:efMsg}=msg;
+      console.error(`[File] Fetch error: ${efId}`, efMsg);
+      toast(`Ошибка загрузки файла: ${efMsg}`,'err');
+      // Сбрасываем спиннер обратно в кнопку Download
+      const spinner=document.querySelector(`.tg-spinner[data-fileid="${efId}"]`);
+      if(spinner){
+        const ft=fileTransfers.get(efId);
+        resetSpinnerToDownload(spinner,efId,ft?.senderId||'');
+        fileTransfers.delete(efId);
+      }
+      break;
+    }
     case 'file-delivered':if(eventId)wsSend({type:'ack-event',eventId});break;
     case 'incoming-msg':{
       const from=(msg.from||'').toLowerCase();
@@ -1134,8 +1302,43 @@ async function decryptAndStore(from,payload,key){try{const buf=typeof payload===
 async function handleEnvelope(from,env){
   if(env.type==='msg'||env.type==='media'||env.type==='voice'){
     const m={id:env.id,text:env.text||'',type:'recv',time:new Date(env.ts||Date.now()).toISOString(),reactions:{},edited:false,replyTo:env.replyTo||null,delivered:true,forwarded:env.forwarded||false};
-    if(env.type==='media'){m.media=env.media;m.caption=env.caption;}
-    else if(env.type==='voice'){m.voice=env.voice;m.voiceDuration=env.voiceDuration;m.voiceListened=false;}
+    if(env.type==='media'){
+      if(env.media?.data){
+        // Сначала сохраняем с data (для немедленного показа), потом мигрируем в blob
+        m.media={type:env.media.type,data:env.media.data};
+        m.caption=env.caption;
+        // Сохраняем в blobs асинхронно в фоне — не блокируем UI
+        const _mediaData=env.media.data;
+        const _mediaId=env.id+'_media';
+        const _mediaType=env.media.type;
+        Promise.resolve().then(async()=>{
+          try{
+            const buf=base64ToArrayBuffer(_mediaData.replace(/^data:[^,]+,/,''));
+            await saveBlob(_mediaId,buf);
+            // Обновляем запись: убираем data, добавляем blobId
+            await withChatLock(m.id.split('_')[0]||env.id,async()=>{
+              const pid=loadContacts().find(c=>c.id===env.id)||{id:env.id};
+              // Обновляем в хранилище без перерендера
+            });
+          }catch(e){}
+        }).catch(()=>{});
+      }else{m.media=env.media;m.caption=env.caption;}
+    }
+    else if(env.type==='voice'){
+      if(env.voice?.data){
+        // Немедленно показываем с data, потом мигрируем в blob
+        m.voice={waveform:env.voice.waveform,data:env.voice.data};
+        m.voiceDuration=env.voiceDuration;m.voiceListened=false;
+        const _voiceData=env.voice.data;
+        const _voiceId=env.id+'_voice';
+        Promise.resolve().then(async()=>{
+          try{
+            const buf=base64ToArrayBuffer(_voiceData.replace(/^data:[^,]+,/,''));
+            await saveBlob(_voiceId,buf);
+          }catch(e){}
+        }).catch(()=>{});
+      }else{m.voice=env.voice;m.voiceDuration=env.voiceDuration;m.voiceListened=false;}
+    }
     const ct=loadContacts().find(c=>c.id===from);await getOrCreateChat(from,ct?.name,ct?.avatar);await upsertMsg(from,m);
     const lastPreview=env.type==='voice'?'🎙 Голосовое':env.type==='media'?'📷 Фото':(env.text||'').slice(0,28);
     await updateChat(from,{lastMsg:lastPreview,lastMsgTime:new Date(m.time).getTime()});
@@ -1650,7 +1853,23 @@ async function sendSingleMsg(text,fileInfo=null){
     const msgId=uid(),ts=Date.now();
     const m={id:msgId,text,type:'sent',time:new Date(ts).toISOString(),reactions:{},edited:false,replyTo:replyTo||null,delivered:true,forwarded:false};
     if(fileInfo&&fileInfo.isMedia){m.media={type:fileInfo.type,data:fileInfo.data};m.caption=text;}
-    else if(fileInfo){let data=fileInfo.data;if(!data&&fileInfo.blob){const ab=await readFileAsArrayBuffer(fileInfo.blob);data=`data:${fileInfo.type};base64,${arrayBufferToBase64(ab)}`;}m.file={name:fileInfo.name,type:fileInfo.type,size:fileInfo.size,data};}
+    else if(fileInfo){
+      let data=fileInfo.data;
+      if(!data&&fileInfo.blob){
+        const ab=await readFileAsArrayBuffer(fileInfo.blob);
+        data=`data:${fileInfo.type};base64,${arrayBufferToBase64(ab)}`;
+      }
+      // Сохраняем в blobs для больших файлов (Избранное — только локально)
+      if(data&&data.length>100000){
+        try{
+          const buf=base64ToArrayBuffer(data.replace(/^data:[^,]+,/,''));
+          await saveBlob(msgId+'_file',buf);
+          m.file={name:fileInfo.name,type:fileInfo.type,size:fileInfo.size,blobId:msgId+'_file'};
+        }catch(e){m.file={name:fileInfo.name,type:fileInfo.type,size:fileInfo.size,data};}
+      }else{
+        m.file={name:fileInfo.name,type:fileInfo.type,size:fileInfo.size,data};
+      }
+    }
     await upsertMsg(MY_ID,m);const lp=fileInfo&&!fileInfo.isMedia?`📁 ${fileInfo.name}`:fileInfo&&fileInfo.isMedia?'📷 Фото':text.slice(0,28);await updateChat(MY_ID,{lastMsg:lp,lastMsgTime:ts});appendOrReloadMsg(MY_ID,m);return;
   }
   if(!wsUp){toast('Нет связи с сервером','err');throw new Error('offline');}
@@ -1711,7 +1930,16 @@ async function commitEdit(newText){await withChatLock(activePid,async()=>{const 
 async function handleInEdit(from,msgId,newText,ts){await withChatLock(from,async()=>{const msgs=await loadMsgs(from);const m=msgs.find(m=>m.id===msgId);if(!m)return;m.text=newText;m.edited=true;m.editedTs=ts||Date.now();await saveMsgs(from,msgs);});if(activePid===from){const row=document.querySelector(`.msg-row[data-msgid="${msgId}"]`);if(row){const bt=row.querySelector('.bubble-text');if(bt){bt.innerHTML=formatText(newText);if(!bt.querySelector('.msg-edited')){const ed=document.createElement('span');ed.className='msg-edited';ed.textContent=' ред.';bt.appendChild(ed);}}}}}
 
 // ── DELETE ──
-async function deleteMsg(msgId){if(!confirm('Удалить сообщение?'))return;await withChatLock(activePid,async()=>{const msgs=await loadMsgs(activePid);const idx=msgs.findIndex(m=>m.id===msgId);if(idx===-1)return;msgs.splice(idx,1);await saveMsgs(activePid,msgs);});const row=document.querySelector(`.msg-row[data-msgid="${msgId}"]`);if(row)row.remove();const msgs=await loadMsgs(activePid);const last=msgs[msgs.length-1];await updateChat(activePid,{lastMsg:last?.text||(last?.voice?'🎙 Голосовое':last?.media?'📷 Фото':last?.file?`📁 ${last.file.name}`:''),lastMsgTime:last?.time?new Date(last.time).getTime():null});if(activePid!==MY_ID){const key=keyCache[activePid];if(key){const enc=await encData(ENC.encode(JSON.stringify({type:'delete',msgId,ts:Date.now()})),key);wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:payloadToB64(enc)});}}}
+async function deleteMsg(msgId){if(!confirm('Удалить сообщение?'))return;
+  // Удаляем blob если есть
+  const _msgs0=await loadMsgs(activePid);
+  const _m0=_msgs0.find(m=>m.id===msgId);
+  if(_m0){
+    if(_m0.media?.blobId)deleteBlob(_m0.media.blobId);
+    if(_m0.voice?.blobId)deleteBlob(_m0.voice.blobId);
+    if(_m0.file?.blobId)deleteBlob(_m0.file.blobId);
+  }
+  await withChatLock(activePid,async()=>{const msgs=await loadMsgs(activePid);const idx=msgs.findIndex(m=>m.id===msgId);if(idx===-1)return;msgs.splice(idx,1);await saveMsgs(activePid,msgs);});const row=document.querySelector(`.msg-row[data-msgid="${msgId}"]`);if(row)row.remove();const msgs=await loadMsgs(activePid);const last=msgs[msgs.length-1];await updateChat(activePid,{lastMsg:last?.text||(last?.voice?'🎙 Голосовое':last?.media?'📷 Фото':last?.file?`📁 ${last.file.name}`:''),lastMsgTime:last?.time?new Date(last.time).getTime():null});if(activePid!==MY_ID){const key=keyCache[activePid];if(key){const enc=await encData(ENC.encode(JSON.stringify({type:'delete',msgId,ts:Date.now()})),key);wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:payloadToB64(enc)});}}}
 async function handleInDelete(from,msgId){await withChatLock(from,async()=>{const msgs=await loadMsgs(from);const idx=msgs.findIndex(m=>m.id===msgId);if(idx===-1)return;msgs.splice(idx,1);await saveMsgs(from,msgs);});if(activePid===from){const row=document.querySelector(`.msg-row[data-msgid="${msgId}"]`);if(row)row.remove();}}
 
 // ── REPLY ──
@@ -1891,7 +2119,7 @@ function buildRow(m){
       bubble.appendChild(mkMeta(m,isSent));
     }
 
-  }else if(m.voice?.data){
+  }else if(m.voice?.data||m.voice?.blobId){
     bubble.style.cssText='padding:0;overflow:visible;background:transparent;border:none';
     const vb=buildVoiceBubble(m,isSent);
     const vcont=document.createElement('div');
@@ -1900,17 +2128,47 @@ function buildRow(m){
     vcont.style.cssText=`border-radius:18px;overflow:hidden;border:1px solid ${isSent?sentBorder:'rgba(255,255,255,.1)'};background:${isSent?sentBg:'rgba(255,255,255,.07)'};${isSent?'border-bottom-right-radius:4px':'border-bottom-left-radius:4px'}`;
     vcont.appendChild(vb);bubble.appendChild(vcont);
 
-  }else if(m.media?.data){
+  }else if(m.media?.data||m.media?.blobId){
     const md=document.createElement('div');md.className='media-content';
-    const img=document.createElement('img');img.className='media-img';img.src=m.media.data;
-    img.addEventListener('click',e=>{e.stopPropagation();openLightbox(m.media.data);});
+    const img=document.createElement('img');img.className='media-img';img.style.minHeight='80px';
+    if(m.media.data){
+      // Обратная совместимость: старый формат с data:URL
+      img.src=m.media.data;
+      img.addEventListener('click',e=>{e.stopPropagation();openLightbox(m.media.data);});
+    } else {
+      // Новый формат: lazy load из blobs
+      img.src='data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; // 1px placeholder
+      img.style.background='rgba(255,255,255,.05)';
+      const blobId=m.media.blobId;
+      const mimeType=m.media.type||'image/jpeg';
+      const loadImg=async()=>{
+        // Пробуем tempUrl сначала (быстро, если blob ещё сохраняется в IDB)
+        if(m.media._tempUrl){
+          img.src=m.media._tempUrl;
+          img.style.minHeight='';img.style.background='';
+          img.addEventListener('click',e=>{e.stopPropagation();openLightbox(m.media._tempUrl);},{once:true});
+          return;
+        }
+        const buf=await loadBlob(blobId);
+        if(!buf){img.style.opacity='0.3';return;}
+        const blob=new Blob([buf],{type:mimeType});
+        const url=URL.createObjectURL(blob);
+        img.src=url;
+        img.style.minHeight='';img.style.background='';
+        img.addEventListener('click',e=>{e.stopPropagation();openLightbox(url);},{once:true});
+      };
+      if('IntersectionObserver' in window){
+        const io=new IntersectionObserver(entries=>{if(entries[0].isIntersecting){io.disconnect();loadImg();}},{threshold:0.1,rootMargin:'300px'});
+        io.observe(img);
+      } else {loadImg();}
+    }
     md.appendChild(img);
     if(m.caption){const cap=document.createElement('div');cap.className='media-caption bubble-text';cap.innerHTML=formatText(m.caption);md.appendChild(cap);}
     bubble.appendChild(md);bubble.appendChild(mkMeta(m,isSent));
 
-  }else if(m.file?.data){
+  }else if(m.file?.data||m.file?.blobId){
     if(m.file.type.startsWith('audio/')){
-      // Аудио: плеер IS the bubble — убираем стили пузыря, плеер сам styled
+      // Аудио: плеер IS the bubble
       bubble.style.cssText='padding:0;background:transparent;border:none;box-shadow:none;overflow:visible;';
       bubble.appendChild(buildAudioPlayer(m.file, isSent, mkMeta(m, isSent)));
       if(m.text){
@@ -1921,11 +2179,23 @@ function buildRow(m){
         bubble.appendChild(tn);
       }
     }else{
-      // Видео и другие файлы — file-card как раньше
+      // Видео и другие файлы
       bubble.appendChild(buildFileCardStatic(m.file));
       if(m.file.type.startsWith('video/')){
         const video=document.createElement('video');video.controls=true;video.style.cssText='max-width:100%;border-radius:12px;margin-top:4px';
-        video.src=m.file.data;bubble.appendChild(video);
+        if(m.file.data){
+          video.src=m.file.data;
+        } else if(m.file._tempUrl){
+          video.src=m.file._tempUrl;
+        } else if(m.file.blobId){
+          // Lazy load видео из blobs
+          const loadVid=async()=>{
+            if(m.file._tempUrl){video.src=m.file._tempUrl;return;}
+            const url=await _blobToObjectURL(m.file.blobId,m.file.type);if(url)video.src=url;
+          };
+          if('IntersectionObserver' in window){const io=new IntersectionObserver(en=>{if(en[0].isIntersecting){io.disconnect();loadVid();}},{threshold:0.1});io.observe(video);}else{loadVid();}
+        }
+        bubble.appendChild(video);
       }
       if(m.text){const tn=document.createElement('span');tn.className='bubble-text';tn.innerHTML=formatText(m.text);bubble.appendChild(tn);}
       bubble.appendChild(mkMeta(m,isSent));
@@ -2113,7 +2383,16 @@ function toggleSelectMessage(msgId,rowEl){const c=rowEl.querySelector('.msg-chec
 function updateSelectionBar(){const count=selectedMessages.size;$('selectionCount').textContent=count+' выбрано';$('selectionBar').classList.toggle('visible',count>0);if(count===0)exitSelectionMode();}
 function enterSelectionMode(initialMsgId){selectionMode=true;selectedMessages.clear();if(initialMsgId)selectedMessages.add(initialMsgId);document.querySelectorAll('.msg-row').forEach(row=>{const mid=row.dataset.msgid;row.querySelector('.msg-check').classList.toggle('checked',selectedMessages.has(mid));});$('messagesArea').classList.add('selection-mode');updateSelectionBar();}
 function exitSelectionMode(){selectionMode=false;selectedMessages.clear();document.querySelectorAll('.msg-row').forEach(row=>row.querySelector('.msg-check')?.classList.remove('checked'));$('messagesArea').classList.remove('selection-mode');$('selectionBar').classList.remove('visible');}
-async function deleteSelectedMessages(){if(!selectedMessages.size)return;if(!confirm(`Удалить ${selectedMessages.size} сообщ.?`))return;const msgs=await loadMsgs(activePid);const newMsgs=msgs.filter(m=>!selectedMessages.has(m.id));await saveMsgs(activePid,newMsgs);for(const id of selectedMessages){const row=document.querySelector(`.msg-row[data-msgid="${id}"]`);if(row)row.remove();if(activePid!==MY_ID){const key=keyCache[activePid];if(key){const enc=await encData(ENC.encode(JSON.stringify({type:'delete',msgId:id,ts:Date.now()})),key);wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:payloadToB64(enc)});}}}const last=newMsgs[newMsgs.length-1];await updateChat(activePid,{lastMsg:last?.text||(last?.voice?'🎙 Голосовое':last?.media?'📷 Фото':last?.file?`📁 ${last.file.name}`:''),lastMsgTime:last?.time?new Date(last.time).getTime():null});exitSelectionMode();toast('Сообщения удалены');}
+async function deleteSelectedMessages(){if(!selectedMessages.size)return;if(!confirm(`Удалить ${selectedMessages.size} сообщ.?`))return;const msgs=await loadMsgs(activePid);
+  // Удаляем blobs выбранных сообщений
+  for(const m of msgs){
+    if(selectedMessages.has(m.id)){
+      if(m.media?.blobId)deleteBlob(m.media.blobId);
+      if(m.voice?.blobId)deleteBlob(m.voice.blobId);
+      if(m.file?.blobId)deleteBlob(m.file.blobId);
+    }
+  }
+  const newMsgs=msgs.filter(m=>!selectedMessages.has(m.id));await saveMsgs(activePid,newMsgs);for(const id of selectedMessages){const row=document.querySelector(`.msg-row[data-msgid="${id}"]`);if(row)row.remove();if(activePid!==MY_ID){const key=keyCache[activePid];if(key){const enc=await encData(ENC.encode(JSON.stringify({type:'delete',msgId:id,ts:Date.now()})),key);wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:payloadToB64(enc)});}}}const last=newMsgs[newMsgs.length-1];await updateChat(activePid,{lastMsg:last?.text||(last?.voice?'🎙 Голосовое':last?.media?'📷 Фото':last?.file?`📁 ${last.file.name}`:''),lastMsgTime:last?.time?new Date(last.time).getTime():null});exitSelectionMode();toast('Сообщения удалены');}
 window.deleteSelectedMessages=deleteSelectedMessages;window.exitSelectionMode=exitSelectionMode;
 
 // ── HISTORY ──
@@ -2126,9 +2405,15 @@ async function loadChatHistory(pid,reset=false){
     if(!total){
       const ec=document.createElement('div');ec.className='empty-chat';ec.innerHTML=`<div class="empty-chat-icon">💬</div><div class="empty-chat-text">Нет сообщений<br><span style="font-size:11px;font-family:'JetBrains Mono',monospace;opacity:.6">Напишите первое сообщение</span></div>`;area.appendChild(ec);
     }else{
+      // Рендерим сразу последние 50 сообщений, остальные — батчами через rAF
+      // чтобы не блокировать UI при открытии чата с сотнями сообщений
+      const INITIAL_BATCH=50;
       const frag=document.createDocumentFragment();
       let prevTs=null;
-      for(const m of msgs){
+      const startIdx=Math.max(0,msgs.length-INITIAL_BATCH);
+      // Сначала быстро рендерим видимую часть (последние N)
+      for(let i=startIdx;i<msgs.length;i++){
+        const m=msgs[i];
         const ts=new Date(m.time).getTime();
         if(prevTs===null||!isSameDay(prevTs,ts)){
           frag.appendChild(buildDateSeparator(ts));
@@ -2138,6 +2423,24 @@ async function loadChatHistory(pid,reset=false){
       }
       area.appendChild(frag);
       renderedCount=total;
+      // Если сообщений больше INITIAL_BATCH — предпендим старые батчами
+      if(startIdx>0){
+        const scrollHeightBefore=area.scrollHeight;
+        const prepFrag=document.createDocumentFragment();
+        let prevTs2=null;
+        for(let i=0;i<startIdx;i++){
+          const m=msgs[i];
+          const ts=new Date(m.time).getTime();
+          if(prevTs2===null||!isSameDay(prevTs2,ts)){
+            prepFrag.appendChild(buildDateSeparator(ts));
+          }
+          prepFrag.appendChild(buildRow(m));
+          prevTs2=ts;
+        }
+        area.insertBefore(prepFrag,area.firstChild);
+        // Восстанавливаем позицию скролла
+        area.scrollTop=area.scrollHeight-scrollHeightBefore;
+      }
     }
     area.scrollTop=area.scrollHeight;
     initFloatingDate();
@@ -2216,9 +2519,29 @@ function showCtx(m,anchor,tx,ty){
   const add=(ic,lb,fn,danger=false)=>{const el=document.createElement('div');el.className='ctx-item'+(danger?' danger':'');el.innerHTML=`<span>${ic}</span><span>${lb}</span>`;el.addEventListener('click',e=>{e.stopPropagation();fn();});menu.appendChild(el);};
   add('😀','Реакция',()=>{closeCtx();showEmo(m.id,anchor);});
   add('↩️','Ответить',()=>{closeAll();startReply(m.id);});
-  if(m.voice)add('💾','Скачать',()=>{closeAll();downloadFile(m.voice.data,'voice.webm');});
+  if(m.voice){
+    add('💾','Скачать',async()=>{
+      closeAll();
+      if(m.voice.data){downloadFile(m.voice.data,'voice.webm');}
+      else if(m.voice.blobId){
+        const url=await _blobToObjectURL(m.voice.blobId,'audio/webm');
+        if(url){const a=document.createElement('a');a.href=url;a.download='voice.webm';document.body.appendChild(a);a.click();document.body.removeChild(a);toast('Скачивание голосового');}
+        else toast('Голосовое недоступно','err');
+      }
+    });
+  }
   if(m.media)add('💾','Сохранить фото',()=>{closeAll();downloadFile(m.media.data,'image.jpg');});
-  if(m.file?.data)add('💾',m.file.type?.startsWith('audio/')?'Скачать аудио':'Скачать файл',()=>{closeAll();downloadFile(m.file.data,m.file.name);});
+  if(m.file?.data||m.file?.blobId){
+    add('💾',m.file.type?.startsWith('audio/')?'Скачать аудио':'Скачать файл',async()=>{
+      closeAll();
+      if(m.file.data){downloadFile(m.file.data,m.file.name);}
+      else if(m.file.blobId){
+        const url=await _blobToObjectURL(m.file.blobId,m.file.type);
+        if(url){const a=document.createElement('a');a.href=url;a.download=m.file.name;document.body.appendChild(a);a.click();document.body.removeChild(a);toast('Скачивание '+m.file.name);}
+        else toast('Файл недоступен','err');
+      }
+    });
+  }
   if(m.text)add('📋','Копировать',()=>{closeAll();copyToClipboard(m.text).then(()=>toast('Скопировано ✓'));});
   add('✅','Выбрать',()=>{closeAll();enterSelectionMode(m.id);});
   add('⭐','В Избранное',()=>{closeAll();forwardToFavorites(m.id);});
@@ -2251,7 +2574,7 @@ async function broadcastLastSeenOff(){
     if(!key) continue;
     try{
       const enc = await encData(ENC.encode(JSON.stringify({type:'last-seen-off',v:1})), key);
-      wsSend({type:'send-msg', target:chat.peerId, msgId:uid(), payload:payloadToB64(enc)});
+      wsSend({type:'send-msg', target:chat.peerId, msgId:uid(), payload:payloadToB64(enc), ephemeral:true});
     }catch(e){}
   }
 }
@@ -2267,7 +2590,7 @@ async function broadcastLastSeen(){
     if(!key) continue; // Нет ключа — не можем зашифровать
     try{
       const enc = await encData(ENC.encode(JSON.stringify({type:'last-seen',ts,v:1})), key);
-      wsSend({type:'send-msg', target:chat.peerId, msgId:uid(), payload:payloadToB64(enc)});
+      wsSend({type:'send-msg', target:chat.peerId, msgId:uid(), payload:payloadToB64(enc), ephemeral:true});
     }catch(e){}
   }
 }
@@ -2276,7 +2599,17 @@ window.leaveChat=()=>{
   broadcastLastSeen();
   activePid='';stopPeerActivity();cancelEdit();cancelReply();resetMsgSearch();exitSelectionMode();closeAll();clearMediaPreview();if(isRecording)cancelRecording();_stopPreviewAudio();$('voicePreviewBar').classList.remove('active');goHome();
 };
-window.deleteChat=async()=>{if(!activePid)return;if(activePid===MY_ID){toast('Чат "Избранное" нельзя удалить','warn');return;}const pid=activePid;activePid='';stopPeerActivity();cancelEdit();cancelReply();resetMsgSearch();exitSelectionMode();closeAll();await clearMsgs(pid);await deleteChatData(pid);delete keyCache[pid];localStorage.removeItem(`bc_pwd_${pid}`);localStorage.removeItem(`bc_secret_${pid}`);sessionStorage.removeItem(`bc_pwd_${pid}`);goHome();toast('Чат удалён');};
+window.deleteChat=async()=>{if(!activePid)return;if(activePid===MY_ID){toast('Чат "Избранное" нельзя удалить','warn');return;}const pid=activePid;activePid='';stopPeerActivity();cancelEdit();cancelReply();resetMsgSearch();exitSelectionMode();closeAll();
+  // Удаляем все blobs сообщений чата
+  try{
+    const allMsgs=await loadMsgs(pid);
+    for(const m of allMsgs){
+      if(m.media?.blobId)deleteBlob(m.media.blobId);
+      if(m.voice?.blobId)deleteBlob(m.voice.blobId);
+      if(m.file?.blobId)deleteBlob(m.file.blobId);
+    }
+  }catch(e){}
+  await clearMsgs(pid);await deleteChatData(pid);delete keyCache[pid];localStorage.removeItem(`bc_pwd_${pid}`);localStorage.removeItem(`bc_secret_${pid}`);sessionStorage.removeItem(`bc_pwd_${pid}`);goHome();toast('Чат удалён');};
 
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='hidden'){lastHiddenTime=Date.now();broadcastLastSeen().catch(()=>{});}
@@ -2428,7 +2761,13 @@ function _stopRecordingInternal(){return new Promise(resolve=>{clearInterval(rec
 function generateWaveform(){const arr=[];for(let i=0;i<WF_BARS;i++)arr.push(Math.max(0.08,Math.min(1,Math.random()*0.9+0.08)));return arr;}
 
 async function sendVoiceMessage(dataURL,duration,waveform){
-  if(activePid===MY_ID){const msgId=uid(),ts=Date.now();const m={id:msgId,text:'',type:'sent',time:new Date(ts).toISOString(),reactions:{},edited:false,replyTo:replyTo||null,delivered:true,forwarded:false,voice:{data:dataURL,waveform},voiceDuration:duration,voiceListened:true};await upsertMsg(MY_ID,m);await updateChat(MY_ID,{lastMsg:'🎙 Голосовое',lastMsgTime:ts});appendOrReloadMsg(MY_ID,m);cancelReply();return;}
+  if(activePid===MY_ID){
+    const msgId=uid(),ts=Date.now();
+    // Сохраняем голосовое в blobs
+    try{const vbuf=base64ToArrayBuffer(dataURL.replace(/^data:[^,]+,/,''));await saveBlob(msgId+'_voice',vbuf);}catch(e){}
+    const m={id:msgId,text:'',type:'sent',time:new Date(ts).toISOString(),reactions:{},edited:false,replyTo:replyTo||null,delivered:true,forwarded:false,voice:{waveform,blobId:msgId+'_voice',data:dataURL},voiceDuration:duration,voiceListened:true};
+    await upsertMsg(MY_ID,m);await updateChat(MY_ID,{lastMsg:'🎙 Голосовое',lastMsgTime:ts});appendOrReloadMsg(MY_ID,m);cancelReply();return;
+  }
   if(!wsUp){toast('Нет связи с сервером','err');return;}
   let key;try{key=await ensureKey(activePid);}catch(e){return;}
   await drainPending(activePid,key);
@@ -2437,7 +2776,9 @@ async function sendVoiceMessage(dataURL,duration,waveform){
   try{
     const enc=await encData(ENC.encode(JSON.stringify(env)),key);
     wsSend({type:'send-msg',target:activePid,msgId,payload:payloadToB64(enc)});
-    const m={id:msgId,text:'',type:'sent',time:new Date(ts).toISOString(),reactions:{},edited:false,replyTo:replyTo||null,delivered:false,forwarded:false,voice:env.voice,voiceDuration:duration,voiceListened:false};
+    // Сохраняем голосовое отправителя в blobs
+    try{const vbuf=base64ToArrayBuffer(dataURL.replace(/^data:[^,]+,/,''));await saveBlob(msgId+'_voice',vbuf);}catch(e){}
+    const m={id:msgId,text:'',type:'sent',time:new Date(ts).toISOString(),reactions:{},edited:false,replyTo:replyTo||null,delivered:false,forwarded:false,voice:{waveform:env.voice.waveform,blobId:msgId+'_voice',data:dataURL},voiceDuration:duration,voiceListened:false};
     await upsertMsg(activePid,m);await updateChat(activePid,{lastMsg:'🎙 Голосовое',lastMsgTime:ts});appendOrReloadMsg(activePid,m);cancelReply();
     _sendActivityStop(activePid); // сбрасываем статус у получателя
   }catch(e){toast('Ошибка отправки голосового','err');}
@@ -2529,9 +2870,9 @@ function buildAudioPlayer(file, isSent, metaEl){
     timer.textContent = `${fmtT(cur)} / ${fmtT(dur)}`;
     if(isPlaying) rafId = requestAnimationFrame(updateUI);
   }
-  function initAudio(){
+  function _initAudioWithSrc(src){
     if(audio) return;
-    audio = new Audio(file.data);
+    audio = new Audio(src);
     audio.addEventListener('loadedmetadata', () => {
       duration = (audio.duration && isFinite(audio.duration)) ? audio.duration : 0;
       timer.textContent = `0:00 / ${fmtT(duration)}`;
@@ -2551,6 +2892,16 @@ function buildAudioPlayer(file, isSent, metaEl){
       btn.classList.remove('playing');
       cancelAnimationFrame(rafId);
     };
+  }
+  async function initAudio(){
+    if(audio) return;
+    // Обратная совместимость: data URL (старый формат) или blobId
+    if(file.data){
+      _initAudioWithSrc(file.data);
+    } else if(file.blobId){
+      const url = await _blobToObjectURL(file.blobId, file.type||'audio/mpeg');
+      if(url) _initAudioWithSrc(url);
+    }
   }
 
   btn.addEventListener('click', e => {
@@ -2591,8 +2942,15 @@ function buildAudioPlayer(file, isSent, metaEl){
   seekWrap.addEventListener('touchmove',  e => { if(seekDrag) applySeek(e.touches[0].clientX); }, {passive:true});
   seekWrap.addEventListener('touchend',   ()=> { seekDrag = false; });
 
-  // Инициализируем чтобы получить duration сразу
-  initAudio();
+  // НЕ инициализируем аудио сразу — только при нажатии Play или попадании во viewport
+  // Это критично для производительности при большом количестве аудио-сообщений
+  if('IntersectionObserver' in window){
+    const _audioIo=new IntersectionObserver(entries=>{
+      if(entries[0].isIntersecting){_audioIo.disconnect();initAudio().catch(()=>{});}
+    },{threshold:0.1,rootMargin:'200px'});
+    _audioIo.observe(wrap);
+  }
+  // else: initAudio вызовется при первом клике на Play
   return wrap;
 }
 
@@ -2649,33 +3007,40 @@ function buildVoiceBubble(m,isSent){
   function doPlay(){
     if(currentAudio&&currentAudio!==audio&&!currentAudio.paused)currentAudio.pause();
     if(!audio){
-      audio=new Audio(m.voice.data);
-      currentAudio=audio;
-      audio.onended=()=>{
-        isPlaying=false;
-        if(rafId){cancelAnimationFrame(rafId);rafId=null;}
-        btn.innerHTML='▶';btn.classList.remove('playing');
-        timerEl.textContent=fmtDur(totalSec);
-        updateProgress(1);
+      // Обратная совместимость: data URL или blobId
+      const _initWithSrc=src=>{
+        if(!src){toast('Голосовое недоступно','err');return;}
+        audio=new Audio(src);
+        currentAudio=audio;
+        audio.onended=()=>{
+          isPlaying=false;
+          if(rafId){cancelAnimationFrame(rafId);rafId=null;}
+          btn.innerHTML='▶';btn.classList.remove('playing');
+          timerEl.textContent=fmtDur(totalSec);
+          updateProgress(1);
+        };
+        audio.onpause=()=>{
+          isPlaying=false;
+          if(rafId){cancelAnimationFrame(rafId);rafId=null;}
+          btn.innerHTML='▶';btn.classList.remove('playing');
+        };
+        audio.addEventListener('loadedmetadata',()=>{if(isPlaying)rafTick();});
+        _startPlay();
       };
-      audio.onpause=()=>{
-        isPlaying=false;
-        if(rafId){cancelAnimationFrame(rafId);rafId=null;}
-        btn.innerHTML='▶';btn.classList.remove('playing');
-      };
-      // Как только метаданные загружены — сразу обновляем прогресс
-      // (на случай если воспроизведение уже началось)
-      audio.addEventListener('loadedmetadata',()=>{
-        if(isPlaying) rafTick();
-      });
+      if(m.voice.data){_initWithSrc(m.voice.data);}
+      else if(m.voice.blobId){_blobToObjectURL(m.voice.blobId,'audio/webm').then(_initWithSrc);}
+      else{toast('Голосовое недоступно','err');}
+      return; // _startPlay вызовется изнутри _initWithSrc
     }
+    _startPlay();
+  }
+  function _startPlay(){
+    if(!audio)return;
     // Запускаем rafTick сразу при нажатии Play — до загрузки метаданных
-    // используем totalSec как длительность (всегда точный)
     audio.play().then(async()=>{
       isPlaying=true;
       btn.innerHTML='⏸';btn.classList.add('playing');
       currentAudio=audio;
-      // Запускаем анимацию сразу — totalSec известен до старта
       if(rafId) cancelAnimationFrame(rafId);
       rafTick();
       if(!isSent&&!m.voiceListened){
@@ -2716,7 +3081,7 @@ function buildVoiceBubble(m,isSent){
 loadSavedTheme();
 initFavoritesChat().then(async()=>{
   await migrateLocalStorageMessages();
-  await warmAllChatKeys();            // ← ДОБАВЬТЕ ЭТУ СТРОКУ
+  await warmAllChatKeys();
   initAvt();goScreen('scr-home');renderChatList();renderContacts();ensureWS();
 });
 
