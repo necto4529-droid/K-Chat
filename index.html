@@ -693,7 +693,6 @@
   </div>
 </div>
 
-
 <script>
 (function(){
 'use strict';
@@ -1046,7 +1045,7 @@ async function sendFileToServer(fileInfo,caption){
 
   // Сигнал "отправляет файл" + heartbeat каждые 3с
   _sendActivitySignal(activePid,'sending_file');
-  const _fileActivityHb=setInterval(()=>{if(activePid)_sendActivitySignal(activePid,'sending_file');},3000);
+  const _fileActivityHb=setInterval(()=>{if(activePid)_sendActivitySignal(activePid,'sending_file');},6000);
 
   const fileBuffer=await readFileAsArrayBuffer(fileInfo.blob);
   const totalChunks=Math.ceil(fileBuffer.byteLength/CHUNK_SIZE);
@@ -1076,20 +1075,26 @@ async function sendFileToServer(fileInfo,caption){
     if(end<totalChunks) await new Promise(r=>setTimeout(r,0));
   }
 
+  // ── ИСПРАВЛЕНИЕ 1: перерисовываем видео сразу после отправки последнего чанка ──
   // Снимаем флаг uploading
   await withChatLock(activePid,async()=>{
     const msgs=await loadMsgs(activePid);
     const idx=msgs.findIndex(x=>x.id===fileId);
-    if(idx!==-1){msgs[idx].uploading=false;await saveMsgs(activePid,msgs);}
+    if(idx!==-1){
+      msgs[idx].uploading=false;
+      // Для видео достаточно blobId — плеер загрузит его через loadBlob
+      await saveMsgs(activePid,msgs);
+    }
   });
 
-  clearInterval(_fileActivityHb);
-_sendActivityStop(activePid);
-// Дублируем стоп-сигнал через 2 секунды для гарантии доставки
-setTimeout(() => _sendActivityStop(activePid), 2000);
+  // НЕМЕДЛЕННО перерисовываем видео у отправителя
   await finalizeUploadUI(fileId,activePid);
-  // Получатель узнаёт о файле через file-available от сервера.
-  // Сервер сам ставит file-available в очередь — оно придёт при следующем подключении.
+
+  clearInterval(_fileActivityHb);
+  _sendActivityStop(activePid);
+  // Дублируем стоп-сигнал через 2 секунды для гарантии доставки
+  setTimeout(() => _sendActivityStop(activePid), 2000);
+  // file-upload-complete от сервера всё равно придёт, но нам уже не важно
   return fileId;
 }
 
@@ -1105,12 +1110,15 @@ async function handleFileAvailable(msg){
   await upsertMsg(senderId,placeholderMsg);
   await updateChat(senderId,{lastMsg:`📎 ${name}`,lastMsgTime:new Date(placeholderMsg.time).getTime()});
   if(currentScreen==='scr-chat' && activePid===senderId) {
-  appendOrReloadMsg(senderId, placeholderMsg);
-  // Миниатюра пришла – статус «отправляет» больше не нужен
-  stopPeerActivity();
-  updateBar();
-}
-  else{const chat=(await loadChats()).find(c=>c.peerId===senderId);await updateChat(senderId,{unread:(chat?.unread||0)+1});toast(`📎 ${chat?.peerName||senderId}: ${name}`);}
+    appendOrReloadMsg(senderId, placeholderMsg);
+    // Миниатюра пришла – статус «отправляет» больше не нужен
+    stopPeerActivity();
+    updateBar();
+  } else {
+    const chat=(await loadChats()).find(c=>c.peerId===senderId);
+    await updateChat(senderId,{unread:(chat?.unread||0)+1});
+    toast(`📎 ${chat?.peerName||senderId}: ${name}`);
+  }
 }
 
 async function downloadFileFromServer(fileId,senderId){
@@ -1125,7 +1133,7 @@ async function downloadFileFromServer(fileId,senderId){
 
 async function _retryDownload(fileId){
   const ft=fileTransfers.get(fileId);
-  if(!ft||ft.state==='done')return;
+  if(!ft||ft.state=='done')return;
   if(ft.retries>=ft.maxRetries){
     toast('Не удалось загрузить файл после нескольких попыток','err');
     fileTransfers.delete(fileId);
@@ -1189,8 +1197,9 @@ async function handleFileDataChunk(msg){
   _processDecryptQueue(fileId); // fire-and-forget
 }
 
+// ── ИСПРАВЛЕНИЕ 2: assembleFile — _tempUrl не сохраняется в IndexedDB ──
 async function assembleFile(fileId){
-  const ft=fileTransfers.get(fileId);if(!ft||ft.state==='done')return;ft.state='done';fileTransfers.delete(fileId);
+  const ft=fileTransfers.get(fileId);if(!ft||ft.state=='done')return;ft.state='done';fileTransfers.delete(fileId);
   try{
     const totalLen=ft.chunks.reduce((s,b)=>s+b.byteLength,0);
     const combined=new Uint8Array(totalLen);
@@ -1206,9 +1215,32 @@ async function assembleFile(fileId){
     const _blobUrl=URL.createObjectURL(_combinedBlob);
     // Сохраняем в blobs асинхронно — не блокируем показ файла
     saveBlob(fileId,combined.buffer).catch(e=>console.warn('[blobs] save error',e));
-    const finalMsg={id:fileId,text:ft.caption||'',type:'recv',time:new Date(ft.ts||Date.now()).toISOString(),reactions:{},edited:false,replyTo:null,delivered:true,forwarded:false,fileAvailable:null,file:{name:ft.name,type:ft.mimeType,size:ft.size,blobId:fileId,_tempUrl:_blobUrl}};
-    await upsertMsg(ft.senderId,finalMsg);await updateChat(ft.senderId,{lastMsg:`📁 ${ft.name}`,lastMsgTime:new Date(finalMsg.time).getTime()});
-    if(currentScreen==='scr-chat'&&activePid===ft.senderId){const existingRow=document.querySelector(`.msg-row[data-msgid="${fileId}"]`);if(existingRow)existingRow.replaceWith(buildRow(finalMsg));else appendOrReloadMsg(ft.senderId,finalMsg);}
+
+    // Сообщение для IndexedDB (без _tempUrl)
+    const finalMsg={
+      id:fileId,
+      text:ft.caption||'',
+      type:'recv',
+      time:new Date(ft.ts||Date.now()).toISOString(),
+      reactions:{},edited:false,replyTo:null,
+      delivered:true,forwarded:false,
+      fileAvailable:null,
+      file:{name:ft.name,type:ft.mimeType,size:ft.size,blobId:fileId}
+    };
+    await upsertMsg(ft.senderId,finalMsg);
+    await updateChat(ft.senderId,{lastMsg:`📁 ${ft.name}`,lastMsgTime:new Date(finalMsg.time).getTime()});
+
+    // Для немедленного показа видео добавляем _tempUrl «на лету»
+    const renderMsg={
+      ...finalMsg,
+      file:{...finalMsg.file, _tempUrl:_blobUrl}
+    };
+
+    if(currentScreen=='scr-chat'&&activePid===ft.senderId){
+      const existingRow=document.querySelector(`.msg-row[data-msgid="${fileId}"]`);
+      if(existingRow)existingRow.replaceWith(buildRow(renderMsg));
+      else appendOrReloadMsg(ft.senderId,renderMsg);
+    }
     wsSend({type:'ack-file',fileId});toast(`${ft.name} загружен ✓`);
   }catch(e){console.error('assembleFile error',e);toast('Ошибка сборки файла','err');const spinner=document.querySelector(`.tg-spinner[data-fileid="${fileId}"]`);if(spinner)resetSpinnerToDownload(spinner,fileId,ft.senderId);}
 }
@@ -1228,7 +1260,7 @@ async function handleFileRef(from,env){
   const placeholderMsg={id:fileId,text:text||'',type:'recv',time:new Date(ts||Date.now()).toISOString(),reactions:{},edited:false,replyTo:rt||null,delivered:true,forwarded:false,fileAvailable:{name:finfo.name,size:finfo.size,mimeType:finfo.mimeType,totalChunks:finfo.totalChunks,senderId:from}};
   await upsertMsg(from,placeholderMsg);
   await updateChat(from,{lastMsg:`📎 ${finfo.name}`,lastMsgTime:new Date(placeholderMsg.time).getTime()});
-  if(currentScreen==='scr-chat'&&activePid===from)appendOrReloadMsg(from,placeholderMsg);
+  if(currentScreen=='scr-chat'&&activePid===from)appendOrReloadMsg(from,placeholderMsg);
   else{const chat=(await loadChats()).find(c=>c.peerId===from);await updateChat(from,{unread:(chat?.unread||0)+1});toast(`📎 ${chat?.peerName||from}: ${finfo.name}`);}
 }
 
@@ -2225,8 +2257,6 @@ function buildRow(m){
   row.querySelectorAll('.spoiler').forEach(el=>el.addEventListener('click',e=>{e.stopPropagation();el.classList.toggle('revealed');}));
   return row;
 }
-
-
 
 // ══════════════════════════════════════════════════════
 // ── LIGHTBOX + PINCH-TO-ZOOM + PAN ──
