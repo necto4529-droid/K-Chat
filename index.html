@@ -2622,7 +2622,8 @@ async function broadcastLastSeenOff(){
     if(!key) continue;
     try{
       const enc = await encData(ENC.encode(JSON.stringify({type:'last-seen-off',v:1})), key);
-      wsSend({type:'send-msg', target:chat.peerId, msgId:uid(), payload:payloadToB64(enc), ephemeral:true});
+      // Убран ephemeral:true — событие сохраняется в офлайн-очередь
+      wsSend({type:'send-msg', target:chat.peerId, msgId:uid(), payload:payloadToB64(enc)});
     }catch(e){}
   }
 }
@@ -2638,7 +2639,8 @@ async function broadcastLastSeen(){
     if(!key) continue; // Нет ключа — не можем зашифровать
     try{
       const enc = await encData(ENC.encode(JSON.stringify({type:'last-seen',ts,v:1})), key);
-      wsSend({type:'send-msg', target:chat.peerId, msgId:uid(), payload:payloadToB64(enc), ephemeral:true});
+      // Убран ephemeral:true — событие сохраняется в офлайн-очередь
+      wsSend({type:'send-msg', target:chat.peerId, msgId:uid(), payload:payloadToB64(enc)});
     }catch(e){}
   }
 }
@@ -2663,6 +2665,15 @@ document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='hidden'){lastHiddenTime=Date.now();broadcastLastSeen().catch(()=>{});}
   else{ensureWS();const hd=Date.now()-lastHiddenTime;if(ignoreNextVisibilityReturn){ignoreNextVisibilityReturn=false;}else if(hd>3000){if(activePid)leaveChat();else goHome();}else if(activePid&&wsUp)wsSend({type:'query-presence',target:activePid});}
 });
+
+// ── Надёжная отправка last‑seen при закрытии/сворачивании ──
+window.addEventListener('pagehide', () => {
+  broadcastLastSeen().catch(() => {});
+});
+window.addEventListener('beforeunload', () => {
+  broadcastLastSeen().catch(() => {});
+});
+
 $('contactsSearch')?.addEventListener('input',renderContacts);
 
 // ── VOICE RECORDING ──
