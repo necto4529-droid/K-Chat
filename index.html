@@ -958,7 +958,7 @@ function startPeerActivity(type){
   // Всегда сбрасываем таймер автосброса при любом входящем heartbeat-сигнале
   clearTimeout(_activityClearTimer);
   // Автосброс через 5с если heartbeat прекратились (интервал отправки 3с + 2с запас)
-  _activityClearTimer=setTimeout(()=>{stopPeerActivity();updateBar();},5000);
+  _activityClearTimer=setTimeout(()=>{stopPeerActivity();updateBar();},15000);
 
   if(_peerActivityType===type) return; // уже показываем этот тип, таймер уже обновлён
 
@@ -1084,7 +1084,9 @@ async function sendFileToServer(fileInfo,caption){
   });
 
   clearInterval(_fileActivityHb);
-  _sendActivityStop(activePid);
+_sendActivityStop(activePid);
+// Дублируем стоп-сигнал через 2 секунды для гарантии доставки
+setTimeout(() => _sendActivityStop(activePid), 2000);
   await finalizeUploadUI(fileId,activePid);
   // Получатель узнаёт о файле через file-available от сервера.
   // Сервер сам ставит file-available в очередь — оно придёт при следующем подключении.
@@ -1102,7 +1104,12 @@ async function handleFileAvailable(msg){
   const placeholderMsg={id:fileId,text:caption||'',type:'recv',time:new Date(ts||Date.now()).toISOString(),reactions:{},edited:false,replyTo:null,delivered:true,forwarded:false,fileAvailable:{name,size,mimeType,totalChunks,senderId}};
   await upsertMsg(senderId,placeholderMsg);
   await updateChat(senderId,{lastMsg:`📎 ${name}`,lastMsgTime:new Date(placeholderMsg.time).getTime()});
-  if(currentScreen==='scr-chat'&&activePid===senderId)appendOrReloadMsg(senderId,placeholderMsg);
+  if(currentScreen==='scr-chat' && activePid===senderId) {
+  appendOrReloadMsg(senderId, placeholderMsg);
+  // Миниатюра пришла – статус «отправляет» больше не нужен
+  stopPeerActivity();
+  updateBar();
+}
   else{const chat=(await loadChats()).find(c=>c.peerId===senderId);await updateChat(senderId,{unread:(chat?.unread||0)+1});toast(`📎 ${chat?.peerName||senderId}: ${name}`);}
 }
 
