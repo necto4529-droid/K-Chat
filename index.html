@@ -1153,10 +1153,18 @@ async function _retryDownload(fileId){
   } else {
     wsSend({type:'fetch-file',fileId});
   }
-  ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId),60000);
+  ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId),120000); // 2 минуты
 }
 
-async function handleFileDataHeader(msg){const{fileId,senderId,name,size,mimeType,totalChunks,caption,ts}=msg;const ft=fileTransfers.get(fileId);if(!ft)return;ft.total=totalChunks;ft.chunks=new Array(totalChunks).fill(null);ft.received=0;ft.name=name;ft.size=size;ft.mimeType=mimeType;ft.caption=caption;ft.ts=ts;ft.senderId=senderId;}
+async function handleFileDataHeader(msg){
+  const{fileId,senderId,name,size,mimeType,totalChunks,caption,ts}=msg;
+  const ft=fileTransfers.get(fileId);if(!ft)return;
+  ft.total=totalChunks;ft.chunks=new Array(totalChunks).fill(null);ft.received=0;
+  ft.name=name;ft.size=size;ft.mimeType=mimeType;ft.caption=caption;ft.ts=ts;ft.senderId=senderId;
+  // Сбрасываем таймер и даём 2 минуты на получение первого чанка
+  clearTimeout(ft._timeoutTimer);
+  ft._timeoutTimer = setTimeout(() => _retryDownload(fileId), 120000);
+}
 
 // Очередь декрипта чанков — обрабатываем по одному чтобы не блокировать UI
 const _decryptQueue=new Map(); // fileId -> {queue:[], running:bool}
@@ -1189,6 +1197,9 @@ async function _processDecryptQueue(fileId){
 async function handleFileDataChunk(msg){
   const{fileId,index,total,data}=msg;
   const ft=fileTransfers.get(fileId);if(!ft)return;
+  // Сбрасываем таймаут при каждом полученном чанке
+  clearTimeout(ft._timeoutTimer);
+  ft._timeoutTimer = setTimeout(() => _retryDownload(fileId), 120000); // 2 минуты
   if(!ft.chunks)ft.chunks=new Array(total).fill(null);
   if(ft.chunks[index]!==null)return;
   // Ставим в очередь — не await сразу чтобы WS мог принять следующий chunk
