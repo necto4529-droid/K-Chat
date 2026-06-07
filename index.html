@@ -272,7 +272,7 @@
     .msg-row.sent .wf-bar{background:rgba(255,255,255,.25)}
     .msg-row.recv .wf-bar{background:rgba(255,255,255,.28)}
     .msg-row.sent .wf-bar.played{background:rgba(255,255,255,.95);box-shadow:0 0 3px rgba(255,255,255,.4)}
-    .msg-row.recv .wf-bar.played{background:rgba(0,217,255,.85)}
+    .msg-row.recv .wf-bar.played{background:var(--g);box-shadow:0 0 3px var(--g-35)}
     .wf-bar.active-bar{animation:wfPulse .5s ease-in-out infinite alternate}
     @keyframes wfPulse{from{filter:brightness(1)}to{filter:brightness(1.6)}}
     .voice-bottom{display:flex;align-items:center;gap:5px}
@@ -280,7 +280,7 @@
     .msg-row.sent .voice-timer{color:rgba(255,255,255,.65)}
     .voice-unread-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;transition:opacity .35s,transform .35s}
     .msg-row.sent .voice-unread-dot{background:var(--g-85)}
-    .msg-row.recv .voice-unread-dot{background:rgba(0,217,255,.85)}
+    .msg-row.recv .voice-unread-dot{background:var(--g);box-shadow:0 0 4px var(--g-40)}
     .voice-unread-dot.hidden{opacity:0;transform:scale(0);pointer-events:none}
     .voice-meta-inline{display:flex;align-items:center;gap:3px;margin-left:auto}
     .voice-meta-inline .msg-time-inline{color:rgba(255,255,255,.4)}
@@ -406,30 +406,104 @@
     #floatingDate.visible{opacity:1}
     #floatingDate .floating-date-pill{background:rgba(0,0,0,.72);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.12);border-radius:30px;padding:5px 16px;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:rgba(255,255,255,.78);letter-spacing:.3px;white-space:nowrap;box-shadow:0 2px 12px rgba(0,0,0,.55)}
 
-    /* ── SETTINGS MODAL ── */
-    .settings-section{margin-bottom:4px}
-    .settings-section-title{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;padding:0 2px}
-    .settings-id-row{display:flex;align-items:center;gap:10px;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:12px 14px}
-    .settings-id-value{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--g);flex:1;min-width:0;word-break:break-all;line-height:1.4}
-    .settings-copy-btn{width:36px;height:36px;border-radius:10px;background:var(--g-10);border:1px solid var(--g-25);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;flex-shrink:0;transition:background .2s,transform .15s}
-    .settings-copy-btn:hover{background:var(--g-20)}
-    .settings-copy-btn:active{transform:scale(.88)}
-    /* Цветовые темы */
-    .theme-grid{display:flex;gap:10px;flex-wrap:wrap;padding:4px 0}
-    .theme-swatch{width:46px;height:46px;border-radius:50%;cursor:pointer;position:relative;transition:transform .18s cubic-bezier(.34,1.56,.64,1),box-shadow .2s;border:3px solid transparent;flex-shrink:0}
-    .theme-swatch:hover{transform:scale(1.1)}
-    .theme-swatch:active{transform:scale(.92)}
-    .theme-swatch.active{border-color:#fff;box-shadow:0 0 0 2px rgba(255,255,255,.4),0 4px 16px rgba(0,0,0,.5)}
-    .theme-swatch.active::after{content:'✓';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;font-weight:700;text-shadow:0 1px 4px rgba(0,0,0,.7)}
-    .theme-swatch-label{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);text-align:center;margin-top:4px;display:block}
-    .theme-item{display:flex;flex-direction:column;align-items:center;gap:0}
-    /* Кнопка настроек */
-    .settings-danger-btn{width:100%;padding:13px;border:1px solid rgba(255,79,106,.3);background:rgba(255,79,106,.08);border-radius:var(--r-sm);font-family:'Syne',sans-serif;font-size:14px;font-weight:700;cursor:pointer;transition:background .2s,transform .15s;color:var(--err)}
-    .settings-danger-btn:hover{background:rgba(255,79,106,.16)}
-    .settings-danger-btn:active{transform:scale(.98)}
-    .settings-action-btn{width:100%;padding:12px;border:1px solid var(--border);background:rgba(255,255,255,.04);border-radius:var(--r-sm);font-family:'Syne',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:background .2s;color:var(--text);display:flex;align-items:center;gap:10px;justify-content:center}
-    .settings-action-btn:hover{background:rgba(255,255,255,.08)}
-    /* Кастомный confirm-диалог */
+    /* ══════════════════════════════════════════════════════
+       SETTINGS MODAL — новый дизайн (Manrope-sheet style)
+    ══════════════════════════════════════════════════════ */
+    /* Sheet контейнер */
+    .settings-sheet{background:rgba(19,19,23,.98);border-radius:20px 20px 0 0;width:100%;border-top:1px solid rgba(255,255,255,.08);padding-bottom:calc(24px + var(--safe-b));max-height:90dvh;overflow-y:auto;scrollbar-width:none}
+    .settings-sheet::-webkit-scrollbar{display:none}
+    /* Header */
+    .settings-hdr{display:flex;align-items:center;gap:10px;padding:20px 20px 14px;border-bottom:1px solid rgba(255,255,255,.05)}
+    .settings-hdr-icon{width:32px;height:32px;background:rgba(255,255,255,.07);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+    .settings-hdr-title{font-size:17px;font-weight:700;color:rgba(255,255,255,.92);letter-spacing:-.3px}
+    /* Секции */
+    .settings-sec{padding:0 14px;margin-top:4px}
+    .settings-sec-label{font-size:10px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;color:rgba(255,255,255,.3);padding:12px 6px 5px}
+    /* Карточка */
+    .settings-card{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.07);border-radius:12px;overflow:hidden}
+    /* ID строка */
+    .settings-id-row{display:flex;align-items:center;gap:10px;padding:12px 14px}
+    .settings-id-val{flex:1;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:500;color:var(--g);letter-spacing:.4px;min-width:0;word-break:break-all}
+    .settings-copy-pill{display:flex;align-items:center;gap:5px;padding:6px 10px;background:var(--g-10);border:1px solid var(--g-20);border-radius:8px;color:var(--g);font-family:'Syne',sans-serif;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;transition:background .15s,transform .12s;flex-shrink:0}
+    .settings-copy-pill:hover{background:var(--g-18)}
+    .settings-copy-pill:active{transform:scale(.94)}
+    /* Акцентный цвет — сетка */
+    .settings-accent-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;padding:14px}
+    .settings-accent-opt{display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer}
+    .settings-accent-sw{width:36px;height:36px;border-radius:10px;position:relative;transition:transform .15s,box-shadow .15s}
+    .settings-accent-sw:hover{transform:scale(1.08)}
+    .settings-accent-sw.active{box-shadow:0 0 0 2px var(--bg),0 0 0 4px rgba(255,255,255,.7);transform:scale(1.05)}
+    .settings-accent-sw-check{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+    .settings-accent-lbl{font-family:'JetBrains Mono',monospace;font-size:8.5px;color:rgba(255,255,255,.3);text-align:center}
+    .settings-accent-opt.active .settings-accent-lbl{color:rgba(255,255,255,.6)}
+    /* Toggle строка */
+    .settings-tog-row{display:flex;align-items:center;gap:12px;padding:12px 14px;cursor:pointer;transition:background .15s;user-select:none}
+    .settings-tog-row:hover{background:rgba(255,255,255,.04)}
+    .settings-tog-row:active{background:rgba(255,255,255,.07)}
+    .settings-tog-icon{font-size:16px;width:20px;text-align:center;flex-shrink:0}
+    .settings-tog-info{flex:1;min-width:0}
+    .settings-tog-title{font-size:14px;font-weight:600;color:rgba(255,255,255,.9);margin-bottom:2px}
+    .settings-tog-desc{font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(255,255,255,.3);line-height:1.4}
+    /* Toggle switch (без input) — JS-управляемый */
+    .settings-tog-sw{width:44px;height:24px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.1);border-radius:12px;position:relative;flex-shrink:0;transition:background .28s,border-color .28s}
+    .settings-tog-sw.on{background:var(--g-85);border-color:var(--g)}
+    .settings-tog-knob{position:absolute;top:2px;left:2px;width:18px;height:18px;background:#fff;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.35);transition:transform .28s cubic-bezier(.34,1.56,.64,1)}
+    .settings-tog-sw.on .settings-tog-knob{transform:translateX(20px)}
+    /* Danger card */
+    .settings-danger-card{background:rgba(255,79,106,.07);border:1px solid rgba(255,79,106,.2);border-radius:12px;overflow:hidden}
+    .settings-danger-row{display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;transition:background .2s}
+    .settings-danger-row:hover{background:rgba(255,79,106,.1)}
+    .settings-danger-row:active{background:rgba(255,79,106,.15)}
+    .settings-danger-icon{font-size:15px;width:20px;text-align:center}
+    .settings-danger-info{flex:1}
+    .settings-danger-title{font-size:13.5px;font-weight:700;color:var(--err)}
+    .settings-danger-desc{font-size:10.5px;color:rgba(255,79,106,.55);margin-top:2px}
+    .settings-danger-chevron{color:rgba(255,79,106,.5);font-size:13px;transition:transform .28s cubic-bezier(.4,0,.2,1)}
+    /* Confirm inline в danger card */
+    .settings-danger-confirm{padding:12px 14px;background:rgba(255,79,106,.06);border-top:1px solid rgba(255,79,106,.18);animation:sfadeIn .25s ease}
+    @keyframes sfadeIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+    .settings-danger-confirm-text{font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(255,79,106,.7);line-height:1.5;margin-bottom:10px}
+    .settings-danger-confirm-btns{display:flex;gap:8px}
+    .settings-dcbtn-cancel{flex:1;padding:8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:8px;color:rgba(255,255,255,.6);font-family:'Syne',sans-serif;font-size:12.5px;font-weight:700;cursor:pointer;transition:background .15s}
+    .settings-dcbtn-cancel:hover{background:rgba(255,255,255,.1)}
+    .settings-dcbtn-yes{flex:1;padding:8px;background:var(--err);border:1px solid var(--err);border-radius:8px;color:#fff;font-family:'Syne',sans-serif;font-size:12.5px;font-weight:700;cursor:pointer;transition:opacity .15s,transform .12s}
+    .settings-dcbtn-yes:hover{opacity:.85}
+    .settings-dcbtn-yes:active{transform:scale(.96)}
+    /* Версия */
+    .settings-version{display:flex;align-items:center;justify-content:center;gap:6px;padding:12px 0 4px}
+    .settings-version span{font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(255,255,255,.2)}
+    .settings-version-dot{width:3px;height:3px;border-radius:50%;background:rgba(255,255,255,.15)}
+    /* ── DANGER CONFIRM DIALOG (в стиле sheet) ── */
+    .danger-dialog-overlay{position:fixed;inset:0;z-index:600;background:rgba(0,0,0,.72);backdrop-filter:blur(8px);display:flex;align-items:flex-end;justify-content:center;opacity:0;pointer-events:none;transition:opacity .25s}
+    .danger-dialog-overlay.open{opacity:1;pointer-events:all}
+    .danger-dialog-sheet{width:100%;max-width:480px;background:rgba(19,19,23,.99);border:1px solid rgba(255,79,106,.18);border-bottom:none;border-radius:20px 20px 0 0;padding:0 0 calc(20px + var(--safe-b));transform:translateY(100%);transition:transform .35s cubic-bezier(.32,.72,0,1)}
+    .danger-dialog-overlay.open .danger-dialog-sheet{transform:translateY(0)}
+    .danger-dialog-handle{width:36px;height:4px;background:rgba(255,79,106,.25);border-radius:2px;margin:14px auto 0}
+    .danger-dialog-header{display:flex;align-items:center;gap:12px;padding:20px 20px 14px;border-bottom:1px solid rgba(255,79,106,.1)}
+    .danger-dialog-icon-wrap{width:44px;height:44px;border-radius:12px;background:rgba(255,79,106,.12);border:1px solid rgba(255,79,106,.25);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+    .danger-dialog-header-text{flex:1}
+    .danger-dialog-title{font-size:17px;font-weight:700;color:rgba(255,255,255,.95);letter-spacing:-.3px;margin-bottom:2px}
+    .danger-dialog-subtitle{font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(255,79,106,.65);letter-spacing:.3px}
+    .danger-dialog-body{padding:18px 20px 4px}
+    .danger-dialog-warning{background:rgba(255,79,106,.07);border:1px solid rgba(255,79,106,.15);border-radius:12px;padding:14px;margin-bottom:16px}
+    .danger-dialog-warning-row{display:flex;align-items:flex-start;gap:10px;margin-bottom:8px}
+    .danger-dialog-warning-row:last-child{margin-bottom:0}
+    .danger-dialog-warning-icon{font-size:14px;flex-shrink:0;margin-top:1px}
+    .danger-dialog-warning-text{font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(255,79,106,.75);line-height:1.5}
+    .danger-dialog-input-wrap{margin-bottom:16px}
+    .danger-dialog-input-label{font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(255,255,255,.4);letter-spacing:.5px;margin-bottom:6px}
+    .danger-dialog-input{width:100%;background:rgba(255,79,106,.06);border:1px solid rgba(255,79,106,.2);border-radius:10px;padding:11px 14px;color:rgba(255,255,255,.9);font-family:'JetBrains Mono',monospace;font-size:14px;outline:none;transition:border-color .2s,box-shadow .2s;letter-spacing:1px;text-align:center}
+    .danger-dialog-input:focus{border-color:rgba(255,79,106,.5);box-shadow:0 0 0 3px rgba(255,79,106,.08)}
+    .danger-dialog-input::placeholder{color:rgba(255,79,106,.35);letter-spacing:.3px;font-size:12px}
+    .danger-dialog-btns{display:flex;flex-direction:column;gap:8px;padding:0 20px}
+    .danger-dialog-btn-yes{width:100%;padding:13px;background:rgba(255,79,106,.15);border:1px solid rgba(255,79,106,.35);border-radius:12px;color:var(--err);font-family:'Syne',sans-serif;font-size:14px;font-weight:700;cursor:pointer;transition:background .2s,transform .12s,opacity .2s;display:flex;align-items:center;justify-content:center;gap:8px}
+    .danger-dialog-btn-yes:hover:not(:disabled){background:rgba(255,79,106,.25)}
+    .danger-dialog-btn-yes:active:not(:disabled){transform:scale(.98)}
+    .danger-dialog-btn-yes:disabled{opacity:.35;cursor:default}
+    .danger-dialog-btn-no{width:100%;padding:12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;color:rgba(255,255,255,.55);font-family:'Syne',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:background .2s}
+    .danger-dialog-btn-no:hover{background:rgba(255,255,255,.08)}
+    /* ── КОНЕЦ DANGER CONFIRM DIALOG ── */
+    /* Кнопка confirm-overlay (глобальный диалог, не settings) */
     .confirm-overlay{position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.75);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;padding:24px;opacity:0;pointer-events:none;transition:opacity .25s}
     .confirm-overlay.open{opacity:1;pointer-events:all}
     .confirm-box{background:#0d0d1f;border:1px solid rgba(255,79,106,.35);border-radius:22px;padding:28px 22px 22px;max-width:340px;width:100%;display:flex;flex-direction:column;gap:16px;transform:scale(.92);transition:transform .28s cubic-bezier(.34,1.56,.64,1)}
@@ -443,17 +517,6 @@
     .confirm-yes:active{transform:scale(.97)}
     .confirm-no{padding:12px;border:1px solid var(--border);background:transparent;border-radius:var(--r-sm);color:var(--muted);font-family:'Syne',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:background .2s}
     .confirm-no:hover{background:rgba(255,255,255,.05)}
-    /* Toggle switch */
-    .settings-toggle-row{display:flex;align-items:flex-start;gap:14px;padding:12px 14px;background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.07);border-radius:12px}
-    .settings-toggle-info{flex:1;min-width:0}
-    .settings-toggle-label{font-size:14px;font-weight:600;color:var(--text);margin-bottom:3px}
-    .settings-toggle-desc{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);line-height:1.55}
-    .toggle-switch{position:relative;width:48px;height:26px;flex-shrink:0;margin-top:1px}
-    .toggle-switch input{opacity:0;width:0;height:0;position:absolute}
-    .toggle-track{position:absolute;inset:0;border-radius:13px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.1);cursor:pointer;transition:background .25s,border-color .25s}
-    .toggle-switch input:checked+.toggle-track{background:var(--g-85);border-color:var(--g)}
-    .toggle-thumb{position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.4);transition:transform .25s cubic-bezier(.34,1.56,.64,1);pointer-events:none}
-    .toggle-switch input:checked~.toggle-thumb{transform:translateX(22px)}
 
     /* ── КАСТОМНЫЙ АУДИО-ПЛЕЕР (Telegram-стиль) ── */
     /* Пузырь для аудио: фон как у обычного sent/recv bubble */
@@ -693,6 +756,7 @@
   </div>
 </div>
 
+
 <script>
 (function(){
 'use strict';
@@ -701,8 +765,8 @@ const SIGNAL_URL='wss://signal-server-aipd.onrender.com';
 const A2_MEM=65536,A2_TIME=3,A2_PAR=1;
 const QUICK_EMOJIS=['❤️','👍','😂','🔥','👏','😮','😢','➕'];
 const EXTENDED_EMOJIS=['❤️‍🔥','😁','👎','🥴','👌','😭','😱','💋','🤝','🥰','🤔','🤯','😡','🎉','🤩','🤮','💩','🙏','🕊️','🤡','🥱','😍','🐳','🌚','🌭','💯','⚡','🍌','🏆','💔','😑','🍓','🍾','🖕','😈','😴','🤓','👻','👨‍💻','👀','🎃','🙈','😇','✍️','🤗','🫡','💅','🤪','🗿','🆒','💘','🦄','😘','💊','😎','👾','🤨','🙉','🥺','☠️','💦','🫂','💪','🤧'];
-const WF_BARS=40,PREV_WF_BARS=25,MAX_VOICE_SEC=300,MAX_REACTIONS_PER_MSG=3;
-const MAX_FILE_SIZE=1024*1024*1024,CHUNK_SIZE=256*1024,STORE_BATCH=3;
+const WF_BARS=40,PREV_WF_BARS=25,MAX_VOICE_SEC=120,MAX_REACTIONS_PER_MSG=3;
+const MAX_FILE_SIZE=500*1024*1024,CHUNK_SIZE=256*1024,STORE_BATCH=3;
 
 const ENC=new TextEncoder(),DEC=new TextDecoder();
 const $=id=>document.getElementById(id);
@@ -957,7 +1021,7 @@ function startPeerActivity(type){
   // Всегда сбрасываем таймер автосброса при любом входящем heartbeat-сигнале
   clearTimeout(_activityClearTimer);
   // Автосброс через 5с если heartbeat прекратились (интервал отправки 3с + 2с запас)
-  _activityClearTimer=setTimeout(()=>{stopPeerActivity();updateBar();},15000);
+  _activityClearTimer=setTimeout(()=>{stopPeerActivity();updateBar();},5000);
 
   if(_peerActivityType===type) return; // уже показываем этот тип, таймер уже обновлён
 
@@ -1045,7 +1109,7 @@ async function sendFileToServer(fileInfo,caption){
 
   // Сигнал "отправляет файл" + heartbeat каждые 3с
   _sendActivitySignal(activePid,'sending_file');
-  const _fileActivityHb=setInterval(()=>{if(activePid)_sendActivitySignal(activePid,'sending_file');},6000);
+  const _fileActivityHb=setInterval(()=>{if(activePid)_sendActivitySignal(activePid,'sending_file');},3000);
 
   const fileBuffer=await readFileAsArrayBuffer(fileInfo.blob);
   const totalChunks=Math.ceil(fileBuffer.byteLength/CHUNK_SIZE);
@@ -1075,26 +1139,18 @@ async function sendFileToServer(fileInfo,caption){
     if(end<totalChunks) await new Promise(r=>setTimeout(r,0));
   }
 
-  // ── ИСПРАВЛЕНИЕ 1: перерисовываем видео сразу после отправки последнего чанка ──
   // Снимаем флаг uploading
   await withChatLock(activePid,async()=>{
     const msgs=await loadMsgs(activePid);
     const idx=msgs.findIndex(x=>x.id===fileId);
-    if(idx!==-1){
-      msgs[idx].uploading=false;
-      // Для видео достаточно blobId — плеер загрузит его через loadBlob
-      await saveMsgs(activePid,msgs);
-    }
+    if(idx!==-1){msgs[idx].uploading=false;await saveMsgs(activePid,msgs);}
   });
 
-  // НЕМЕДЛЕННО перерисовываем видео у отправителя
+  // НЕМЕДЛЕННО финализируем UI у отправителя — не ждём file-upload-complete от сервера
   await finalizeUploadUI(fileId,activePid);
-
   clearInterval(_fileActivityHb);
   _sendActivityStop(activePid);
-  // Дублируем стоп-сигнал через 2 секунды для гарантии доставки
-  setTimeout(() => _sendActivityStop(activePid), 2000);
-  // file-upload-complete от сервера всё равно придёт, но нам уже не важно
+  setTimeout(()=>_sendActivityStop(activePid),2000);
   return fileId;
 }
 
@@ -1109,16 +1165,8 @@ async function handleFileAvailable(msg){
   const placeholderMsg={id:fileId,text:caption||'',type:'recv',time:new Date(ts||Date.now()).toISOString(),reactions:{},edited:false,replyTo:null,delivered:true,forwarded:false,fileAvailable:{name,size,mimeType,totalChunks,senderId}};
   await upsertMsg(senderId,placeholderMsg);
   await updateChat(senderId,{lastMsg:`📎 ${name}`,lastMsgTime:new Date(placeholderMsg.time).getTime()});
-  if(currentScreen==='scr-chat' && activePid===senderId) {
-    appendOrReloadMsg(senderId, placeholderMsg);
-    // Миниатюра пришла – статус «отправляет» больше не нужен
-    stopPeerActivity();
-    updateBar();
-  } else {
-    const chat=(await loadChats()).find(c=>c.peerId===senderId);
-    await updateChat(senderId,{unread:(chat?.unread||0)+1});
-    toast(`📎 ${chat?.peerName||senderId}: ${name}`);
-  }
+  if(currentScreen==='scr-chat'&&activePid===senderId)appendOrReloadMsg(senderId,placeholderMsg);
+  else{const chat=(await loadChats()).find(c=>c.peerId===senderId);await updateChat(senderId,{unread:(chat?.unread||0)+1});toast(`📎 ${chat?.peerName||senderId}: ${name}`);}
 }
 
 async function downloadFileFromServer(fileId,senderId){
@@ -1133,7 +1181,7 @@ async function downloadFileFromServer(fileId,senderId){
 
 async function _retryDownload(fileId){
   const ft=fileTransfers.get(fileId);
-  if(!ft||ft.state=='done')return;
+  if(!ft||ft.state==='done')return;
   if(ft.retries>=ft.maxRetries){
     toast('Не удалось загрузить файл после нескольких попыток','err');
     fileTransfers.delete(fileId);
@@ -1153,18 +1201,10 @@ async function _retryDownload(fileId){
   } else {
     wsSend({type:'fetch-file',fileId});
   }
-  ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId),120000); // 2 минуты
+  ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId),60000);
 }
 
-async function handleFileDataHeader(msg){
-  const{fileId,senderId,name,size,mimeType,totalChunks,caption,ts}=msg;
-  const ft=fileTransfers.get(fileId);if(!ft)return;
-  ft.total=totalChunks;ft.chunks=new Array(totalChunks).fill(null);ft.received=0;
-  ft.name=name;ft.size=size;ft.mimeType=mimeType;ft.caption=caption;ft.ts=ts;ft.senderId=senderId;
-  // Сбрасываем таймер и даём 2 минуты на получение первого чанка
-  clearTimeout(ft._timeoutTimer);
-  ft._timeoutTimer = setTimeout(() => _retryDownload(fileId), 120000);
-}
+async function handleFileDataHeader(msg){const{fileId,senderId,name,size,mimeType,totalChunks,caption,ts}=msg;const ft=fileTransfers.get(fileId);if(!ft)return;ft.total=totalChunks;ft.chunks=new Array(totalChunks).fill(null);ft.received=0;ft.name=name;ft.size=size;ft.mimeType=mimeType;ft.caption=caption;ft.ts=ts;ft.senderId=senderId;}
 
 // Очередь декрипта чанков — обрабатываем по одному чтобы не блокировать UI
 const _decryptQueue=new Map(); // fileId -> {queue:[], running:bool}
@@ -1197,9 +1237,6 @@ async function _processDecryptQueue(fileId){
 async function handleFileDataChunk(msg){
   const{fileId,index,total,data}=msg;
   const ft=fileTransfers.get(fileId);if(!ft)return;
-  // Сбрасываем таймаут при каждом полученном чанке
-  clearTimeout(ft._timeoutTimer);
-  ft._timeoutTimer = setTimeout(() => _retryDownload(fileId), 120000); // 2 минуты
   if(!ft.chunks)ft.chunks=new Array(total).fill(null);
   if(ft.chunks[index]!==null)return;
   // Ставим в очередь — не await сразу чтобы WS мог принять следующий chunk
@@ -1208,9 +1245,8 @@ async function handleFileDataChunk(msg){
   _processDecryptQueue(fileId); // fire-and-forget
 }
 
-// ── ИСПРАВЛЕНИЕ 2: assembleFile — _tempUrl не сохраняется в IndexedDB ──
 async function assembleFile(fileId){
-  const ft=fileTransfers.get(fileId);if(!ft||ft.state=='done')return;ft.state='done';fileTransfers.delete(fileId);
+  const ft=fileTransfers.get(fileId);if(!ft||ft.state==='done')return;ft.state='done';fileTransfers.delete(fileId);
   try{
     const totalLen=ft.chunks.reduce((s,b)=>s+b.byteLength,0);
     const combined=new Uint8Array(totalLen);
@@ -1226,28 +1262,13 @@ async function assembleFile(fileId){
     const _blobUrl=URL.createObjectURL(_combinedBlob);
     // Сохраняем в blobs асинхронно — не блокируем показ файла
     saveBlob(fileId,combined.buffer).catch(e=>console.warn('[blobs] save error',e));
-
-    // Сообщение для IndexedDB (без _tempUrl)
-    const finalMsg={
-      id:fileId,
-      text:ft.caption||'',
-      type:'recv',
-      time:new Date(ft.ts||Date.now()).toISOString(),
-      reactions:{},edited:false,replyTo:null,
-      delivered:true,forwarded:false,
-      fileAvailable:null,
-      file:{name:ft.name,type:ft.mimeType,size:ft.size,blobId:fileId}
-    };
+    // Сообщение для IndexedDB — БЕЗ _tempUrl (он не выживает после перезагрузки)
+    const finalMsg={id:fileId,text:ft.caption||'',type:'recv',time:new Date(ft.ts||Date.now()).toISOString(),reactions:{},edited:false,replyTo:null,delivered:true,forwarded:false,fileAvailable:null,file:{name:ft.name,type:ft.mimeType,size:ft.size,blobId:fileId}};
     await upsertMsg(ft.senderId,finalMsg);
     await updateChat(ft.senderId,{lastMsg:`📁 ${ft.name}`,lastMsgTime:new Date(finalMsg.time).getTime()});
-
-    // Для немедленного показа видео добавляем _tempUrl «на лету»
-    const renderMsg={
-      ...finalMsg,
-      file:{...finalMsg.file, _tempUrl:_blobUrl}
-    };
-
-    if(currentScreen=='scr-chat'&&activePid===ft.senderId){
+    // Для немедленного показа добавляем _tempUrl только в рендер-объект (не в БД)
+    const renderMsg={...finalMsg,file:{...finalMsg.file,_tempUrl:_blobUrl}};
+    if(currentScreen==='scr-chat'&&activePid===ft.senderId){
       const existingRow=document.querySelector(`.msg-row[data-msgid="${fileId}"]`);
       if(existingRow)existingRow.replaceWith(buildRow(renderMsg));
       else appendOrReloadMsg(ft.senderId,renderMsg);
@@ -1271,7 +1292,7 @@ async function handleFileRef(from,env){
   const placeholderMsg={id:fileId,text:text||'',type:'recv',time:new Date(ts||Date.now()).toISOString(),reactions:{},edited:false,replyTo:rt||null,delivered:true,forwarded:false,fileAvailable:{name:finfo.name,size:finfo.size,mimeType:finfo.mimeType,totalChunks:finfo.totalChunks,senderId:from}};
   await upsertMsg(from,placeholderMsg);
   await updateChat(from,{lastMsg:`📎 ${finfo.name}`,lastMsgTime:new Date(placeholderMsg.time).getTime()});
-  if(currentScreen=='scr-chat'&&activePid===from)appendOrReloadMsg(from,placeholderMsg);
+  if(currentScreen==='scr-chat'&&activePid===from)appendOrReloadMsg(from,placeholderMsg);
   else{const chat=(await loadChats()).find(c=>c.peerId===from);await updateChat(from,{unread:(chat?.unread||0)+1});toast(`📎 ${chat?.peerName||from}: ${finfo.name}`);}
 }
 
@@ -1531,18 +1552,24 @@ document.addEventListener('click',e=>{if(fabOpen&&!$('fabWrap').contains(e.targe
 window.onNewChat=()=>{closeFab();_openChatAfterSave=true;openAddContact();};
 window.onNewGroup=()=>{closeFab();toast('Создание групп скоро появится','warn');};
 window.openSettings=()=>openSettingsModal();
+window.closeSettingsModal=()=>closeSettingsModal();
 
 // ══════════════════════════════════════════════════════
 // ── ТЕМЫ / АКЦЕНТНЫЕ ЦВЕТА ──
 // ══════════════════════════════════════════════════════
 const THEMES = [
-  {id:'green',  label:'Зелёный', g:'#00ff88', b:'#00d9ff', grad:'linear-gradient(135deg,#00ff88,#00d9ff)'},
-  {id:'blue',   label:'Синий',   g:'#4d9fff', b:'#00cfff', grad:'linear-gradient(135deg,#4d9fff,#00cfff)'},
-  {id:'purple', label:'Фиолет.', g:'#b06aff', b:'#e040fb', grad:'linear-gradient(135deg,#b06aff,#e040fb)'},
-  {id:'red',    label:'Красный', g:'#ff4f6a', b:'#ff8c42', grad:'linear-gradient(135deg,#ff4f6a,#ff2244)'},
-  {id:'orange', label:'Оранж.',  g:'#ffa62b', b:'#ff6f00', grad:'linear-gradient(135deg,#ffa62b,#ff6f00)'},
-  {id:'yellow', label:'Жёлтый', g:'#ffe033', b:'#ffb300', grad:'linear-gradient(135deg,#ffe033,#ffb300)'},
-  {id:'pink',   label:'Розовый', g:'#ff6eb4', b:'#ff3d9a', grad:'linear-gradient(135deg,#ff6eb4,#ff3d9a)'},
+  {id:'green',   label:'Зелёный',  g:'#00ff88', b:'#00d9ff', grad:'linear-gradient(135deg,#00ff88,#00d9ff)'},
+  {id:'blue',    label:'Синий',    g:'#4d9fff', b:'#00cfff', grad:'linear-gradient(135deg,#4d9fff,#00cfff)'},
+  {id:'purple',  label:'Фиолет.',  g:'#b06aff', b:'#e040fb', grad:'linear-gradient(135deg,#b06aff,#e040fb)'},
+  {id:'red',     label:'Красный',  g:'#ff4f6a', b:'#ff2244', grad:'linear-gradient(135deg,#ff4f6a,#ff2244)'},
+  {id:'orange',  label:'Оранж.',   g:'#ffa62b', b:'#ff6f00', grad:'linear-gradient(135deg,#ffa62b,#ff6f00)'},
+  {id:'yellow',  label:'Жёлтый',   g:'#ffe033', b:'#ffb300', grad:'linear-gradient(135deg,#ffe033,#ffb300)'},
+  {id:'pink',    label:'Розовый',  g:'#ff6eb4', b:'#ff3d9a', grad:'linear-gradient(135deg,#ff6eb4,#ff3d9a)'},
+  {id:'cyan',    label:'Голубой',  g:'#06B6D4', b:'#0ea5e9', grad:'linear-gradient(135deg,#06B6D4,#0ea5e9)'},
+  {id:'teal',    label:'Бирюза',   g:'#14B8A6', b:'#06b6d4', grad:'linear-gradient(135deg,#14B8A6,#06b6d4)'},
+  {id:'indigo',  label:'Индиго',   g:'#6366F1', b:'#8B5CF6', grad:'linear-gradient(135deg,#6366F1,#8B5CF6)'},
+  {id:'rose',    label:'Роза',     g:'#F43F5E', b:'#fb7185', grad:'linear-gradient(135deg,#F43F5E,#fb7185)'},
+  {id:'emerald', label:'Изумруд',  g:'#059669', b:'#10b981', grad:'linear-gradient(135deg,#059669,#10b981)'},
 ];
 
 function applyTheme(themeId){
@@ -1617,49 +1644,84 @@ function openSettingsModal(){
     modal = document.createElement('div');
     modal.id = 'settingsModal';
     modal.className = 'modal-overlay';
+    // Строим sheet с новым дизайном
     modal.innerHTML = `
-      <div class="modal" style="gap:18px">
-        <div class="modal-handle"></div>
-        <div class="modal-title">⚙️ Настройки</div>
+      <div class="settings-sheet">
+        <div class="modal-handle" style="width:36px;height:4px;background:rgba(255,255,255,.15);border-radius:2px;margin:14px auto 0"></div>
 
-        <!-- МОЙ ID -->
-        <div class="settings-section">
-          <div class="settings-section-title">Мой ID</div>
-          <div class="settings-id-row">
-            <div class="settings-id-value" id="settingsMyId">${MY_ID}</div>
-            <div class="settings-copy-btn" id="settingsCopyBtn" title="Скопировать ID">📋</div>
-          </div>
+        <!-- Header -->
+        <div class="settings-hdr">
+          <div class="settings-hdr-icon">⚙️</div>
+          <span class="settings-hdr-title">Настройки</span>
         </div>
 
-        <!-- АКЦЕНТНЫЙ ЦВЕТ -->
-        <div class="settings-section">
-          <div class="settings-section-title">Акцентный цвет</div>
-          <div class="theme-grid" id="themeGrid"></div>
-        </div>
-
-        <!-- КОНФИДЕНЦИАЛЬНОСТЬ -->
-        <div class="settings-section">
-          <div class="settings-section-title">Конфиденциальность</div>
-          <div class="settings-toggle-row">
-            <div class="settings-toggle-info">
-              <div class="settings-toggle-label">🕐 Время захода</div>
-              <div class="settings-toggle-desc">Включает или отключает отображение, когда вы были последний раз в сети</div>
+        <!-- Мой ID -->
+        <div class="settings-sec">
+          <div class="settings-sec-label">Мой ID</div>
+          <div class="settings-card">
+            <div class="settings-id-row">
+              <span class="settings-id-val" id="settingsMyId">${MY_ID}</span>
+              <div class="settings-copy-pill" id="settingsCopyPill">📋 Копировать</div>
             </div>
-            <label class="toggle-switch">
-              <input type="checkbox" id="lastSeenToggle">
-              <div class="toggle-track"></div>
-              <div class="toggle-thumb"></div>
-            </label>
           </div>
         </div>
 
-        <!-- ОПАСНАЯ ЗОНА -->
-        <div class="settings-section">
-          <div class="settings-section-title">Опасная зона</div>
-          <button class="settings-danger-btn" id="eraseAllBtn">🧹 Стереть все данные</button>
+        <!-- Акцентный цвет -->
+        <div class="settings-sec">
+          <div class="settings-sec-label">Акцентный цвет</div>
+          <div class="settings-card">
+            <div class="settings-accent-grid" id="settingsAccentGrid"></div>
+          </div>
         </div>
 
-        <button class="btn btn-ghost" onclick="closeSettingsModal()" style="margin-top:0">Закрыть</button>
+        <!-- Конфиденциальность -->
+        <div class="settings-sec">
+          <div class="settings-sec-label">Конфиденциальность</div>
+          <div class="settings-card">
+            <div class="settings-tog-row" id="lastSeenRow">
+              <span class="settings-tog-icon">🕐</span>
+              <div class="settings-tog-info">
+                <div class="settings-tog-title">Время захода</div>
+                <div class="settings-tog-desc">Показывать другим, когда вы были в сети</div>
+              </div>
+              <div class="settings-tog-sw" id="lastSeenSw"><div class="settings-tog-knob"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Опасная зона -->
+        <div class="settings-sec">
+          <div class="settings-sec-label">Опасная зона</div>
+          <div class="settings-danger-card">
+            <div class="settings-danger-row" id="settingsDangerRow">
+              <span class="settings-danger-icon">🗑</span>
+              <div class="settings-danger-info">
+                <div class="settings-danger-title">Стереть все данные</div>
+                <div class="settings-danger-desc">Удаление необратимо — восстановление невозможно</div>
+              </div>
+              <span class="settings-danger-chevron" id="settingsDangerChevron">›</span>
+            </div>
+            <div id="settingsDangerConfirm" style="display:none" class="settings-danger-confirm">
+              <div class="settings-danger-confirm-text">Все сообщения, контакты и ключи шифрования будут удалены без возможности восстановления. Вы уверены?</div>
+              <div class="settings-danger-confirm-btns">
+                <button class="settings-dcbtn-cancel" id="settingsDcCancel">Отмена</button>
+                <button class="settings-dcbtn-yes" id="settingsDcYes">Удалить</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Версия -->
+        <div class="settings-version">
+          <span>v1.0.3.5</span>
+          <div class="settings-version-dot"></div>
+          <span>K-Chat E2EE</span>
+        </div>
+
+        <!-- Кнопка закрыть -->
+        <div style="padding:4px 14px 0">
+          <button class="btn btn-ghost" onclick="closeSettingsModal()" style="margin:0;border-radius:12px;font-size:14px;padding:12px">Закрыть</button>
+        </div>
       </div>
     `;
     modal.addEventListener('click', e => { if(e.target===modal) closeSettingsModal(); });
@@ -1670,84 +1732,216 @@ function openSettingsModal(){
   const idEl = document.getElementById('settingsMyId');
   if(idEl) idEl.textContent = MY_ID;
 
-  // Кнопка копировать ID
-  const copyBtn = document.getElementById('settingsCopyBtn');
-  if(copyBtn){
-    copyBtn.onclick = () => {
+  // Копирование ID
+  const copyPill = document.getElementById('settingsCopyPill');
+  if(copyPill){
+    copyPill.onclick = () => {
       copyToClipboard(MY_ID).then(()=>{
-        copyBtn.textContent='✓';
-        copyBtn.style.color='var(--g)';
-        setTimeout(()=>{copyBtn.textContent='📋';copyBtn.style.color='';},1500);
+        copyPill.textContent = '✓ Скопировано';
+        copyPill.style.background = 'var(--g-20)';
+        setTimeout(()=>{copyPill.textContent='📋 Копировать';copyPill.style.background='';},1500);
+        toast('ID скопирован ✓');
       });
     };
   }
 
-  // Рендерим свотчи тем
-  const grid = document.getElementById('themeGrid');
+  // Рендерим акцентные свотчи
+  const grid = document.getElementById('settingsAccentGrid');
   if(grid){
     const currentTheme = lsGet('bc_theme','green');
     grid.innerHTML = '';
     THEMES.forEach(t => {
-      const item = document.createElement('div');
-      item.className = 'theme-item';
-      const swatch = document.createElement('div');
-      swatch.className = 'theme-swatch' + (t.id===currentTheme?' active':'');
-      swatch.style.background = t.grad;
-      swatch.title = t.label;
-      swatch.onclick = () => {
+      const opt = document.createElement('div');
+      opt.className = 'settings-accent-opt' + (t.id===currentTheme?' active':'');
+      const sw = document.createElement('div');
+      sw.className = 'settings-accent-sw' + (t.id===currentTheme?' active':'');
+      sw.style.background = t.grad;
+      if(t.id===currentTheme){
+        const chk = document.createElement('div');
+        chk.className = 'settings-accent-sw-check';
+        chk.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 7L5.5 10L11.5 4" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        sw.appendChild(chk);
+      }
+      const lbl = document.createElement('span');
+      lbl.className = 'settings-accent-lbl';
+      lbl.textContent = t.label;
+      opt.appendChild(sw);
+      opt.appendChild(lbl);
+      opt.onclick = () => {
         applyTheme(t.id);
-        grid.querySelectorAll('.theme-swatch').forEach(s=>s.classList.remove('active'));
-        swatch.classList.add('active');
-        toast('Тема изменена ✓');
+        // Перерисовываем сетку
+        const g2 = document.getElementById('settingsAccentGrid');
+        if(g2){
+          const cur = t.id;
+          g2.querySelectorAll('.settings-accent-opt').forEach((el,i)=>{
+            const tid = THEMES[i]?.id;
+            el.classList.toggle('active', tid===cur);
+            const s2 = el.querySelector('.settings-accent-sw');
+            s2.classList.toggle('active', tid===cur);
+            let chk2 = s2.querySelector('.settings-accent-sw-check');
+            if(tid===cur && !chk2){
+              chk2 = document.createElement('div');
+              chk2.className = 'settings-accent-sw-check';
+              chk2.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 7L5.5 10L11.5 4" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+              s2.appendChild(chk2);
+            } else if(tid!==cur && chk2){
+              chk2.remove();
+            }
+            const lbl2 = el.querySelector('.settings-accent-lbl');
+            if(lbl2) lbl2.className = 'settings-accent-lbl' + (tid===cur?' active':'');
+          });
+        }
+        toast('Тема: '+t.label);
       };
-      const label = document.createElement('span');
-      label.className = 'theme-swatch-label';
-      label.textContent = t.label;
-      item.appendChild(swatch);
-      item.appendChild(label);
-      grid.appendChild(item);
+      grid.appendChild(opt);
     });
   }
 
-  // Кнопка стереть всё
-  const eraseBtn = document.getElementById('eraseAllBtn');
-  if(eraseBtn){
-    eraseBtn.onclick = () => {
-      showConfirm({
-        icon: '🧹',
-        title: 'Стереть все данные?',
-        text: 'Вы точно хотите стереть все данные с устройства? Это действие необратимо! Все чаты, история, контакты и ключи шифрования будут удалены навсегда.',
-        yesLabel: '🧹 Да, стереть всё',
-        noLabel: 'Отмена',
-        onYes: () => {
-          localStorage.clear();
-          indexedDB.deleteDatabase(DB_NAME);
-          setTimeout(()=>location.reload(), 200);
-        }
-      });
+  // Toggle "Время захода" — без input[type=checkbox], JS-управляемый
+  const lastSeenEnabled = lsGet('bc_last_seen_enabled', false);
+  const sw = document.getElementById('lastSeenSw');
+  const row = document.getElementById('lastSeenRow');
+  if(sw) sw.classList.toggle('on', lastSeenEnabled);
+  if(row){
+    row.onclick = () => {
+      const sw2 = document.getElementById('lastSeenSw');
+      if(!sw2) return;
+      const nowOn = sw2.classList.toggle('on');
+      lsSet('bc_last_seen_enabled', nowOn);
+      if(!nowOn) broadcastLastSeenOff().catch(()=>{});
+      toast(nowOn ? '🕐 Время захода включено' : 'Время захода скрыто');
     };
   }
 
-  // Инициализируем lastSeenToggle
-  const lsT = document.getElementById('lastSeenToggle');
-  if(lsT){
-    lsT.checked = lsGet('bc_last_seen_enabled', false);
-    // Переназначаем обработчик каждый раз при открытии модала
-    lsT.onchange = function(){
-      lsSet('bc_last_seen_enabled', this.checked);
-      if(!this.checked){
-        broadcastLastSeenOff().catch(()=>{});
-      }
-    };
+  // Danger zone — открываем отдельный sheet-диалог
+  // Шаг 1: открываем inline аккордеон
+  let _dangerOpen = false;
+  const dangerRow = document.getElementById('settingsDangerRow');
+  const dangerConfirm = document.getElementById('settingsDangerConfirm');
+  const dangerChevron = document.getElementById('settingsDangerChevron');
+  const dcCancel = document.getElementById('settingsDcCancel');
+  const dcYes = document.getElementById('settingsDcYes');
+
+  function _toggleDanger(){
+    _dangerOpen = !_dangerOpen;
+    if(dangerConfirm) dangerConfirm.style.display = _dangerOpen ? 'block' : 'none';
+    if(dangerChevron) dangerChevron.style.transform = _dangerOpen ? 'rotate(90deg)' : 'rotate(0deg)';
   }
+  if(dangerRow) dangerRow.onclick = _toggleDanger;
+  if(dcCancel) dcCancel.onclick = e => { e.stopPropagation(); _toggleDanger(); };
+  // Шаг 2: «Удалить» → открываем sheet-диалог с вводом подтверждения
+  if(dcYes) dcYes.onclick = e => {
+    e.stopPropagation();
+    _toggleDanger(); // закрываем аккордеон
+    openDangerConfirmDialog(); // открываем финальный sheet
+  };
 
   modal.classList.add('open');
 }
+
+function openDangerConfirmDialog(){
+  // Создаём диалог если нет
+  let dlg = document.getElementById('dangerConfirmDialog');
+  if(!dlg){
+    dlg = document.createElement('div');
+    dlg.id = 'dangerConfirmDialog';
+    dlg.className = 'danger-dialog-overlay';
+    dlg.innerHTML = `
+      <div class="danger-dialog-sheet" id="dangerDialogSheet">
+        <div class="danger-dialog-handle"></div>
+
+        <div class="danger-dialog-header">
+          <div class="danger-dialog-icon-wrap">🗑</div>
+          <div class="danger-dialog-header-text">
+            <div class="danger-dialog-title">Стереть все данные</div>
+            <div class="danger-dialog-subtitle">НЕОБРАТИМОЕ ДЕЙСТВИЕ</div>
+          </div>
+        </div>
+
+        <div class="danger-dialog-body">
+          <div class="danger-dialog-warning">
+            <div class="danger-dialog-warning-row">
+              <span class="danger-dialog-warning-icon">💬</span>
+              <span class="danger-dialog-warning-text">Все чаты и история сообщений будут удалены</span>
+            </div>
+            <div class="danger-dialog-warning-row">
+              <span class="danger-dialog-warning-icon">🔑</span>
+              <span class="danger-dialog-warning-text">Ключи шифрования и пароли будут удалены</span>
+            </div>
+            <div class="danger-dialog-warning-row">
+              <span class="danger-dialog-warning-icon">👤</span>
+              <span class="danger-dialog-warning-text">Все контакты будут удалены</span>
+            </div>
+            <div class="danger-dialog-warning-row">
+              <span class="danger-dialog-warning-icon">⚠️</span>
+              <span class="danger-dialog-warning-text">Восстановление невозможно — данные удалятся навсегда</span>
+            </div>
+          </div>
+
+          <div class="danger-dialog-input-wrap">
+            <div class="danger-dialog-input-label">Введите «УДАЛИТЬ» для подтверждения</div>
+            <input class="danger-dialog-input" id="dangerConfirmInput" type="text"
+              placeholder="Введите УДАЛИТЬ" autocomplete="off" autocorrect="off"
+              spellcheck="false" autocapitalize="off">
+          </div>
+        </div>
+
+        <div class="danger-dialog-btns">
+          <button class="danger-dialog-btn-yes" id="dangerDialogYes" disabled>🗑 Удалить все данные</button>
+          <button class="danger-dialog-btn-no" id="dangerDialogNo">Отмена</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(dlg);
+
+    // Закрыть по клику на фон
+    dlg.addEventListener('click', e => { if(e.target === dlg) _closeDangerDialog(); });
+
+    // Проверяем ввод
+    const input = document.getElementById('dangerConfirmInput');
+    const yesBtn = document.getElementById('dangerDialogYes');
+    input.addEventListener('input', () => {
+      const ok = input.value.trim().toUpperCase() === 'УДАЛИТЬ';
+      yesBtn.disabled = !ok;
+      yesBtn.style.background = ok ? 'rgba(255,79,106,.28)' : '';
+      yesBtn.style.borderColor = ok ? 'rgba(255,79,106,.6)' : '';
+    });
+
+    // Отмена
+    document.getElementById('dangerDialogNo').onclick = () => _closeDangerDialog();
+
+    // Подтверждение — только если введено правильное слово
+    yesBtn.onclick = () => {
+      const input2 = document.getElementById('dangerConfirmInput');
+      if(input2.value.trim().toUpperCase() !== 'УДАЛИТЬ') return;
+      localStorage.clear();
+      indexedDB.deleteDatabase(DB_NAME);
+      setTimeout(() => location.reload(), 200);
+    };
+  }
+
+  // Сбрасываем состояние при каждом открытии
+  const input = document.getElementById('dangerConfirmInput');
+  const yesBtn = document.getElementById('dangerDialogYes');
+  if(input){ input.value = ''; }
+  if(yesBtn){ yesBtn.disabled = true; yesBtn.style.background = ''; yesBtn.style.borderColor = ''; }
+
+  dlg.classList.add('open');
+  setTimeout(() => { const inp = document.getElementById('dangerConfirmInput'); if(inp) inp.focus(); }, 380);
+}
+
+function _closeDangerDialog(){
+  const dlg = document.getElementById('dangerConfirmDialog');
+  if(dlg) dlg.classList.remove('open');
+}
+window._closeDangerDialog = _closeDangerDialog;
 
 function closeSettingsModal(){
   const modal = document.getElementById('settingsModal');
   if(modal) modal.classList.remove('open');
 }
+
+
 
 async function exportAllData(){
   try{
@@ -2269,6 +2463,8 @@ function buildRow(m){
   return row;
 }
 
+
+
 // ══════════════════════════════════════════════════════
 // ── LIGHTBOX + PINCH-TO-ZOOM + PAN ──
 // ══════════════════════════════════════════════════════
@@ -2622,8 +2818,7 @@ async function broadcastLastSeenOff(){
     if(!key) continue;
     try{
       const enc = await encData(ENC.encode(JSON.stringify({type:'last-seen-off',v:1})), key);
-      // Убран ephemeral:true — событие сохраняется в офлайн-очередь
-      wsSend({type:'send-msg', target:chat.peerId, msgId:uid(), payload:payloadToB64(enc)});
+      wsSend({type:'send-msg', target:chat.peerId, msgId:uid(), payload:payloadToB64(enc), ephemeral:true});
     }catch(e){}
   }
 }
@@ -2639,8 +2834,7 @@ async function broadcastLastSeen(){
     if(!key) continue; // Нет ключа — не можем зашифровать
     try{
       const enc = await encData(ENC.encode(JSON.stringify({type:'last-seen',ts,v:1})), key);
-      // Убран ephemeral:true — событие сохраняется в офлайн-очередь
-      wsSend({type:'send-msg', target:chat.peerId, msgId:uid(), payload:payloadToB64(enc)});
+      wsSend({type:'send-msg', target:chat.peerId, msgId:uid(), payload:payloadToB64(enc), ephemeral:true});
     }catch(e){}
   }
 }
@@ -2665,15 +2859,6 @@ document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='hidden'){lastHiddenTime=Date.now();broadcastLastSeen().catch(()=>{});}
   else{ensureWS();const hd=Date.now()-lastHiddenTime;if(ignoreNextVisibilityReturn){ignoreNextVisibilityReturn=false;}else if(hd>3000){if(activePid)leaveChat();else goHome();}else if(activePid&&wsUp)wsSend({type:'query-presence',target:activePid});}
 });
-
-// ── Надёжная отправка last‑seen при закрытии/сворачивании ──
-window.addEventListener('pagehide', () => {
-  broadcastLastSeen().catch(() => {});
-});
-window.addEventListener('beforeunload', () => {
-  broadcastLastSeen().catch(() => {});
-});
-
 $('contactsSearch')?.addEventListener('input',renderContacts);
 
 // ── VOICE RECORDING ──
