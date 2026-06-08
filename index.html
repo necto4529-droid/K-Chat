@@ -339,8 +339,8 @@
     .ctx-item.danger{color:var(--err)}
     .ctx-item.danger:hover{background:rgba(255,79,106,.1)}
     .ctx-divider{height:1px;background:var(--border);margin:4px 0}
-    .emoji-picker{position:fixed;z-index:700;background:#0d0d1f;border:1px solid var(--border);border-radius:40px;padding:8px 12px;display:flex;gap:6px;box-shadow:0 8px 32px rgba(0,0,0,.7)}
-    .emoji-pick-btn{font-size:22px;cursor:pointer;border-radius:50%;width:38px;height:38px;display:flex;align-items:center;justify-content:center;transition:background .15s,transform .1s}
+    .emoji-picker{position:fixed;z-index:700;background:#0d0d1f;border:1px solid var(--border);border-radius:32px;padding:6px 10px;display:flex;gap:3px;box-shadow:0 8px 32px rgba(0,0,0,.7)}
+    .emoji-pick-btn{font-size:20px;cursor:pointer;border-radius:50%;width:33px;height:33px;display:flex;align-items:center;justify-content:center;transition:background .15s,transform .1s}
     .emoji-pick-btn:hover{background:rgba(255,255,255,.1);transform:scale(1.2)}
     .emoji-picker-extended{position:fixed;z-index:750;background:#0d0d1f;border:1px solid var(--border-hi);border-radius:20px;padding:12px;box-shadow:0 8px 32px rgba(0,0,0,.7);max-width:320px}
     .emoji-picker-header{display:flex;justify-content:flex-end;margin-bottom:8px}
@@ -1309,9 +1309,16 @@ async function onWS(msg){
   if(msg.type==='incoming-msg'&&msg.from===MY_ID)return;
   const eventId=msg.eventId;
   switch(msg.type){
-    case 'registered':updateSendBtn();if(activePid)wsSend({type:'query-presence',target:activePid});registerPushNotifications().catch(()=>{});break;
-    case 'presence':setOnline(msg.peerId.toLowerCase(),!!msg.online);break;
-    case 'presence-reply':setOnline((msg.target||'').toLowerCase(),!!msg.online);break;
+    case 'registered':
+      updateSendBtn();
+      if(activePid) wsSend({type:'query-presence',target:activePid});
+      registerPushNotifications().catch(()=>{});
+      broadcastLastSeen().catch(()=>{});
+      // После reconnect — drain все pending сообщения у которых есть ключ
+      _drainAllPendingOnReconnect().catch(()=>{});
+      break;
+    case 'presence':setOnline(msg.peerId.toLowerCase(),!!msg.online,true);break;
+    case 'presence-reply':setOnline((msg.target||'').toLowerCase(),!!msg.online,false);break;
     case 'file-available':await handleFileAvailable(msg);if(eventId)wsSend({type:'ack-event',eventId});break;
     case 'file-data-header':await handleFileDataHeader(msg);break;
     case 'file-data-chunk':await handleFileDataChunk(msg);break;
@@ -1356,6 +1363,9 @@ async function onWS(msg){
     case 'incoming-msg':{
       const from=(msg.from||'').toLowerCase();
       wsSend({type:'ack-msg',msgId:msg.msgId});
+      // Немедленно пробуем drain pending для этого отправителя (если есть ключ)
+      // Это страховка если pending накопились пока ключа не было
+      getKey(from).then(k=>{if(k)drainPending(from,k).catch(()=>{});}).catch(()=>{});
       let key=keyCache[from]||await loadPersistedKey(from);
       if(!key){const pwd=localStorage.getItem(`bc_pwd_${from}`)||sessionStorage.getItem(`bc_pwd_${from}`);if(pwd){try{key=await deriveKey(pwd,from);keyCache[from]=key;await persistKey(from,key);}catch(e){}}}
       if(!key){const pending=lsGet(`bc_pending_${from}`,[]);pending.push({msgId:msg.msgId,payload:msg.payload,ts:Date.now()});lsSet(`bc_pending_${from}`,pending);const ct=loadContacts().find(c=>c.id===from);await getOrCreateChat(from,ct?.name,ct?.avatar);const chat=(await loadChats()).find(c=>c.peerId===from);await updateChat(from,{unread:(chat?.unread||0)+1,lastMsg:'🔒 Зашифровано',lastMsgTime:Date.now()});toast(`💬 ${ct?.name||from}: (зашифровано)`);break;}
@@ -1432,8 +1442,12 @@ async function handleEnvelope(from,env){
   }else if(env.type==='last-seen'){
     // Получили time last seen от собеседника — значит он включил эту функцию
     if(env.ts && typeof env.ts === 'number'){
-      lsSet(`bc_last_seen_${from}`, env.ts);
-      lsSet(`bc_ls_allowed_${from}`, true); // собеседник разрешил показ
+      // Принимаем только если НОВЕЕ сохранённого (защита от старых очередных сообщений)
+      const storedTs = lsGet(`bc_last_seen_${from}`, 0) || 0;
+      if(env.ts > storedTs){
+        lsSet(`bc_last_seen_${from}`, env.ts);
+      }
+      lsSet(`bc_ls_allowed_${from}`, true);
       if(from===activePid && currentScreen==='scr-chat' && !online[from]){
         updateBar();
       }
@@ -1454,18 +1468,43 @@ async function handleEnvelope(from,env){
   }
 }
 
+// Drain pending для всех чатов при reconnect (вызывается после registered)
+async function _drainAllPendingOnReconnect(){
+  // Небольшая задержка — даём серверу время прислать очередные incoming-msg
+  await new Promise(r=>setTimeout(r,800));
+  const chats = await loadChats();
+  for(const chat of chats){
+    if(chat.peerId===MY_ID) continue;
+    // Drain bc_pending_ если ключ уже в кэше или в localStorage
+    const key = await getKey(chat.peerId).catch(()=>null);
+    if(key){
+      await drainPending(chat.peerId, key).catch(()=>{});
+    }
+  }
+}
+
 async function drainPending(pid,key){const pending=lsGet(`bc_pending_${pid}`,[]);if(!pending.length)return;localStorage.removeItem(`bc_pending_${pid}`);for(const p of pending)await decryptAndStore(pid,p.payload,key);}
 
 // ── PRESENCE ──
-function setOnline(pid,isOnline){
+function setOnline(pid, isOnline, isRealEvent){
+  // isRealEvent=true  → 'presence' — сервер пушит событие выхода/входа прямо сейчас
+  // isRealEvent=false → 'presence-reply' — ответ на наш запрос текущего статуса
+  //
+  // КРИТИЧЕСКИ ВАЖНО: bc_last_seen_* пишем ТОЛЬКО при isRealEvent=true && !isOnline
+  // Иначе каждый query-presence (presence-reply: offline) будет перезаписывать
+  // last-seen текущим временем → всегда "только что"
   const wasOnline = online[pid];
-  online[pid]=isOnline;
-  // Если контакт только что вышел из сети — запоминаем timestamp
-  if(wasOnline && !isOnline){
+  online[pid] = isOnline;
+
+  if(!isOnline && isRealEvent){
+    // Контакт вышел из сети прямо сейчас — записываем точный timestamp
     lsSet(`bc_last_seen_${pid}`, Date.now());
   }
-  if(pid===activePid&&currentScreen==='scr-chat')updateBar();
-  renderChatList();renderContacts();
+  // presence-reply: если offline — НЕ обновляем bc_last_seen_*
+  // (не знаем когда он реально вышел, реальный ts придёт через last-seen envelope)
+
+  if(pid===activePid && currentScreen==='scr-chat') updateBar();
+  renderChatList(); renderContacts();
 }
 function setBar(cls,txt){const bar=$('statusBar'),t=$('statusBarText');if(bar)bar.className='status-bar s-'+cls;if(t)t.textContent=txt;}
 function setPeerStatus(cls,txt){const el=$('peerStatus');if(!el)return;el.textContent=txt;el.className='chat-peer-status '+cls;}
@@ -1713,7 +1752,7 @@ function openSettingsModal(){
 
         <!-- Версия -->
         <div class="settings-version">
-          <span>v1.0.3.5</span>
+          <span>v1.0.3.6</span>
           <div class="settings-version-dot"></div>
           <span>K-Chat E2EE</span>
         </div>
@@ -2070,7 +2109,23 @@ window.openChatById=async function(pid){
   if(activePid===pid)requestAnimationFrame(()=>{const a=$('messagesArea');if(a)a.scrollTop=a.scrollHeight;});
 };
 
-window.forgetPassword=()=>{if(!activePid)return;if(confirm('Забыть пароль?')){delete keyCache[activePid];localStorage.removeItem(`bc_pwd_${activePid}`);localStorage.removeItem(`bc_secret_${activePid}`);sessionStorage.removeItem(`bc_pwd_${activePid}`);toast('Пароль удалён');}};
+window.forgetPassword=()=>{
+  if(!activePid)return;
+  showConfirm({
+    icon:'🔓',
+    title:'Удалить ключ доступа?',
+    text:'Ключ шифрования и пароль для этого чата будут удалены. При следующем сообщении потребуется ввести пароль заново.',
+    yesLabel:'🔓 Удалить ключ',
+    noLabel:'Отмена',
+    onYes:()=>{
+      delete keyCache[activePid];
+      localStorage.removeItem(`bc_pwd_${activePid}`);
+      localStorage.removeItem(`bc_secret_${activePid}`);
+      sessionStorage.removeItem(`bc_pwd_${activePid}`);
+      toast('Ключ удалён');
+    }
+  });
+};
 function formatText(text){if(!text)return'';let html=esc(text);html=html.replace(/\*([^*]+)\*/g,'<b>$1</b>');html=html.replace(/_([^_]+)_/g,'<i>$1</i>');html=html.replace(/~([^~]+)~/g,'<s>$1</s>');html=html.replace(/\|\|([^|]+)\|\|/g,'<span class="spoiler">$1</span>');html=html.replace(/(https?:\/\/[^\s<]+)/g,'<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');return html;}
 
 async function forwardToFavorites(msgId){const msgs=await loadMsgs(activePid);const m=msgs.find(m=>m.id===msgId);if(!m)return;const newMsg={id:uid(),text:m.text||'',type:'sent',time:new Date().toISOString(),reactions:{},edited:false,delivered:true,forwarded:true};if(m.media){newMsg.media=m.media;newMsg.caption=m.caption;}if(m.voice){newMsg.voice=m.voice;newMsg.voiceDuration=m.voiceDuration;newMsg.voiceListened=true;}if(m.file){newMsg.file=m.file;}await upsertMsg(MY_ID,newMsg);const lastPreview=m.file?`📁 ${m.file.name}`:m.voice?'🎙 Голосовое':m.media?'📷 Фото':(m.text||'').slice(0,28);await updateChat(MY_ID,{lastMsg:lastPreview,lastMsgTime:Date.now()});if(activePid===MY_ID)appendOrReloadMsg(MY_ID,newMsg);toast('Переслано в Избранное');}
@@ -2755,8 +2810,107 @@ function closeCtx(){if(_ctx){_ctx.remove();_ctx=null;}}
 function closeEmo(){if(_emo){_emo.remove();_emo=null;}}
 function closeAll(){closeCtx();closeEmo();rmBack();}
 function mkBack(){rmBack();_back=document.createElement('div');_back.className='popup-backdrop';_back.addEventListener('click',e=>{e.stopPropagation();closeAll();});document.body.appendChild(_back);}
-function showEmo(msgId,anchor){closeEmo();if(!_back)mkBack();const p=document.createElement('div');p.className='emoji-picker';QUICK_EMOJIS.forEach(em=>{const b=document.createElement('div');b.className='emoji-pick-btn';b.textContent=em;b.addEventListener('click',e=>{e.stopPropagation();if(em==='➕'){closeAll();showExtendedEmojiPicker(msgId,anchor);}else{toggleReaction(msgId,em);closeAll();}});p.appendChild(b);});document.body.appendChild(p);_emo=p;requestAnimationFrame(()=>{const pw=p.offsetWidth||220,ph=p.offsetHeight||54;const r=anchor.getBoundingClientRect(),vw=window.innerWidth;let l=r.left+r.width/2-pw/2,t=r.top-ph-10;if(t<8)t=r.bottom+10;l=Math.max(8,Math.min(l,vw-pw-8));p.style.left=l+'px';p.style.top=t+'px';});}
-function showExtendedEmojiPicker(msgId,anchor){closeEmo();if(!_back)mkBack();const panel=document.createElement('div');panel.className='emoji-picker-extended';const hdr=document.createElement('div');hdr.className='emoji-picker-header';const cb=document.createElement('span');cb.className='emoji-picker-close';cb.innerHTML='✕';cb.addEventListener('click',e=>{e.stopPropagation();closeAll();});hdr.appendChild(cb);panel.appendChild(hdr);const grid=document.createElement('div');grid.className='emoji-grid';EXTENDED_EMOJIS.slice(0,56).forEach(em=>{const btn=document.createElement('div');btn.className='emoji-grid-btn';btn.textContent=em;btn.addEventListener('click',e=>{e.stopPropagation();toggleReaction(msgId,em);closeAll();});grid.appendChild(btn);});panel.appendChild(grid);document.body.appendChild(panel);_emo=panel;requestAnimationFrame(()=>{const pw=panel.offsetWidth||320,ph=panel.offsetHeight||400;const r=anchor.getBoundingClientRect(),vw=window.innerWidth;let l=r.left+r.width/2-pw/2,t=r.top-ph-10;if(t<8)t=r.bottom+10;l=Math.max(8,Math.min(l,vw-pw-8));panel.style.left=l+'px';panel.style.top=t+'px';});}
+function _positionPopup(el, anchor, preferredW, preferredH){
+  // Универсальное позиционирование попапа относительно anchor-элемента
+  // Всегда остаётся внутри viewport по всем четырём сторонам
+  const r = anchor.getBoundingClientRect();
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  // Math.ceil — защита от дробных пикселей на Retina
+  const pw = Math.ceil(el.offsetWidth)  || preferredW || 220;
+  const ph = Math.ceil(el.offsetHeight) || preferredH || 54;
+  const GAP = 10; // отступ от края экрана
+
+  // Горизонталь: центрируем по bubble, строго не выходим за экран
+  let l = r.left + r.width / 2 - pw / 2;
+  l = Math.max(GAP, Math.min(l, vw - pw - GAP));
+
+  // Вертикаль: предпочитаем показывать ВЫШЕ anchor
+  let t = r.top - ph - GAP;
+  if(t < GAP){
+    // Не влезает сверху — показываем снизу
+    t = r.bottom + GAP;
+  }
+  // Если и снизу не влезает — прижимаем к нижнему краю
+  if(t + ph > vh - GAP){
+    t = Math.max(GAP, vh - ph - GAP);
+  }
+
+  el.style.left = l + 'px';
+  el.style.top  = t + 'px';
+}
+
+function showEmo(msgId,anchor){
+  closeEmo();
+  if(!_back) mkBack();
+  const p = document.createElement('div');
+  p.className = 'emoji-picker';
+  // Рендерим невидимо чтобы получить точный offsetWidth
+  p.style.visibility = 'hidden';
+  p.style.top = '-9999px';
+  p.style.left = '-9999px';
+  QUICK_EMOJIS.forEach(em=>{
+    const b = document.createElement('div');
+    b.className = 'emoji-pick-btn';
+    b.textContent = em;
+    b.addEventListener('click', e=>{
+      e.stopPropagation();
+      if(em==='➕'){closeAll(); showExtendedEmojiPicker(msgId,anchor);}
+      else{toggleReaction(msgId,em); closeAll();}
+    });
+    p.appendChild(b);
+  });
+  document.body.appendChild(p);
+  _emo = p;
+  // Двойной rAF: первый кадр — браузер рассчитывает layout,
+  // второй кадр — мы читаем точный offsetWidth и позиционируем
+  requestAnimationFrame(()=>{
+    requestAnimationFrame(()=>{
+      p.style.visibility = '';
+      p.style.top = '';
+      p.style.left = '';
+      _positionPopup(p, anchor, 310, 45);
+    });
+  });
+}
+function showExtendedEmojiPicker(msgId,anchor){
+  closeEmo();
+  if(!_back) mkBack();
+  const panel = document.createElement('div');
+  panel.className = 'emoji-picker-extended';
+  const hdr = document.createElement('div');
+  hdr.className = 'emoji-picker-header';
+  const cb = document.createElement('span');
+  cb.className = 'emoji-picker-close';
+  cb.innerHTML = '✕';
+  cb.addEventListener('click', e=>{e.stopPropagation(); closeAll();});
+  hdr.appendChild(cb);
+  panel.appendChild(hdr);
+  const grid = document.createElement('div');
+  grid.className = 'emoji-grid';
+  EXTENDED_EMOJIS.slice(0,56).forEach(em=>{
+    const btn = document.createElement('div');
+    btn.className = 'emoji-grid-btn';
+    btn.textContent = em;
+    btn.addEventListener('click', e=>{e.stopPropagation(); toggleReaction(msgId,em); closeAll();});
+    grid.appendChild(btn);
+  });
+  panel.appendChild(grid);
+  document.body.appendChild(panel);
+  _emo = panel;
+  // Двойной rAF для точного замера высоты (grid может быть разной высоты)
+  panel.style.visibility = 'hidden';
+  panel.style.top = '-9999px';
+  panel.style.left = '-9999px';
+  requestAnimationFrame(()=>{
+    requestAnimationFrame(()=>{
+      panel.style.visibility = '';
+      panel.style.top = '';
+      panel.style.left = '';
+      _positionPopup(panel, anchor, 300, 320);
+    });
+  });
+}
 function showCtx(m,anchor,tx,ty){
   if(m.uploading)return;
   closeAll();mkBack();const menu=document.createElement('div');menu.className='ctx-menu';
@@ -2818,32 +2972,46 @@ async function broadcastLastSeenOff(){
     if(!key) continue;
     try{
       const enc = await encData(ENC.encode(JSON.stringify({type:'last-seen-off',v:1})), key);
-      wsSend({type:'send-msg', target:chat.peerId, msgId:uid(), payload:payloadToB64(enc), ephemeral:true});
+      wsSend({type:'send-msg', target:chat.peerId, msgId:uid(), payload:payloadToB64(enc)});
     }catch(e){}
   }
 }
 
+let _lastSeenBroadcastTs = 0;
 async function broadcastLastSeen(){
   if(!lsGet('bc_last_seen_enabled', false)) return;
   if(!wsUp) return;
-  const ts = Date.now();
+  const now = Date.now();
+  if(now - _lastSeenBroadcastTs < 5000) return;
+  _lastSeenBroadcastTs = now;
+  const ts = now;
   const chats = await loadChats();
   for(const chat of chats){
-    if(chat.peerId === MY_ID) continue; // Избранное — пропускаем
+    if(chat.peerId === MY_ID) continue;
     const key = keyCache[chat.peerId];
-    if(!key) continue; // Нет ключа — не можем зашифровать
+    if(!key) continue;
     try{
       const enc = await encData(ENC.encode(JSON.stringify({type:'last-seen',ts,v:1})), key);
-      wsSend({type:'send-msg', target:chat.peerId, msgId:uid(), payload:payloadToB64(enc), ephemeral:true});
+      wsSend({type:'send-msg', target:chat.peerId, msgId:uid(), payload:payloadToB64(enc)});
     }catch(e){}
   }
 }
 
-window.leaveChat=()=>{
-  broadcastLastSeen();
+window.leaveChat=async()=>{
+  await broadcastLastSeen().catch(()=>{});
   activePid='';stopPeerActivity();cancelEdit();cancelReply();resetMsgSearch();exitSelectionMode();closeAll();clearMediaPreview();if(isRecording)cancelRecording();_stopPreviewAudio();$('voicePreviewBar').classList.remove('active');goHome();
 };
-window.deleteChat=async()=>{if(!activePid)return;if(activePid===MY_ID){toast('Чат "Избранное" нельзя удалить','warn');return;}const pid=activePid;activePid='';stopPeerActivity();cancelEdit();cancelReply();resetMsgSearch();exitSelectionMode();closeAll();
+window.deleteChat=async()=>{
+  if(!activePid)return;
+  if(activePid===MY_ID){toast('Чат "Избранное" нельзя удалить','warn');return;}
+  showConfirm({
+    icon:'🗑',
+    title:'Удалить чат?',
+    text:'История сообщений и ключ шифрования будут удалены с этого устройства. Собеседник не будет уведомлён.',
+    yesLabel:'🗑 Удалить чат',
+    noLabel:'Отмена',
+    onYes: async()=>{
+      const pid=activePid;activePid='';stopPeerActivity();cancelEdit();cancelReply();resetMsgSearch();exitSelectionMode();closeAll();
   // Удаляем все blobs сообщений чата
   try{
     const allMsgs=await loadMsgs(pid);
@@ -2853,12 +3021,18 @@ window.deleteChat=async()=>{if(!activePid)return;if(activePid===MY_ID){toast('Ч
       if(m.file?.blobId)deleteBlob(m.file.blobId);
     }
   }catch(e){}
-  await clearMsgs(pid);await deleteChatData(pid);delete keyCache[pid];localStorage.removeItem(`bc_pwd_${pid}`);localStorage.removeItem(`bc_secret_${pid}`);sessionStorage.removeItem(`bc_pwd_${pid}`);goHome();toast('Чат удалён');};
+  await clearMsgs(pid);await deleteChatData(pid);delete keyCache[pid];localStorage.removeItem(`bc_pwd_${pid}`);localStorage.removeItem(`bc_secret_${pid}`);sessionStorage.removeItem(`bc_pwd_${pid}`);goHome();toast('Чат удалён');}
+  });
+};
 
 document.addEventListener('visibilitychange',()=>{
-  if(document.visibilityState==='hidden'){lastHiddenTime=Date.now();broadcastLastSeen().catch(()=>{});}
+  if(document.visibilityState==='hidden'){lastHiddenTime=Date.now();_lastSeenBroadcastTs=0;broadcastLastSeen().catch(()=>{});}
   else{ensureWS();const hd=Date.now()-lastHiddenTime;if(ignoreNextVisibilityReturn){ignoreNextVisibilityReturn=false;}else if(hd>3000){if(activePid)leaveChat();else goHome();}else if(activePid&&wsUp)wsSend({type:'query-presence',target:activePid});}
 });
+// Надёжная отправка last-seen при закрытии/сворачивании
+window.addEventListener('pagehide', () => { _lastSeenBroadcastTs=0; broadcastLastSeen().catch(()=>{}); });
+window.addEventListener('beforeunload', () => { _lastSeenBroadcastTs=0; broadcastLastSeen().catch(()=>{}); });
+
 $('contactsSearch')?.addEventListener('input',renderContacts);
 
 // ── VOICE RECORDING ──
