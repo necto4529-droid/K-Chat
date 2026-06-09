@@ -1072,6 +1072,20 @@ function stopPeerActivity(){
 let ws=null,wsUp=false,wsRetry=0,pingInterval=null;
 let lastHiddenTime=0,ignoreNextVisibilityReturn=false;
 const WS_DELAYS=[2000,3000,5000,8000,15000,30000];
+// ── PENDING ACKS — задержанные acks до открытия чата ──
+// Ключ: peerId, Значение: [{msgId, eventId}]
+const _pendingAcks = new Map();
+
+function _flushPendingAcks(pid){
+  const acks = _pendingAcks.get(pid);
+  if(!acks || !acks.length) return;
+  _pendingAcks.delete(pid);
+  for(const {msgId, eventId} of acks){
+    wsSend({type:'ack-msg', msgId});
+    if(eventId) wsSend({type:'ack-event', eventId});
+  }
+}
+
 function ensureWS(){if(ws&&(ws.readyState===WebSocket.OPEN||ws.readyState===WebSocket.CONNECTING))return;if(ws)try{ws.close();}catch(e){}ws=new WebSocket(SIGNAL_URL);ws.onopen=()=>{wsUp=true;wsRetry=0;ws.send(JSON.stringify({type:'register',peerId:MY_ID}));updateSendBtn();if(activePid)wsSend({type:'query-presence',target:activePid});if(pingInterval)clearInterval(pingInterval);pingInterval=setInterval(()=>{if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'ping'}));},30000);};ws.onmessage=async e=>{let d;try{d=JSON.parse(e.data);}catch{return;}await onWS(d);};ws.onclose=()=>{wsUp=false;updateSendBtn();setBar('connecting','Переподключение…');if(pingInterval){clearInterval(pingInterval);pingInterval=null;}setTimeout(ensureWS,WS_DELAYS[Math.min(wsRetry++,WS_DELAYS.length-1)]);};ws.onerror=()=>{wsUp=false;updateSendBtn();};}
 function wsSend(obj){if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(obj));}
 
@@ -1335,7 +1349,27 @@ async function handleFileRef(from,env){
 // ── WS ──
 async function registerPushNotifications(){if(!window.OneSignal)return;try{const granted=await OneSignal.Notifications.requestPermission();if(granted){const pid=await OneSignal.User.getOnesignalId();if(pid)wsSend({type:'register-push',playerId:pid});}}catch(e){}}
 
-async function markDelivered(msgId,peerId){if(!peerId)return;await withChatLock(peerId,async()=>{if(activePid===peerId){for(let i=0;i<30;i++){const row=document.querySelector(`.msg-row[data-msgid="${msgId}"]`);if(row){const tk=row.querySelector('.msg-ticks');if(tk){tk.textContent='✔✔';tk.className='msg-ticks double';}break;}await new Promise(r=>setTimeout(r,100));}}const msgs=await loadMsgs(peerId);const m=msgs.find(m=>m.id===msgId);if(m&&!m.delivered){m.delivered=true;await saveMsgs(peerId,msgs);}});}
+async function markDelivered(msgId,peerId){
+  if(!peerId) return;
+  await withChatLock(peerId, async()=>{
+    const msgs = await loadMsgs(peerId);
+    const m = msgs.find(m=>m.id===msgId);
+    if(m && !m.delivered){
+      m.delivered = true;
+      await saveMsgs(peerId, msgs);
+    }
+  });
+  // ✔✔ показываем ТОЛЬКО если получатель сейчас смотрит на этот чат
+  // (то есть отправитель открыл чат и видит сообщение на экране)
+  if(activePid === peerId && currentScreen === 'scr-chat'){
+    const row = document.querySelector(`.msg-row[data-msgid="${msgId}"]`);
+    if(row){
+      const tk = row.querySelector('.msg-ticks');
+      if(tk){ tk.textContent='✔✔'; tk.className='msg-ticks double'; }
+    }
+  }
+  // Иначе — ✔✔ появится когда отправитель откроет чат (через syncDeliveredStatuses)
+}
 async function markVoiceListened(voiceMsgId,senderPid){if(!senderPid)return;await withChatLock(senderPid,async()=>{if(activePid===senderPid){for(let i=0;i<30;i++){const dot=document.querySelector(`.msg-row[data-msgid="${voiceMsgId}"] .voice-unread-dot`);if(dot){dot.classList.add('hidden');break;}await new Promise(r=>setTimeout(r,100));}}const msgs=await loadMsgs(senderPid);const m=msgs.find(m=>m.id===voiceMsgId);if(m&&m.voice&&!m.voiceListened){m.voiceListened=true;await saveMsgs(senderPid,msgs);}});}
 async function syncDeliveredStatuses(){if(!activePid)return;const msgs=await loadMsgs(activePid);for(const m of msgs){if(m.type==='sent'&&m.delivered){const row=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);if(row){const tk=row.querySelector('.msg-ticks');if(tk&&tk.textContent!=='✔✔'){tk.textContent='✔✔';tk.className='msg-ticks double';}}}if(m.type==='sent'&&m.voice&&m.voiceListened){const row=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);if(row){const dot=row.querySelector('.voice-unread-dot');if(dot)dot.classList.add('hidden');}}}}
 
@@ -1352,6 +1386,8 @@ async function onWS(msg){
       broadcastLastSeen().catch(()=>{});
       // После reconnect — drain все pending сообщения у которых есть ключ
       _drainAllPendingOnReconnect().catch(()=>{});
+      // Flush pending acks для текущего открытого чата (если ws упал и поднялся)
+      if(activePid && currentScreen==='scr-chat') _flushPendingAcks(activePid);
       break;
     case 'presence':setOnline(msg.peerId.toLowerCase(),!!msg.online,true);break;
     case 'presence-reply':setOnline((msg.target||'').toLowerCase(),!!msg.online,false);break;
@@ -1409,11 +1445,26 @@ async function onWS(msg){
     }
     case 'incoming-msg':{
       const from=(msg.from||'').toLowerCase();
-      wsSend({type:'ack-msg',msgId:msg.msgId});
+      // НЕ отправляем ack-msg немедленно — откладываем до открытия чата
+      // Это и есть механизм ✔✔ только при прочтении (как в Telegram)
+      // Сохраняем в очередь pending acks для этого отправителя
+      if(!_pendingAcks.has(from)) _pendingAcks.set(from, []);
+      _pendingAcks.get(from).push({msgId: msg.msgId, eventId});
+      // Если я СЕЙЧАС нахожусь в чате с этим человеком — отправляем сразу
+      // (я уже вижу сообщение на экране)
+      if(activePid === from && currentScreen === 'scr-chat'){
+        wsSend({type:'ack-msg', msgId:msg.msgId});
+        if(eventId) wsSend({type:'ack-event', eventId});
+        _pendingAcks.set(from, _pendingAcks.get(from).filter(a=>a.msgId!==msg.msgId));
+      }
       // Если контакт заблокирован — молча игнорируем входящее сообщение
-      if(isContactBlocked(from)){if(eventId)wsSend({type:'ack-event',eventId});break;}
+      if(isContactBlocked(from)){
+        // Всё равно ackуем чтобы сервер не держал в очереди
+        _flushPendingAcks(from);
+        if(eventId)wsSend({type:'ack-event',eventId});
+        break;
+      }
       // Немедленно пробуем drain pending для этого отправителя (если есть ключ)
-      // Это страховка если pending накопились пока ключа не было
       getKey(from).then(k=>{if(k)drainPending(from,k).catch(()=>{});}).catch(()=>{});
       let key=keyCache[from]||await loadPersistedKey(from);
       if(!key){const pwd=localStorage.getItem(`bc_pwd_${from}`)||sessionStorage.getItem(`bc_pwd_${from}`);if(pwd){try{key=await deriveKey(pwd,from);keyCache[from]=key;await persistKey(from,key);}catch(e){}}}
@@ -1542,6 +1593,13 @@ async function handleEnvelope(from,env){
     if(env.fileId){
       await markDelivered(env.fileId, from);
     }
+  }else if(env.type==='chat-read'){
+    // Получатель открыл чат и прочитал наши сообщения → ставим ✔✔
+    if(Array.isArray(env.msgIds) && env.msgIds.length){
+      for(const mid of env.msgIds){
+        await markDelivered(mid, from);
+      }
+    }
   }
 }
 
@@ -1558,6 +1616,40 @@ async function _drainAllPendingOnReconnect(){
       await drainPending(chat.peerId, key).catch(()=>{});
     }
   }
+}
+
+// Отправляем собеседнику зашифрованный read-receipt
+// Он получит его и поставит ✔✔ на своих отправленных сообщениях
+async function _sendChatReadReceipt(pid){
+  if(pid===MY_ID || !wsUp) return;
+  const key = keyCache[pid] || await loadPersistedKey(pid);
+  if(!key) return;
+  // Собираем ID всех НЕ прочитанных входящих сообщений от этого пира
+  const msgs = await loadMsgs(pid);
+  // Отправляем один envelope со списком msgId входящих сообщений
+  // Собеседник пометит их как delivered (✔✔ у него)
+  const unreadIds = msgs
+    .filter(m => m.type==='recv' && !m._readReceiptSent)
+    .map(m => m.id);
+  if(!unreadIds.length) return;
+  // Помечаем что receipt уже отправлен (не дублируем)
+  await withChatLock(pid, async()=>{
+    const m2 = await loadMsgs(pid);
+    let changed = false;
+    for(const m of m2){
+      if(m.type==='recv' && unreadIds.includes(m.id) && !m._readReceiptSent){
+        m._readReceiptSent = true;
+        changed = true;
+      }
+    }
+    if(changed) await saveMsgs(pid, m2);
+  });
+  try{
+    const enc = await encData(ENC.encode(JSON.stringify({
+      type:'chat-read', msgIds:unreadIds, ts:Date.now()
+    })), key);
+    wsSend({type:'send-msg', target:pid, msgId:uid(), payload:payloadToB64(enc)});
+  }catch(e){}
 }
 
 async function drainPending(pid,key){const pending=lsGet(`bc_pending_${pid}`,[]);if(!pending.length)return;localStorage.removeItem(`bc_pending_${pid}`);for(const p of pending)await decryptAndStore(pid,p.payload,key);}
@@ -2202,6 +2294,15 @@ window.openChatById=async function(pid){
   const key=await getKey(pid);
   if(key){await drainPending(pid,key);if(activePid===pid)await loadChatHistory(pid,false);}
   if(activePid===pid)requestAnimationFrame(()=>{const a=$('messagesArea');if(a)a.scrollTop=a.scrollHeight;});
+  // Отправляем read-receipt собеседнику — у него появятся ✔✔ на его отправленных
+  // Делаем это с небольшой задержкой чтобы чат успел отрисоваться
+  if(pid !== MY_ID){
+    // Flush pending acks — отправляем серверу ack-msg для всех сообщений этого чата
+    // Сервер пошлёт msg-delivered отправителю → у него появятся ✔✔
+    _flushPendingAcks(pid);
+    // Также шлём chat-read зашифрованный envelope (для файлов и старых сообщений)
+    setTimeout(()=>{ if(activePid===pid) _sendChatReadReceipt(pid).catch(()=>{}); }, 600);
+  }
 };
 
 window.forgetPassword=()=>{
@@ -3752,4 +3853,4 @@ async function migrateLocalStorageMessages(){
 })();
 </script>
 </body>
-</html>
+          </html>
