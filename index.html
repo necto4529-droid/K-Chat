@@ -195,6 +195,13 @@
     .bubble:active{opacity:.75;transform:scale(.99)}
     .bubble.search-match{outline:2px solid var(--g-40)}
     .bubble.search-current{outline:2px solid var(--g);box-shadow:0 0 14px var(--g-30)}
+    /* Подсветка сообщения при переходе по ответу (Telegram-стиль) */
+    @keyframes replyHighlight{
+      0%  {background:var(--reply-hl-color,rgba(0,255,136,0.28))}
+      55% {background:var(--reply-hl-color,rgba(0,255,136,0.28))}
+      100%{background:inherit}
+    }
+    .bubble.reply-highlight{animation:replyHighlight 1.6s ease-out forwards}
     .msg-meta{float:right;display:flex;align-items:flex-end;gap:3px;margin-left:8px;margin-bottom:-1px;margin-top:2px;line-height:1}
     .msg-time-inline{font-family:'JetBrains Mono',monospace;font-size:10.5px;white-space:nowrap;color:rgba(255,255,255,.42)}
     .msg-row.sent .msg-time-inline{color:rgba(255,255,255,.55)}
@@ -518,7 +525,16 @@
     .confirm-no{padding:12px;border:1px solid var(--border);background:transparent;border-radius:var(--r-sm);color:var(--muted);font-family:'Syne',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:background .2s}
     .confirm-no:hover{background:rgba(255,255,255,.05)}
 
-    /* ── КАСТОМНЫЙ АУДИО-ПЛЕЕР (Telegram-стиль) ── */
+    .chat-peer-status.blocked{color:var(--err);opacity:.75}
+    .chat-peer-status.blocked::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--err);display:inline-block}
+    .hdr-btn.block-active{background:rgba(255,79,106,.15);border-color:rgba(255,79,106,.35);color:var(--err)}
+    .hdr-btn.block-active:hover{background:rgba(255,79,106,.25)}
+    .chat-input-bar.blocked-mode .attach-btn,
+    .chat-input-bar.blocked-mode .mic-btn,
+    .chat-input-bar.blocked-mode #sendBtn{opacity:.35;pointer-events:none;cursor:not-allowed}
+    .chat-input-bar.blocked-mode .msg-input{opacity:.45;pointer-events:none;cursor:not-allowed}
+    .blocked-banner{display:none;align-items:center;justify-content:center;gap:8px;padding:10px 16px;background:rgba(255,79,106,.07);border-top:1px solid rgba(255,79,106,.15);font-family:'JetBrains Mono',monospace;font-size:12px;color:rgba(255,79,106,.8);flex-shrink:0}
+    .blocked-banner.visible{display:flex}
     /* Пузырь для аудио: фон как у обычного sent/recv bubble */
     .msg-row.sent  .audio-bubble{background:var(--bubble-sent-bg);border:1px solid var(--bubble-sent-border);border-bottom-right-radius:4px}
     .msg-row.recv  .audio-bubble{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-bottom-left-radius:4px}
@@ -613,6 +629,7 @@
       <div class="chat-peer-status offline" id="peerStatus">Не в сети</div>
     </div>
     <div class="hdr-btn" id="searchToggleBtn" onclick="toggleMsgSearch()">🔍</div>
+    <div class="hdr-btn" id="blockContactBtn" onclick="toggleBlockContact()">🚫</div>
     <div class="hdr-btn" onclick="forgetPassword()">🔓</div>
     <div class="hdr-btn" style="color:var(--err)" onclick="deleteChat()">🗑</div>
   </div>
@@ -657,6 +674,9 @@
       <span class="selection-delete" onclick="deleteSelectedMessages()">🗑 Удалить</span>
       <span class="selection-cancel" onclick="exitSelectionMode()">Отмена</span>
     </div>
+  </div>
+  <div class="blocked-banner" id="blockedBanner">
+    🚫 Контакт заблокирован — отправка сообщений недоступна
   </div>
   <div class="media-preview-container" id="mediaPreviewContainer" style="display:none">
     <div class="media-preview" id="mediaPreview"></div>
@@ -765,8 +785,8 @@ const SIGNAL_URL='wss://signal-server-aipd.onrender.com';
 const A2_MEM=65536,A2_TIME=3,A2_PAR=1;
 const QUICK_EMOJIS=['❤️','👍','😂','🔥','👏','😮','😢','➕'];
 const EXTENDED_EMOJIS=['❤️‍🔥','😁','👎','🥴','👌','😭','😱','💋','🤝','🥰','🤔','🤯','😡','🎉','🤩','🤮','💩','🙏','🕊️','🤡','🥱','😍','🐳','🌚','🌭','💯','⚡','🍌','🏆','💔','😑','🍓','🍾','🖕','😈','😴','🤓','👻','👨‍💻','👀','🎃','🙈','😇','✍️','🤗','🫡','💅','🤪','🗿','🆒','💘','🦄','😘','💊','😎','👾','🤨','🙉','🥺','☠️','💦','🫂','💪','🤧'];
-const WF_BARS=40,PREV_WF_BARS=25,MAX_VOICE_SEC=300,MAX_REACTIONS_PER_MSG=3;
-const MAX_FILE_SIZE=1024*1024*1024,CHUNK_SIZE=256*1024,STORE_BATCH=3;
+const WF_BARS=40,PREV_WF_BARS=25,MAX_VOICE_SEC=120,MAX_REACTIONS_PER_MSG=3;
+const MAX_FILE_SIZE=500*1024*1024,CHUNK_SIZE=256*1024,STORE_BATCH=3;
 
 const ENC=new TextEncoder(),DEC=new TextDecoder();
 const $=id=>document.getElementById(id);
@@ -1079,6 +1099,9 @@ async function finalizeUploadUI(fileId,pid){
 // ── ФАЙЛОВЫЙ ПРОТОКОЛ ──
 const fileTransfers=new Map();
 const storeAckWaiters=new Map();
+// Map fileId → peerId: нужен для file-delivered чтобы обновить ✔✔
+// без зависимости от activePid
+const _fileSentToPeer=new Map();
 
 // Отправка сигнала активности (ephemeral, не сохраняется)
 async function _sendActivitySignal(pid,activityType){
@@ -1117,6 +1140,10 @@ async function sendFileToServer(fileInfo,caption){
   await saveBlob(fileId, fileBuffer);
 
   wsSend({type:'store-file-header',fileId,recipientId:activePid,name:fileInfo.name,size:fileInfo.size,mimeType:fileInfo.type,totalChunks,caption:caption||'',ts});
+  // Запоминаем кому отправлен файл — нужно для file-delivered → ✔✔
+  _fileSentToPeer.set(fileId, activePid);
+  // Сохраняем в localStorage — пережить перезагрузку страницы
+  try{const _sftp=lsGet('_fileSentToPeer',{});_sftp[fileId]=activePid;lsSet('_fileSentToPeer',_sftp);}catch(e){}
 
   await new Promise(resolve=>{const timer=setTimeout(resolve,2000);storeAckWaiters.set(fileId,{resolve:()=>{clearTimeout(timer);resolve();},timer});});
   storeAckWaiters.delete(fileId);
@@ -1274,6 +1301,15 @@ async function assembleFile(fileId){
       else appendOrReloadMsg(ft.senderId,renderMsg);
     }
     wsSend({type:'ack-file',fileId});toast(`${ft.name} загружен ✓`);
+    // Уведомляем отправителя что файл получен → он увидит ✔✔
+    // Используем зашифрованный envelope через send-msg (тот же путь что реакции/редактирование)
+    const _fdKey = await getKey(ft.senderId).catch(()=>null);
+    if(_fdKey && wsUp && ft.senderId !== MY_ID){
+      try{
+        const _fdEnc = await encData(ENC.encode(JSON.stringify({type:'file-delivered',fileId,ts:Date.now()})),_fdKey);
+        wsSend({type:'send-msg',target:ft.senderId,msgId:uid(),payload:payloadToB64(_fdEnc)});
+      }catch(e){}
+    }
   }catch(e){console.error('assembleFile error',e);toast('Ошибка сборки файла','err');const spinner=document.querySelector(`.tg-spinner[data-fileid="${fileId}"]`);if(spinner)resetSpinnerToDownload(spinner,fileId,ft.senderId);}
 }
 
@@ -1319,7 +1355,7 @@ async function onWS(msg){
       break;
     case 'presence':setOnline(msg.peerId.toLowerCase(),!!msg.online,true);break;
     case 'presence-reply':setOnline((msg.target||'').toLowerCase(),!!msg.online,false);break;
-    case 'file-available':await handleFileAvailable(msg);if(eventId)wsSend({type:'ack-event',eventId});break;
+    case 'file-available':if(!isContactBlocked((msg.senderId||'').toLowerCase())){await handleFileAvailable(msg);}if(eventId)wsSend({type:'ack-event',eventId});break;
     case 'file-data-header':await handleFileDataHeader(msg);break;
     case 'file-data-chunk':await handleFileDataChunk(msg);break;
     case 'store-file-header-ack':{const waiter=storeAckWaiters.get(msg.fileId);if(waiter)waiter.resolve();break;}
@@ -1359,10 +1395,23 @@ async function onWS(msg){
       }
       break;
     }
-    case 'file-delivered':if(eventId)wsSend({type:'ack-event',eventId});break;
+    case 'file-delivered':{
+      const {fileId:fdFileId, recipientId:fdRecipient} = msg;
+      // Определяем peerId: сначала из нашего Map, потом из поля recipientId от сервера
+      const fdPeerId = _fileSentToPeer.get(fdFileId) || (fdRecipient||'').toLowerCase() || null;
+      if(fdFileId && fdPeerId){
+        _fileSentToPeer.delete(fdFileId); // чистим Map
+        try{const _sftp=lsGet('_fileSentToPeer',{});delete _sftp[fdFileId];lsSet('_fileSentToPeer',_sftp);}catch(e){}
+        await markDelivered(fdFileId, fdPeerId);
+      }
+      if(eventId) wsSend({type:'ack-event',eventId});
+      break;
+    }
     case 'incoming-msg':{
       const from=(msg.from||'').toLowerCase();
       wsSend({type:'ack-msg',msgId:msg.msgId});
+      // Если контакт заблокирован — молча игнорируем входящее сообщение
+      if(isContactBlocked(from)){if(eventId)wsSend({type:'ack-event',eventId});break;}
       // Немедленно пробуем drain pending для этого отправителя (если есть ключ)
       // Это страховка если pending накопились пока ключа не было
       getKey(from).then(k=>{if(k)drainPending(from,k).catch(()=>{});}).catch(()=>{});
@@ -1458,12 +1507,40 @@ async function handleEnvelope(from,env){
     if(from===activePid && currentScreen==='scr-chat' && !online[from]){
       updateBar();
     }
+  }else if(env.type==='block-status'){
+    // Собеседник заблокировал / разблокировал нас
+    const wasBlockedByPeer = lsGet(`bc_blocked_by_${from}`, false);
+    lsSet(`bc_blocked_by_${from}`, !!env.blocked);
+    if(from===activePid && currentScreen==='scr-chat'){
+      if(env.blocked){
+        // Нас заблокировали — показываем "вы заблокированы" и блокируем ввод
+        setPeerStatus('blocked','Вы заблокированы');
+        const inputBar=$('chatInputBar');
+        if(inputBar)inputBar.classList.add('blocked-mode');
+        $('sendBtn').disabled=true;
+        const banner=$('blockedBanner');
+        if(banner){banner.textContent='🚫 Вы заблокированы этим контактом';banner.classList.add('visible');}
+      }else{
+        // Нас разблокировали — восстанавливаем
+        const inputBar=$('chatInputBar');
+        if(inputBar)inputBar.classList.remove('blocked-mode');
+        const banner=$('blockedBanner');
+        if(banner){banner.textContent='🚫 Контакт заблокирован — отправка сообщений недоступна';banner.classList.remove('visible');}
+        updateBar();
+        updateSendBtn();
+      }
+    }
   }else if(env.type==='activity'){
     // Heartbeat-статус от собеседника: каждый новый сигнал сбрасывает таймер на 5с
     if(from===activePid&&currentScreen==='scr-chat'){
       if(env.activityType){
         startPeerActivity(env.activityType); // внутри уже сбрасывает 5с таймер
       }else{stopPeerActivity();updateBar();}
+    }
+  }else if(env.type==='file-delivered'){
+    // Получатель скачал наш файл — ставим ✔✔
+    if(env.fileId){
+      await markDelivered(env.fileId, from);
     }
   }
 }
@@ -1557,6 +1634,10 @@ function updateBar(){
   if(_peerActivityType)return; // не перебиваем анимированный статус
   if(!wsUp){setBar('connecting','Нет связи с сервером…');setPeerStatus('offline','Не в сети');return;}
   if(!activePid)return;
+  // Если контакт заблокирован нами — показываем статус блокировки
+  if(isContactBlocked(activePid)){setPeerStatus('blocked','Контакт заблокирован');setBar('offline','Не в сети · сообщения сохранятся');return;}
+  // Если нас заблокировал собеседник — показываем "вы заблокированы"
+  if(lsGet(`bc_blocked_by_${activePid}`,false)){setPeerStatus('blocked','Вы заблокированы');setBar('offline','Не в сети · сообщения сохранятся');return;}
   if(online[activePid]){
     setBar('online','Собеседник в сети');
     setPeerStatus('online','В сети');
@@ -1573,7 +1654,7 @@ function updateBar(){
     }
   }
 }
-function updateSendBtn(){if(!activePid){$('sendBtn').disabled=true;return;}$('sendBtn').disabled=!wsUp;updateBar();}
+function updateSendBtn(){if(!activePid){$('sendBtn').disabled=true;return;}if(isContactBlocked(activePid)||lsGet(`bc_blocked_by_${activePid}`,false)){$('sendBtn').disabled=true;updateBar();return;}$('sendBtn').disabled=!wsUp;updateBar();}
 
 // ── CHATS ──
 async function getOrCreateChat(pid,peerName,avatar){let chats=await loadChats();let c=chats.find(c=>c.peerId===pid);if(!c){c={peerId:pid,peerName:peerName||(pid===MY_ID?'⭐ Избранное':pid),avatar:avatar||(pid===MY_ID?'⭐':'👤'),lastMsg:null,lastMsgTime:null,unread:0};chats.push(c);}else{if(peerName)c.peerName=peerName;if(avatar)c.avatar=avatar;}await saveChats(chats);return c;}
@@ -1752,7 +1833,7 @@ function openSettingsModal(){
 
         <!-- Версия -->
         <div class="settings-version">
-          <span>v1.0.3.6</span>
+          <span>v2.0</span>
           <div class="settings-version-dot"></div>
           <span>K-Chat E2EE</span>
         </div>
@@ -2101,6 +2182,20 @@ window.openChatById=async function(pid){
   $('peerName').textContent=chat.peerName||pid;
   setPeerStatus('offline','Не в сети');$('sendBtn').disabled=true;setBar('wait','Подключение…');
   renderedCount=0;clearMediaPreview();
+  // Инициализируем UI блокировки
+  const blockBtn=$('blockContactBtn');
+  if(blockBtn){blockBtn.style.display=(pid===MY_ID)?'none':'flex';}
+  // Сбрасываем баннер к дефолту
+  const banner=$('blockedBanner');
+  if(banner)banner.textContent='🚫 Контакт заблокирован — отправка сообщений недоступна';
+  updateBlockUI(pid);
+  // Если нас заблокировали — показываем баннер "вы заблокированы"
+  if(lsGet(`bc_blocked_by_${pid}`,false)&&!isContactBlocked(pid)){
+    setPeerStatus('blocked','Вы заблокированы');
+    const inputBar=$('chatInputBar');
+    if(inputBar)inputBar.classList.add('blocked-mode');
+    if(banner){banner.textContent='🚫 Вы заблокированы этим контактом';banner.classList.add('visible');}
+  }
   await loadChatHistory(pid,true);
   ensureWS();warmKey(pid);
   if(wsUp){updateSendBtn();wsSend({type:'query-presence',target:pid});}
@@ -2394,7 +2489,33 @@ function buildRow(m){
   const check=document.createElement('div');check.className='msg-check';check.innerHTML='✓';row.appendChild(check);
   const bubble=document.createElement('div');bubble.className='bubble';
   if(m.forwarded){const fl=document.createElement('span');fl.className='forwarded-label';fl.textContent='↪️ переслано';bubble.appendChild(fl);}
-  if(m.replyTo){const rd=document.createElement('div');rd.className='reply-preview-inline';rd.textContent='↩️ '+(m.replyTo.text||'').slice(0,50);rd.onclick=e=>{e.stopPropagation();document.querySelector(`[data-msgid="${m.replyTo.id}"]`)?.scrollIntoView({behavior:'smooth',block:'center'});};bubble.appendChild(rd);}
+  if(m.replyTo){const rd=document.createElement('div');rd.className='reply-preview-inline';rd.textContent='↩️ '+(m.replyTo.text||'').slice(0,50);rd.onclick=e=>{
+    e.stopPropagation();
+    const targetRow = document.querySelector(`[data-msgid="${m.replyTo.id}"]`);
+    if(!targetRow) return;
+    targetRow.scrollIntoView({behavior:'smooth', block:'center'});
+    // Подсветка: после прокрутки добавляем класс на bubble
+    const targetBubble = targetRow.querySelector('.bubble');
+    if(targetBubble){
+      // Цвет подсветки зависит от типа сообщения (sent — белый, recv — акцент)
+      const isSentTarget = targetRow.classList.contains('sent');
+      targetBubble.style.setProperty('--reply-hl-color',
+        isSentTarget ? 'rgba(255,255,255,0.22)' : 'rgba(0,255,136,0.25)');
+      // Удаляем старый класс если есть (повторный тап)
+      targetBubble.classList.remove('reply-highlight');
+      // Форсируем reflow чтобы анимация перезапустилась
+      void targetBubble.offsetWidth;
+      // Добавляем с небольшой задержкой — после завершения прокрутки
+      setTimeout(()=>{
+        targetBubble.classList.add('reply-highlight');
+        // Убираем класс после окончания анимации
+        targetBubble.addEventListener('animationend', ()=>{
+          targetBubble.classList.remove('reply-highlight');
+          targetBubble.style.removeProperty('--reply-hl-color');
+        }, {once: true});
+      }, 300);
+    }
+  };bubble.appendChild(rd);}
 
   if(m.fileAvailable){
     // Получатель — кнопка Download
@@ -3025,6 +3146,105 @@ window.deleteChat=async()=>{
   });
 };
 
+// ══════════════════════════════════════════════════════
+// ── БЛОКИРОВКА КОНТАКТА (Telegram-style) ──
+// ══════════════════════════════════════════════════════
+function isContactBlocked(pid){
+  const blocked=lsGet('bc_blocked_contacts',[]);
+  return blocked.includes(pid);
+}
+
+function setContactBlocked(pid,block){
+  let blocked=lsGet('bc_blocked_contacts',[]);
+  if(block){
+    if(!blocked.includes(pid))blocked.push(pid);
+  }else{
+    blocked=blocked.filter(id=>id!==pid);
+  }
+  lsSet('bc_blocked_contacts',blocked);
+}
+
+function updateBlockUI(pid){
+  const btn=$('blockContactBtn');
+  if(!btn)return;
+  const blocked=isContactBlocked(pid);
+  const inputBar=$('chatInputBar');
+  const banner=$('blockedBanner');
+  if(blocked){
+    // Кнопка становится ❌ (разблокировать)
+    btn.textContent='❌';
+    btn.classList.add('block-active');
+    btn.title='Разблокировать контакт';
+    // Статус в шапке
+    setPeerStatus('blocked','Контакт заблокирован');
+    // Блокируем ввод
+    if(inputBar)inputBar.classList.add('blocked-mode');
+    if(banner)banner.classList.add('visible');
+    // Отключаем кнопку отправки
+    $('sendBtn').disabled=true;
+  }else{
+    // Кнопка становится 🚫 (заблокировать)
+    btn.textContent='🚫';
+    btn.classList.remove('block-active');
+    btn.title='Заблокировать контакт';
+    // Возвращаем нормальный статус (только если не заблокированы самим собой)
+    if(!lsGet(`bc_blocked_by_${pid}`,false)){updateBar();}
+    else{setPeerStatus('blocked','Вы заблокированы');}
+    // Разблокируем ввод
+    if(inputBar)inputBar.classList.remove('blocked-mode');
+    if(banner)banner.classList.remove('visible');
+    // Восстанавливаем кнопку отправки
+    updateSendBtn();
+  }
+}
+
+async function _sendBlockSignal(pid, isBlocked){
+  if(!wsUp||!keyCache[pid])return;
+  try{
+    const enc=await encData(ENC.encode(JSON.stringify({type:'block-status',blocked:isBlocked,ts:Date.now()})),keyCache[pid]);
+    wsSend({type:'send-msg',target:pid,msgId:uid(),payload:payloadToB64(enc),ephemeral:true});
+  }catch(e){}
+}
+
+window.toggleBlockContact=function(){
+  if(!activePid)return;
+  if(activePid===MY_ID)return;
+  const blocked=isContactBlocked(activePid);
+  if(!blocked){
+    // Блокируем
+    showConfirm({
+      icon:'🚫',
+      title:'Заблокировать контакт?',
+      text:'Контакт будет заблокирован. Новые сообщения от него перестанут поступать. Вы сможете разблокировать его в любой момент.',
+      yesLabel:'🚫 Заблокировать',
+      noLabel:'Отмена',
+      onYes:()=>{
+        setContactBlocked(activePid,true);
+        updateBlockUI(activePid);
+        _sendBlockSignal(activePid,true).catch(()=>{});
+        toast('Контакт заблокирован');
+        renderChatList();
+      }
+    });
+  }else{
+    // Разблокируем
+    showConfirm({
+      icon:'❌',
+      title:'Разблокировать контакт?',
+      text:'Контакт будет разблокирован. Вы снова сможете получать от него сообщения и общаться.',
+      yesLabel:'❌ Разблокировать',
+      noLabel:'Отмена',
+      onYes:()=>{
+        setContactBlocked(activePid,false);
+        updateBlockUI(activePid);
+        _sendBlockSignal(activePid,false).catch(()=>{});
+        toast('Контакт разблокирован');
+        renderChatList();
+      }
+    });
+  }
+};
+
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='hidden'){lastHiddenTime=Date.now();_lastSeenBroadcastTs=0;broadcastLastSeen().catch(()=>{});}
   else{ensureWS();const hd=Date.now()-lastHiddenTime;if(ignoreNextVisibilityReturn){ignoreNextVisibilityReturn=false;}else if(hd>3000){if(activePid)leaveChat();else goHome();}else if(activePid&&wsUp)wsSend({type:'query-presence',target:activePid});}
@@ -3496,6 +3716,8 @@ function buildVoiceBubble(m,isSent){
 }
 
 // ── INIT ──
+// Восстанавливаем pending fileId→peerId после перезагрузки
+try{const _sftp=lsGet('_fileSentToPeer',{});Object.entries(_sftp).forEach(([fid,pid])=>_fileSentToPeer.set(fid,pid));}catch(e){}
 loadSavedTheme();
 initFavoritesChat().then(async()=>{
   await migrateLocalStorageMessages();
