@@ -182,6 +182,10 @@
     .messages-area::-webkit-scrollbar{width:3px}
     .messages-area::-webkit-scrollbar-thumb{background:var(--g-20);border-radius:2px}
     .msg-row{display:flex;flex-direction:column;max-width:80%;animation:mpop .25s cubic-bezier(.2,.9,.4,1.1);position:relative}
+    /* Увеличенный отступ при смене отправителя (как в Telegram) */
+    .msg-row.recv+.msg-row.sent,.msg-row.sent+.msg-row.recv{margin-top:4px}
+    /* Дата-сепаратор тоже чуть отделяем */
+    .date-separator+.msg-row{margin-top:2px}
     @keyframes mpop{from{opacity:0;transform:translateY(12px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
     .msg-row.sent{align-self:flex-end;align-items:flex-end}
     .msg-row.recv{align-self:flex-start;align-items:flex-start}
@@ -3853,4 +3857,4 @@ async function migrateLocalStorageMessages(){
 })();
 </script>
 </body>
-          </html>
+</html>
