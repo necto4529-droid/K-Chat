@@ -181,6 +181,77 @@
     .chat-peer-status.connecting{color:var(--warn)}
     .chat-peer-status.connecting::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--warn);display:inline-block;animation:blink .8s infinite}
     @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+
+    /* ═══════════════════════════════════════════════════════════
+       ⚡ ЭНЕРГОСБЕРЕЖЕНИЕ — body.power-save отключает тяжёлые анимации
+       Все переходы заменяются короткими fade-sами (100-150ms).
+       Функциональность не теряется — только убираем «украшения».
+    ═══════════════════════════════════════════════════════════ */
+    body.power-save .bg-orb{display:none}
+    body.power-save .screen{transition:transform .12s ease,opacity .1s ease!important;will-change:auto!important}
+    body.power-save .msg-row{animation:none!important}
+    body.power-save .bubble{transition:opacity .1s ease!important}
+    body.power-save .chat-item{transition:background .1s ease!important}
+    body.power-save .chat-item.ctx-pressed{transform:none!important;transition:background .1s!important}
+    body.power-save .fab-main{transition:opacity .1s ease,transform .1s ease!important;box-shadow:none!important}
+    body.power-save .fab-menu{transition:opacity .15s ease,transform .15s ease!important}
+    body.power-save .fab-menu-btn{transition:none!important}
+    body.power-save .modal{transition:opacity .15s ease,transform .15s ease!important}
+    body.power-save .modal-overlay{transition:opacity .15s ease!important}
+    body.power-save .settings-sheet{transition:opacity .15s ease,transform .15s ease!important}
+    body.power-save .danger-dialog-sheet{transition:opacity .15s ease,transform .15s ease!important}
+    body.power-save .confirm-box{transition:opacity .15s ease,transform .15s ease!important}
+    body.power-save .sticker-panel{transition:opacity .15s ease,transform .15s ease!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+    body.power-save .sticker-panel.open{opacity:1!important}
+    body.power-save .sticker-cell{transition:background .1s ease!important;transform:none!important}
+    body.power-save .sticker-cell.sending{animation:none!important}
+    body.power-save .sticker-cell.new-appear{animation:none!important;opacity:1!important}
+    body.power-save .sticker-pack-tab{transition:background .1s!important;transform:none!important}
+    body.power-save .scroll-down-btn{transition:opacity .12s ease!important;transform:none!important}
+    body.power-save .send-btn{transition:opacity .1s ease!important;transform:none!important}
+    body.power-save .btn{transition:opacity .1s ease!important;transform:none!important}
+    body.power-save .home-tab{transition:background .1s,color .1s!important}
+    body.power-save .settings-tog-sw{transition:background .12s,border-color .12s!important}
+    body.power-save .settings-tog-knob{transition:transform .12s ease!important}
+    body.power-save .reaction-chip{transition:background .1s!important;transform:none!important}
+    body.power-save .emoji-pick-btn{transition:background .1s!important;transform:none!important}
+    body.power-save .emoji-grid-btn{transition:background .1s!important;transform:none!important}
+    body.power-save .msg-search-bar{transition:height .12s ease,opacity .1s ease,padding .12s ease!important}
+    body.power-save .voice-record-overlay{transition:opacity .1s ease!important;backdrop-filter:none!important}
+    body.power-save .voice-preview-bar{transition:opacity .1s ease!important;backdrop-filter:none!important}
+    body.power-save .voice-play-btn.playing{animation:none!important;filter:brightness(1.15)}
+    body.power-save .wf-bar.active-bar{animation:none!important;filter:brightness(1.4)}
+    body.power-save .wf-bar{transition:none!important}
+    /* Статичная полоса waveform в power-save — тонкий прогресс-бар */
+    body.power-save .voice-waveform{align-items:center}
+    body.power-save .pvb-play.playing{animation:none!important;filter:brightness(1.2)}
+    body.power-save .audio-play-btn.playing{animation:none!important}
+    body.power-save .rec-dot{animation:none!important;opacity:1}
+    body.power-save .rec-stop-btn{animation:none!important}
+    body.power-save .mic-btn.recording{animation:none!important}
+    body.power-save .rec-limit-bar{transition:width .1s linear!important}
+    body.power-save .rec-limit-bar.warn{animation:none!important;opacity:1}
+    body.power-save .rec-limit-bar.crit{animation:none!important;opacity:1}
+    body.power-save .sdot{animation:none!important;opacity:1;transform:scale(1)}
+    body.power-save .toast{transition:opacity .1s,transform .1s!important}
+    body.power-save .toast.processing::before{animation:none!important;opacity:1}
+    body.power-save .toast.queue-progress::before{animation:none!important;opacity:1}
+    body.power-save .lightbox-overlay{transition:opacity .12s ease!important;backdrop-filter:none!important}
+    body.power-save .lightbox-img{transition:transform .08s linear!important}
+    body.power-save .lightbox-zoom-hint{transition:opacity .1s!important}
+    body.power-save .file-icon-download{transition:background .1s!important;transform:none!important}
+    body.power-save .tg-spinner-fill{transition:stroke-dashoffset .15s ease!important}
+    body.power-save .settings-danger-confirm{animation:none!important}
+    body.power-save #floatingDate{transition:opacity .1s ease!important}
+    body.power-save #pinnedBar{transition:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+    body.power-save .pinned-close{transition:background .1s!important;transform:none!important}
+    body.power-save .chat-peer-status.activity::before{animation:none!important;opacity:1}
+    body.power-save .chat-peer-status.connecting::before{animation:none!important;opacity:1}
+    body.power-save .bubble.reply-highlight{animation:none!important;background:var(--reply-hl-color,rgba(0,255,136,0.25))!important;transition:background 1.4s ease-out!important}
+    /* FAB-меню в режиме энергосбережения — просто fade */
+    body.power-save .fab-menu.open{opacity:1!important}
+    /* Спиннер загрузки файла */
+    body.power-save .spinner-done{animation:none!important}
     .messages-area{flex:1;overflow-y:auto;overflow-x:hidden;padding:10px 10px 6px;display:flex;flex-direction:column;gap:3px;position:relative}
     .messages-area::-webkit-scrollbar{width:3px}
     .messages-area::-webkit-scrollbar-thumb{background:var(--g-20);border-radius:2px}
@@ -1023,9 +1094,9 @@ async function loadMsgs(peerId){
 }
 
 async function saveMsgs(peerId,messages){
-  // Всегда сохраняем backup в ls (последние 200 сообщений)
-  // Это дешево и спасает при падении IDB
-  try{lsSet(`bc_msgs_${peerId}`,messages.slice(-200));}catch(e){}
+  // В режиме энергосбережения держим меньше сообщений в ls-бэкапе
+  const lsLimit = lsGet('bc_energy_save',false) ? 60 : 200;
+  try{lsSet(`bc_msgs_${peerId}`,messages.slice(-lsLimit));}catch(e){}
   // Основное хранилище — IDB
   for(let i=0;i<2;i++){
     try{ await _idbPut(peerId,messages); return; }catch(e){ db=null;_dbOpenPromise=null; }
@@ -1929,6 +2000,44 @@ function closeFab(){fabOpen=false;$('fabMenu').classList.remove('open');$('fabMa
 document.addEventListener('click',e=>{if(fabOpen&&!$('fabWrap').contains(e.target))closeFab();});
 window.onNewChat=()=>{closeFab();_openChatAfterSave=true;openAddContact();};
 window.onNewGroup=()=>{closeFab();toast('Создание групп скоро появится','warn');};
+// ── THROTTLE — ограничиваем частоту scroll-событий в power-save ──────────────
+function _throttle(fn, ms){
+  let last=0, raf=null;
+  return function(...args){
+    const now=Date.now();
+    if(now-last >= ms){
+      last=now;
+      fn.apply(this,args);
+    } else if(!raf){
+      raf=setTimeout(()=>{raf=null;last=Date.now();fn.apply(this,args);}, ms-(now-last));
+    }
+  };
+}
+
+function _onMessagesScroll(){updateScrollBtn();showFloatingDate();}
+let _scrollHandler=_onMessagesScroll;
+function _rebuildScrollHandler(){
+  const area=$('messagesArea');
+  if(!area)return;
+  area.removeEventListener('scroll',_scrollHandler);
+  _scrollHandler = lsGet('bc_energy_save',false)
+    ? _throttle(_onMessagesScroll, 80)
+    : _onMessagesScroll;
+  area.addEventListener('scroll',_scrollHandler);
+}
+
+// ── ЭНЕРГОСБЕРЕЖЕНИЕ ──────────────────────────────────────────────────────────
+function applyEnergySave(on){
+  document.body.classList.toggle('power-save', !!on);
+  document.querySelectorAll('.bg-orb').forEach(o=>{
+    o.style.display = on ? 'none' : '';
+  });
+  _rebuildScrollHandler();
+}
+
+// Применяем при старте
+applyEnergySave(lsGet('bc_energy_save', false));
+
 window.openSettings=()=>openSettingsModal();
 window.closeSettingsModal=()=>closeSettingsModal();
 
@@ -2064,6 +2173,15 @@ function openSettingsModal(){
               </div>
               <div class="settings-tog-sw" id="lastSeenSw"><div class="settings-tog-knob"></div></div>
             </div>
+            <div style="height:1px;background:rgba(255,255,255,.06);margin:0 2px"></div>
+            <div class="settings-tog-row" id="energySaveRow">
+              <span class="settings-tog-icon">⚡</span>
+              <div class="settings-tog-info">
+                <div class="settings-tog-title">Энергосбережение</div>
+                <div class="settings-tog-desc">Отключает тяжёлые анимации — экономит батарею</div>
+              </div>
+              <div class="settings-tog-sw" id="energySaveSw"><div class="settings-tog-knob"></div></div>
+            </div>
           </div>
         </div>
 
@@ -2188,6 +2306,22 @@ function openSettingsModal(){
       lsSet('bc_last_seen_enabled', nowOn);
       if(!nowOn) broadcastLastSeenOff().catch(()=>{});
       toast(nowOn ? '🕐 Время захода включено' : 'Время захода скрыто');
+    };
+  }
+
+  // Toggle "⚡ Энергосбережение"
+  const esSaved = lsGet('bc_energy_save', false);
+  const esSw  = document.getElementById('energySaveSw');
+  const esRow = document.getElementById('energySaveRow');
+  if(esSw) esSw.classList.toggle('on', esSaved);
+  if(esRow){
+    esRow.onclick = () => {
+      const esSw2 = document.getElementById('energySaveSw');
+      if(!esSw2) return;
+      const nowOn = esSw2.classList.toggle('on');
+      lsSet('bc_energy_save', nowOn);
+      applyEnergySave(nowOn);
+      toast(nowOn ? '⚡ Энергосбережение включено' : '✨ Анимации восстановлены');
     };
   }
 
@@ -3276,6 +3410,9 @@ window.deleteSelectedMessages=deleteSelectedMessages;window.exitSelectionMode=ex
 // ── HISTORY ──
 async function loadChatHistory(pid,reset=false){
   const area=$('messagesArea');const msgs=await loadMsgs(pid);const total=msgs.length;
+  // В режиме энергосбережения ограничиваем кол-во сообщений в DOM
+  const PS=lsGet('bc_energy_save',false);
+  const DOM_LIMIT = PS ? 60 : 200;
   if(reset){
     // Очищаем область сообщений (floatingDate теперь снаружи — не трогаем)
     area.innerHTML='';
@@ -3283,15 +3420,15 @@ async function loadChatHistory(pid,reset=false){
     if(!total){
       const ec=document.createElement('div');ec.className='empty-chat';ec.innerHTML=`<div class="empty-chat-icon">💬</div><div class="empty-chat-text">Нет сообщений<br><span style="font-size:11px;font-family:'JetBrains Mono',monospace;opacity:.6">Напишите первое сообщение</span></div>`;area.appendChild(ec);
     }else{
-      // Рендерим сразу последние 50 сообщений, остальные — батчами через rAF
-      // чтобы не блокировать UI при открытии чата с сотнями сообщений
-      const INITIAL_BATCH=50;
+      // Рендерим последние DOM_LIMIT сообщений сразу
+      const INITIAL_BATCH=Math.min(50, DOM_LIMIT);
       const frag=document.createDocumentFragment();
       let prevTs=null;
-      const startIdx=Math.max(0,msgs.length-INITIAL_BATCH);
-      // Сначала быстро рендерим видимую часть (последние N)
-      for(let i=startIdx;i<msgs.length;i++){
-        const m=msgs[i];
+      // В power-save грузим только DOM_LIMIT последних, в обычном — все
+      const msgsToRender = PS ? msgs.slice(-DOM_LIMIT) : msgs;
+      const startIdx=Math.max(0,msgsToRender.length-INITIAL_BATCH);
+      for(let i=startIdx;i<msgsToRender.length;i++){
+        const m=msgsToRender[i];
         const ts=new Date(m.time).getTime();
         if(prevTs===null||!isSameDay(prevTs,ts)){
           frag.appendChild(buildDateSeparator(ts));
@@ -3301,13 +3438,13 @@ async function loadChatHistory(pid,reset=false){
       }
       area.appendChild(frag);
       renderedCount=total;
-      // Если сообщений больше INITIAL_BATCH — предпендим старые батчами
-      if(startIdx>0){
+      // Предпендим старые батчи (только если не power-save)
+      if(!PS && startIdx>0){
         const scrollHeightBefore=area.scrollHeight;
         const prepFrag=document.createDocumentFragment();
         let prevTs2=null;
         for(let i=0;i<startIdx;i++){
-          const m=msgs[i];
+          const m=msgsToRender[i];
           const ts=new Date(m.time).getTime();
           if(prevTs2===null||!isSameDay(prevTs2,ts)){
             prepFrag.appendChild(buildDateSeparator(ts));
@@ -3316,8 +3453,14 @@ async function loadChatHistory(pid,reset=false){
           prevTs2=ts;
         }
         area.insertBefore(prepFrag,area.firstChild);
-        // Восстанавливаем позицию скролла
         area.scrollTop=area.scrollHeight-scrollHeightBefore;
+      } else if(PS && msgsToRender.length < msgs.length){
+        // В power-save показываем подсказку что часть истории скрыта
+        const hint=document.createElement('div');
+        hint.className='ps-history-hint';
+        hint.style.cssText='text-align:center;padding:12px 16px;font-family:\'JetBrains Mono\',monospace;font-size:10px;color:rgba(255,255,255,.25);letter-spacing:.5px;';
+        hint.textContent=`⚡ Показаны последние ${DOM_LIMIT} из ${total} сообщений`;
+        area.insertBefore(hint,area.firstChild);
       }
     }
     area.scrollTop=area.scrollHeight;
@@ -3327,7 +3470,6 @@ async function loadChatHistory(pid,reset=false){
       const newMsgs=msgs.slice(renderedCount);
       const wasBot=area.scrollHeight-area.scrollTop-area.clientHeight<80;
       const frag=document.createDocumentFragment();
-      // Определяем дату последнего уже отрисованного сообщения
       let prevTs=renderedCount>0?new Date(msgs[renderedCount-1].time).getTime():null;
       for(const m of newMsgs){
         if(!area.querySelector(`.msg-row[data-msgid="${m.id}"]`)){
@@ -3339,6 +3481,20 @@ async function loadChatHistory(pid,reset=false){
           }
           frag.appendChild(buildRow(m));
           prevTs=ts;
+          // В power-save обрезаем старые DOM-узлы если их слишком много
+          if(PS){
+            const rows=area.querySelectorAll('.msg-row');
+            if(rows.length > DOM_LIMIT + 20){
+              // Удаляем первые 20 строк вместе с ближайшим date-сепаратором
+              let removed=0;
+              while(removed<20 && area.firstChild){
+                const el=area.firstChild;
+                if(el.classList?.contains('ps-history-hint')){el.remove();continue;}
+                area.removeChild(el);
+                removed++;
+              }
+            }
+          }
         }
       }
       area.appendChild(frag);
@@ -3379,7 +3535,7 @@ function appendOrReloadMsg(pid,m){
 }
 function updateScrollBtn(){const area=$('messagesArea'),btn=$('scrollDownBtn');if(!area||!btn)return;const d=area.scrollHeight-area.scrollTop-area.clientHeight;btn.classList.toggle('visible',d>100);if(d<=100){const badge=$('scrollBadge');if(badge)badge.textContent='';btn.classList.remove('has-badge');}}
 window.scrollToBottom=()=>{const area=$('messagesArea');area.scrollTo({top:area.scrollHeight,behavior:'smooth'});const badge=$('scrollBadge');if(badge)badge.textContent='';$('scrollDownBtn').classList.remove('has-badge');};
-$('messagesArea').addEventListener('scroll',()=>{updateScrollBtn();showFloatingDate();});
+_rebuildScrollHandler();
 new ResizeObserver(()=>updateScrollBtn()).observe($('messagesArea'));
 
 // ── CONTEXT MENU ──
@@ -4085,8 +4241,18 @@ function buildVoiceBubble(m,isSent){
   const right=document.createElement('div');right.className='voice-right';
   const wf=document.createElement('div');wf.className='voice-waveform';
   const waveform=m.voice?.waveform||Array.from({length:WF_BARS},()=>Math.random());
-  const barEls=[];const DISP=Math.min(waveform.length,WF_BARS);
-  for(let i=0;i<DISP;i++){const b=document.createElement('div');b.className='wf-bar';b.style.height=Math.max(3,Math.round((waveform[i]||0.2)*22))+'px';wf.appendChild(b);barEls.push(b);}
+  const barEls=[];
+  // Всегда рисуем полоску-волну из баров.
+  // В режиме энергосбережения CSS-правила body.power-save отключают анимации
+  // (wfPulse, transitions) — бары остаются статичными без доп. нагрузки.
+  const DISP=Math.min(waveform.length,WF_BARS);
+  for(let i=0;i<DISP;i++){
+    const b=document.createElement('div');
+    b.className='wf-bar';
+    b.style.height=Math.max(3,Math.round((waveform[i]||0.2)*22))+'px';
+    wf.appendChild(b);
+    barEls.push(b);
+  }
   const bot=document.createElement('div');bot.className='voice-bottom';
   const timerEl=document.createElement('span');timerEl.className='voice-timer';timerEl.textContent=fmtDur(totalSec);
   const dot=document.createElement('span');dot.className='voice-unread-dot'+(dotHidden?' hidden':'');
@@ -4099,7 +4265,7 @@ function buildVoiceBubble(m,isSent){
   let audio=null,isPlaying=false,rafId=null;
 
   function updateProgress(pct){
-    const count=Math.round(pct*DISP);
+    const count=Math.round(pct*barEls.length);
     barEls.forEach((b,i)=>{
       b.classList.toggle('played',i<count);
       b.classList.toggle('active-bar',i===count-1&&count>0);
