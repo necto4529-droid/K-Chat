@@ -96,6 +96,11 @@
     .chat-list{display:flex;flex-direction:column;padding:8px 16px 0}
     .chat-item{display:flex;align-items:center;gap:14px;padding:14px 16px;background:var(--panel);border:1px solid var(--border);border-radius:var(--r);margin-bottom:8px;cursor:pointer;transition:background .2s,border-color .2s}
     .chat-item:hover{background:rgba(255,255,255,.045);border-color:var(--g-25)}
+    .chat-item.pinned-chat{border-color:rgba(255,255,255,0.16);background:rgba(255,255,255,0.035);position:relative;overflow:hidden}
+    .chat-item.pinned-chat::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:rgba(255,255,255,0.35);border-radius:0 2px 2px 0}
+    .chat-item.pinned-chat:hover{border-color:rgba(255,255,255,0.26);background:rgba(255,255,255,0.06)}
+    .chat-pin-badge{font-size:11px;opacity:.45;margin-left:3px;flex-shrink:0}
+    .chat-item.ctx-pressed{background:rgba(255,255,255,.07);border-color:var(--g-35);transform:scale(.985);transition:transform .12s,background .1s}
     .chat-avatar{width:50px;height:50px;border-radius:50%;background:linear-gradient(135deg,var(--g-20),rgba(0,217,255,.15));border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;position:relative}
     .presence-dot{position:absolute;bottom:1px;right:1px;width:12px;height:12px;border-radius:50%;border:2px solid var(--bg);background:var(--muted)}
     .presence-dot.online{background:var(--g);box-shadow:0 0 6px var(--g)}
@@ -106,6 +111,7 @@
     .chat-meta{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0}
     .chat-time{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted)}
     .chat-badge{background:var(--g);color:#000;font-size:10px;font-weight:700;padding:2px 7px;border-radius:12px;min-width:20px;text-align:center}
+    .chat-badge.dot{width:10px;height:10px;min-width:unset;padding:0;border-radius:50%;font-size:0;line-height:1}
     .empty-chats{text-align:center;padding:40px 20px;color:var(--muted);font-family:'JetBrains Mono',monospace}
     .search-highlight{background:var(--g-25);border-radius:3px;color:var(--g)}
     /* FAB */
@@ -171,14 +177,11 @@
     .search-nav-btn{width:30px;height:30px;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.07);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px;transition:background .2s;flex-shrink:0}
     .search-nav-btn:hover{background:var(--g-12)}
     .search-count{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0;min-width:40px}
-    .status-bar{display:flex;align-items:center;gap:8px;padding:7px 14px;font-family:'JetBrains Mono',monospace;font-size:11px;border-bottom:1px solid var(--border);flex-shrink:0;transition:background .4s,color .3s}
-    .status-bar .sb-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;transition:background .3s,box-shadow .3s}
-    .status-bar.s-wait{background:rgba(255,255,255,.02);color:var(--muted)}.status-bar.s-wait .sb-dot{background:var(--muted)}
-    .status-bar.s-connecting{background:rgba(255,166,43,.07);color:var(--warn)}.status-bar.s-connecting .sb-dot{background:var(--warn);animation:blink 1s infinite}
-    .status-bar.s-online{background:var(--g-06);color:var(--g-85)}.status-bar.s-online .sb-dot{background:var(--g);box-shadow:0 0 6px var(--g)}
-    .status-bar.s-offline{background:rgba(255,79,106,.06);color:rgba(255,79,106,.85)}.status-bar.s-offline .sb-dot{background:var(--err)}
+    /* Статус соединения отображается в peerStatus (Telegram-стиль) */
+    .chat-peer-status.connecting{color:var(--warn)}
+    .chat-peer-status.connecting::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--warn);display:inline-block;animation:blink .8s infinite}
     @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
-    .messages-area{flex:1;overflow-y:auto;padding:10px 10px 6px;display:flex;flex-direction:column;gap:3px;position:relative}
+    .messages-area{flex:1;overflow-y:auto;overflow-x:hidden;padding:10px 10px 6px;display:flex;flex-direction:column;gap:3px;position:relative}
     .messages-area::-webkit-scrollbar{width:3px}
     .messages-area::-webkit-scrollbar-thumb{background:var(--g-20);border-radius:2px}
     .msg-row{display:flex;flex-direction:column;max-width:80%;animation:mpop .25s cubic-bezier(.2,.9,.4,1.1);position:relative}
@@ -201,11 +204,31 @@
     .bubble.search-current{outline:2px solid var(--g);box-shadow:0 0 14px var(--g-30)}
     /* Подсветка сообщения при переходе по ответу (Telegram-стиль) */
     @keyframes replyHighlight{
-      0%  {background:var(--reply-hl-color,rgba(0,255,136,0.28))}
-      55% {background:var(--reply-hl-color,rgba(0,255,136,0.28))}
-      100%{background:inherit}
+      0%  {background:rgba(255,255,255,0.18)}
+      55% {background:rgba(255,255,255,0.18)}
+      100%{background:transparent}
     }
-    .bubble.reply-highlight{animation:replyHighlight 1.6s ease-out forwards}
+    .bubble.reply-highlight{animation:replyHighlight 2.5s ease-out forwards}
+    /* Подсветка строки сообщения как в Telegram — через ::before на msg-row
+       left/right выходят за пределы max-width:80% на всю ширину экрана,
+       top/height управляются CSS-переменными чтобы корректно покрывать стикеры */
+    @keyframes rowHighlight{
+      0%  {opacity:1}
+      50% {opacity:1}
+      100%{opacity:0}
+    }
+    .msg-row.row-highlighted{overflow:visible}
+    .msg-row.row-highlighted::before{
+      content:'';
+      position:absolute;
+      left:-200px;right:-200px;
+      top:var(--hl-top,0px);
+      height:var(--hl-height,100%);
+      background:rgba(255,255,255,0.13);
+      pointer-events:none;
+      z-index:0;
+      animation:rowHighlight 2.5s ease-out forwards;
+    }
     .msg-meta{float:right;display:flex;align-items:flex-end;gap:3px;margin-left:8px;margin-bottom:-1px;margin-top:2px;line-height:1}
     .msg-time-inline{font-family:'JetBrains Mono',monospace;font-size:10.5px;white-space:nowrap;color:rgba(255,255,255,.42)}
     .msg-row.sent .msg-time-inline{color:rgba(255,255,255,.55)}
@@ -418,6 +441,24 @@
     #floatingDate .floating-date-pill{background:rgba(0,0,0,.72);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.12);border-radius:30px;padding:5px 16px;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:rgba(255,255,255,.78);letter-spacing:.3px;white-space:nowrap;box-shadow:0 2px 12px rgba(0,0,0,.55)}
 
     /* ══════════════════════════════════════════════════════
+       PINNED MESSAGE BAR (Telegram-стиль)
+    ══════════════════════════════════════════════════════ */
+    #pinnedBar{display:none;align-items:center;gap:10px;padding:7px 14px 7px 12px;background:rgba(7,7,15,.93);backdrop-filter:blur(18px);border-bottom:1px solid var(--g-20);flex-shrink:0;cursor:pointer;transition:background .18s;position:relative;z-index:19;overflow:hidden}
+    #pinnedBar:hover{background:rgba(7,7,15,.98)}
+    #pinnedBar.visible{display:flex}
+    .pinned-accent-line{width:3px;min-width:3px;height:32px;border-radius:2px;background:var(--g);flex-shrink:0;box-shadow:0 0 8px var(--g-35)}
+    .pinned-icon{font-size:14px;flex-shrink:0;opacity:.75;margin-right:-2px}
+    .pinned-texts{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+    .pinned-label{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:var(--g);letter-spacing:.8px;text-transform:uppercase;opacity:.85}
+    .pinned-preview{font-size:12.5px;color:rgba(255,255,255,.72);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.35}
+    .pinned-close{width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:12px;flex-shrink:0;transition:background .15s,transform .12s;color:rgba(255,255,255,.5)}
+    .pinned-close:hover{background:rgba(255,255,255,.14);color:var(--text)}
+    .pinned-close:active{transform:scale(.88)}
+    /* msg-row помечаем как закреплённое */
+    .msg-row.pinned-msg .bubble::after{content:'📌';position:absolute;top:5px;left:7px;font-size:10px;opacity:.50;pointer-events:none;line-height:1}
+    .msg-row.pinned-msg .bubble{padding-left:22px}
+
+    /* ══════════════════════════════════════════════════════
        SETTINGS MODAL — новый дизайн (Manrope-sheet style)
     ══════════════════════════════════════════════════════ */
     /* Sheet контейнер */
@@ -564,8 +605,66 @@
     .audio-timer{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:rgba(255,255,255,.55);white-space:nowrap;flex-shrink:0}
     .audio-msg-meta{display:flex;align-items:center;flex-shrink:0}
     .audio-msg-meta .msg-meta{float:none;margin:0}
-
-
+    /* ══════════════════════════════════════════════════════
+       STICKER PANEL
+    ══════════════════════════════════════════════════════ */
+    /* ══════════════════════════════════════════════════════
+       STICKER PANEL — УЛУЧШЕННАЯ ВЕРСИЯ
+    ══════════════════════════════════════════════════════ */
+    .sticker-panel{position:fixed;bottom:0;left:0;right:0;background:rgba(8,8,18,.98);backdrop-filter:blur(32px);border-top:1px solid var(--g-18);z-index:200;display:flex;flex-direction:column;height:365px;transform:translateY(100%);transition:transform .34s cubic-bezier(.32,.72,0,1);border-radius:22px 22px 0 0;box-shadow:0 -12px 60px rgba(0,0,0,.8),0 -1px 0 var(--g-08);will-change:transform}
+    .sticker-panel.open{transform:translateY(0)}
+    .sticker-panel.frozen{pointer-events:none;transition:none}
+    /* Ручка-драг */
+    .sticker-drag-handle{width:36px;height:4px;background:rgba(255,255,255,.18);border-radius:2px;margin:10px auto 0;flex-shrink:0}
+    /* Шапка: поиск + кнопка закрыть */
+    .sticker-panel-topbar{display:flex;align-items:center;gap:8px;padding:8px 12px 6px;flex-shrink:0}
+    .sticker-search-wrap{flex:1}
+    .sticker-search-inner{position:relative;display:flex;align-items:center}
+    .sticker-search-icon{position:absolute;left:12px;font-size:13px;pointer-events:none;opacity:.5;z-index:1}
+    .sticker-search{width:100%;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.09);border-radius:22px;padding:8px 14px 8px 34px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;outline:none;transition:border-color .2s,background .2s}
+    .sticker-search:focus{border-color:var(--g-40);background:rgba(255,255,255,.1)}
+    .sticker-search::placeholder{color:rgba(255,255,255,.25)}
+    .sticker-panel-close{width:36px;height:36px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;color:var(--muted);flex-shrink:0;border-radius:10px;transition:background .15s,color .15s;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06)}
+    .sticker-panel-close:hover{color:var(--text);background:rgba(255,255,255,.09)}
+    /* Таб-бар с паками */
+    .sticker-panel-header{display:flex;align-items:center;border-bottom:1px solid rgba(255,255,255,.07);flex-shrink:0;padding:0 4px}
+    .sticker-tab-scroll{display:flex;align-items:center;gap:2px;overflow-x:auto;flex:1;padding:6px 4px;scrollbar-width:none}
+    .sticker-tab-scroll::-webkit-scrollbar{display:none}
+    .sticker-pack-tab{min-width:38px;width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:22px;cursor:pointer;flex-shrink:0;transition:background .15s,transform .15s,border-color .15s;border:2px solid transparent;position:relative}
+    .sticker-pack-tab:hover{background:rgba(255,255,255,.08)}
+    .sticker-pack-tab:active{transform:scale(.88)}
+    .sticker-pack-tab.active{background:var(--g-15);border-color:var(--g-35)}
+    .sticker-pack-tab.active::after{content:'';position:absolute;bottom:-8px;left:50%;transform:translateX(-50%);width:20px;height:2px;background:var(--g);border-radius:2px}
+    /* Tooltip для табов */
+    .sticker-pack-tab[title]:hover::before{content:attr(title);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:rgba(0,0,0,.85);color:rgba(255,255,255,.9);font-family:'JetBrains Mono',monospace;font-size:10px;padding:4px 8px;border-radius:6px;white-space:nowrap;pointer-events:none;z-index:100;border:1px solid rgba(255,255,255,.1)}
+    /* Название пака */
+    .sticker-pack-name{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--g);opacity:.65;padding:5px 14px 3px;flex-shrink:0;display:flex;align-items:center;gap:6px}
+    .sticker-pack-name-count{opacity:.45;font-weight:400}
+    /* Грид стикеров */
+    .sticker-grid-wrap{flex:1;overflow-y:auto;padding:4px 8px 12px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.08) transparent}
+    .sticker-grid-wrap::-webkit-scrollbar{width:3px}
+    .sticker-grid-wrap::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:2px}
+    .sticker-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:3px}
+    .sticker-cell{aspect-ratio:1;border-radius:12px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:38px;line-height:1;transition:background .1s,transform .12s;background:transparent;position:relative}
+    .sticker-cell:hover{background:rgba(255,255,255,.08);transform:scale(1.12)}
+    .sticker-cell:active{transform:scale(.88);background:var(--g-12)}
+    .sticker-cell[title]:hover::after{content:attr(title);position:absolute;bottom:calc(100% + 5px);left:50%;transform:translateX(-50%);background:rgba(8,8,20,.97);border:1px solid var(--g-20);color:rgba(255,255,255,.75);font-size:10px;font-family:'JetBrains Mono',monospace;padding:3px 8px;border-radius:8px;white-space:nowrap;pointer-events:none;z-index:100;max-width:140px;overflow:hidden;text-overflow:ellipsis;backdrop-filter:blur(8px)}
+    @keyframes stickerSend{0%{transform:scale(1)}25%{transform:scale(.8)}60%{transform:scale(1.18)}100%{transform:scale(1)}}
+    @keyframes stickerPop{0%{opacity:0;transform:scale(.6)}60%{transform:scale(1.1)}100%{opacity:1;transform:scale(1)}}
+    .sticker-cell.sending{animation:stickerSend .35s cubic-bezier(.34,1.56,.64,1)}
+    .sticker-cell.new-appear{animation:stickerPop .2s cubic-bezier(.34,1.56,.64,1)}
+    /* Пустой результат поиска */
+    .sticker-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:32px 20px;color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:12px;text-align:center;flex:1}
+    .sticker-empty-icon{font-size:36px;opacity:.4}
+    /* Стикер в сообщении */
+    .sticker-bubble-wrap{font-size:72px;line-height:1.1;text-align:center;cursor:default;user-select:none;padding:4px}
+    .sticker-meta-row{display:flex;justify-content:flex-end;margin-top:2px}
+    .sticker-meta-inner{background:rgba(0,0,0,.42);border-radius:10px;padding:2px 7px;display:flex;align-items:center;gap:3px}
+    .sticker-meta-inner .msg-time-inline{color:rgba(255,255,255,.78)!important}
+    .sticker-meta-inner .msg-ticks{color:rgba(255,255,255,.78)!important}
+    .chat-input-bar.sticker-mode .attach-btn,.chat-input-bar.sticker-mode .msg-input-wrap,.chat-input-bar.sticker-mode .mic-btn,.chat-input-bar.sticker-mode #sendBtn{opacity:0;pointer-events:none;transition:opacity .2s}
+    /* Недавние стикеры */
+    .sticker-recents-divider{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,.3);padding:6px 6px 3px;grid-column:1/-1}
 
   </style>
 </head>
@@ -584,7 +683,7 @@
   </div>
   <div class="home-search-wrap">
     <span class="home-search-icon">🔍</span>
-    <input class="home-search-input" id="homeSearch" placeholder="Поиск чатов…" autocomplete="off" oninput="renderChatList()">
+    <input class="home-search-input" id="homeSearch" placeholder="Поиск чатов…" autocomplete="off">
   </div>
   <div class="home-tabs-wrap">
     <div class="home-tabs">
@@ -637,15 +736,22 @@
     <div class="hdr-btn" onclick="forgetPassword()">🔓</div>
     <div class="hdr-btn" style="color:var(--err)" onclick="deleteChat()">🗑</div>
   </div>
+  <!-- PINNED MESSAGE BAR -->
+  <div id="pinnedBar" onclick="onPinnedBarClick()">
+    <div class="pinned-accent-line"></div>
+    <span class="pinned-icon">📌</span>
+    <div class="pinned-texts">
+      <span class="pinned-label" id="pinnedLabel">Закреплено</span>
+      <span class="pinned-preview" id="pinnedPreview"></span>
+    </div>
+    <div class="pinned-close" id="pinnedCloseBtn" onclick="onPinnedCloseClick(event)" title="Открепить">✕</div>
+  </div>
   <div class="msg-search-bar" id="msgSearchBar">
     <input class="msg-search-input" id="msgSearchInput" placeholder="Поиск в чате…" autocomplete="off" oninput="onMsgSearch()">
     <div class="search-nav-btn" onclick="searchNav(-1)">▲</div>
     <div class="search-nav-btn" onclick="searchNav(1)">▼</div>
     <span class="search-count" id="searchCount"></span>
     <div class="search-nav-btn" onclick="closeMsgSearch()">✕</div>
-  </div>
-  <div class="status-bar s-wait" id="statusBar">
-    <span class="sb-dot"></span><span id="statusBarText">Подключение…</span>
   </div>
   <div class="messages-area" id="messagesArea">
     <div class="empty-chat">
@@ -686,6 +792,7 @@
     <div class="media-preview" id="mediaPreview"></div>
     <div class="media-preview-remove" onclick="clearMediaPreview()">✕</div>
   </div>
+<!-- STICKER PANEL — вынесен на уровень body (position:fixed), см. конец файла -->
   <div class="chat-input-bar" id="chatInputBar">
     <div class="voice-record-overlay" id="voiceRecordOverlay">
       <div class="rec-cancel-btn" onclick="cancelRecording()">🗑</div>
@@ -1090,7 +1197,7 @@ function _flushPendingAcks(pid){
   }
 }
 
-function ensureWS(){if(ws&&(ws.readyState===WebSocket.OPEN||ws.readyState===WebSocket.CONNECTING))return;if(ws)try{ws.close();}catch(e){}ws=new WebSocket(SIGNAL_URL);ws.onopen=()=>{wsUp=true;wsRetry=0;ws.send(JSON.stringify({type:'register',peerId:MY_ID}));updateSendBtn();if(activePid)wsSend({type:'query-presence',target:activePid});if(pingInterval)clearInterval(pingInterval);pingInterval=setInterval(()=>{if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'ping'}));},30000);};ws.onmessage=async e=>{let d;try{d=JSON.parse(e.data);}catch{return;}await onWS(d);};ws.onclose=()=>{wsUp=false;updateSendBtn();setBar('connecting','Переподключение…');if(pingInterval){clearInterval(pingInterval);pingInterval=null;}setTimeout(ensureWS,WS_DELAYS[Math.min(wsRetry++,WS_DELAYS.length-1)]);};ws.onerror=()=>{wsUp=false;updateSendBtn();};}
+function ensureWS(){if(ws&&(ws.readyState===WebSocket.OPEN||ws.readyState===WebSocket.CONNECTING))return;if(ws)try{ws.close();}catch(e){}ws=new WebSocket(SIGNAL_URL);ws.onopen=()=>{wsUp=true;wsRetry=0;ws.send(JSON.stringify({type:'register',peerId:MY_ID}));updateSendBtn();if(activePid)wsSend({type:'query-presence',target:activePid});if(pingInterval)clearInterval(pingInterval);pingInterval=setInterval(()=>{if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'ping'}));},30000);};ws.onmessage=async e=>{let d;try{d=JSON.parse(e.data);}catch{return;}await onWS(d);};ws.onclose=()=>{wsUp=false;updateSendBtn();if(activePid&&currentScreen==='scr-chat'){_stopConnDots();_startConnDots('Переподключение');}if(pingInterval){clearInterval(pingInterval);pingInterval=null;}setTimeout(ensureWS,WS_DELAYS[Math.min(wsRetry++,WS_DELAYS.length-1)]);};ws.onerror=()=>{wsUp=false;updateSendBtn();};}
 function wsSend(obj){if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(obj));}
 
 // ── UPLOAD PROGRESS UI ──
@@ -1347,7 +1454,7 @@ async function handleFileRef(from,env){
   await upsertMsg(from,placeholderMsg);
   await updateChat(from,{lastMsg:`📎 ${finfo.name}`,lastMsgTime:new Date(placeholderMsg.time).getTime()});
   if(currentScreen==='scr-chat'&&activePid===from)appendOrReloadMsg(from,placeholderMsg);
-  else{const chat=(await loadChats()).find(c=>c.peerId===from);await updateChat(from,{unread:(chat?.unread||0)+1});toast(`📎 ${chat?.peerName||from}: ${finfo.name}`);}
+  else{const chat=(await loadChats()).find(c=>c.peerId===from);await updateChat(from,{unread:(chat?.unread||0)+1,marked:false});toast(`📎 ${chat?.peerName||from}: ${finfo.name}`);}
 }
 
 // ── WS ──
@@ -1485,6 +1592,22 @@ async function onWS(msg){
 async function decryptAndStore(from,payload,key){try{const buf=typeof payload==='string'?base64ToArrayBuffer(payload):new Uint8Array(payload).buffer;const pt=DEC.decode(await decData(buf,key));await handleEnvelope(from,JSON.parse(pt));}catch(e){console.warn('decrypt fail',e);}}
 
 async function handleEnvelope(from,env){
+  if(env.type==='sticker'){
+    const m={id:env.id,sticker:env.sticker,type:'recv',time:new Date(env.ts||Date.now()).toISOString(),reactions:{},edited:false,replyTo:null,delivered:true,forwarded:false};
+    const ct=loadContacts().find(co=>co.id===from);
+    await getOrCreateChat(from,ct?.name,ct?.avatar);
+    await upsertMsg(from,m);
+    await updateChat(from,{lastMsg:'🗿 Стикер',lastMsgTime:new Date(m.time).getTime()});
+    if(currentScreen==='scr-chat'&&activePid===from){
+      appendOrReloadMsg(from,m);
+      if(from===activePid){stopPeerActivity();updateBar();}
+    }else{
+      const chat=(await loadChats()).find(ch=>ch.peerId===from);
+      await updateChat(from,{unread:(chat?.unread||0)+1,marked:false});
+      toast('🗿 '+(chat?.peerName||from)+': Стикер');
+    }
+    return;
+  }
   if(env.type==='msg'||env.type==='media'||env.type==='voice'){
     const m={id:env.id,text:env.text||'',type:'recv',time:new Date(env.ts||Date.now()).toISOString(),reactions:{},edited:false,replyTo:env.replyTo||null,delivered:true,forwarded:env.forwarded||false};
     if(env.type==='media'){
@@ -1531,7 +1654,7 @@ async function handleEnvelope(from,env){
       appendOrReloadMsg(from,m);
       // Сбрасываем статус активности при получении реального сообщения
       if(from===activePid){stopPeerActivity();updateBar();}
-    }else{const chat=(await loadChats()).find(c=>c.peerId===from);await updateChat(from,{unread:(chat?.unread||0)+1});toast(`💬 ${chat?.peerName||from}: ${lastPreview}`);}
+    }else{const chat=(await loadChats()).find(c=>c.peerId===from);await updateChat(from,{unread:(chat?.unread||0)+1,marked:false});toast(`💬 ${chat?.peerName||from}: ${lastPreview}`);}
   }else if(env.type==='file-ref'){
     if(from===activePid&&currentScreen==='scr-chat'){stopPeerActivity();updateBar();}
     await handleFileRef(from,env);
@@ -1604,6 +1727,8 @@ async function handleEnvelope(from,env){
         await markDelivered(mid, from);
       }
     }
+  }else if(env.type==='pin-msg'){
+    await handleInPinMsg(from,env);
   }
 }
 
@@ -1679,11 +1804,72 @@ function setOnline(pid, isOnline, isRealEvent){
   if(pid===activePid && currentScreen==='scr-chat') updateBar();
   renderChatList(); renderContacts();
 }
-function setBar(cls,txt){const bar=$('statusBar'),t=$('statusBarText');if(bar)bar.className='status-bar s-'+cls;if(t)t.textContent=txt;}
-function setPeerStatus(cls,txt){const el=$('peerStatus');if(!el)return;el.textContent=txt;el.className='chat-peer-status '+cls;}
-// ══════════════════════════════════════════════════════
-// ── ФОРМАТИРОВАНИЕ "БЫЛ(А) В СЕТИ" ──
-// ══════════════════════════════════════════════════════
+// ── СТАТУС СОЕДИНЕНИЯ В ШАПКЕ (Telegram-стиль) ──
+// Анимация точек для статусов «Подключение» / «Переподключение» / «Соединение»
+let _connStatusInterval=null;
+let _connStatusDots=1;
+let _connStatusBase='';
+
+function _startConnDots(base){
+  _stopConnDots();
+  _connStatusBase=base;
+  _connStatusDots=1;
+  const el=$('peerStatus');
+  function render(){
+    if(!el)return;
+    el.textContent=_connStatusBase+'.'.repeat(_connStatusDots);
+    el.className='chat-peer-status connecting';
+    _connStatusDots=_connStatusDots>=3?1:_connStatusDots+1;
+  }
+  render();
+  _connStatusInterval=setInterval(render,500);
+}
+
+function _stopConnDots(){
+  if(_connStatusInterval){clearInterval(_connStatusInterval);_connStatusInterval=null;}
+  _connStatusBase='';
+  _connStatusDots=1;
+}
+
+// setBar теперь — no-op (statusBar убран), оставляем для совместимости
+function setBar(_cls,_txt){}
+
+function setPeerStatus(cls,txt){
+  // Если устанавливаем не-connecting статус — останавливаем анимацию точек
+  if(cls!=='connecting')_stopConnDots();
+  const el=$('peerStatus');
+  if(!el)return;
+  el.textContent=txt;
+  el.className='chat-peer-status '+cls;
+}
+
+function updateBar(){
+  if(_peerActivityType)return; // не перебиваем анимированный статус активности
+  if(!wsUp){
+    // Нет связи — «Соединение...» с анимацией точек
+    _stopConnDots();
+    _startConnDots('Соединение');
+    return;
+  }
+  if(!activePid)return;
+  // Если контакт заблокирован нами
+  if(isContactBlocked(activePid)){setPeerStatus('blocked','Контакт заблокирован');return;}
+  // Если нас заблокировал собеседник
+  if(lsGet(`bc_blocked_by_${activePid}`,false)){setPeerStatus('blocked','Вы заблокированы');return;}
+  if(online[activePid]){
+    _stopConnDots();
+    setPeerStatus('online','В сети');
+  } else {
+    _stopConnDots();
+    const lastSeenTs=lsGet(`bc_last_seen_${activePid}`,null);
+    const lastSeenAllowed=lsGet(`bc_ls_allowed_${activePid}`,false);
+    if(lastSeenTs&&lastSeenAllowed){
+      setPeerStatus('offline',fmtLastSeen(lastSeenTs));
+    }else{
+      setPeerStatus('offline','Не в сети');
+    }
+  }
+}
 function fmtLastSeen(ts){
   if(!ts) return 'Не в сети';
   const now = new Date();
@@ -1726,30 +1912,6 @@ function fmtLastSeen(ts){
   return `был(а) ${dayNum} ${mon} ${d.getFullYear()} г. в ${timeStr}`;
 }
 
-function updateBar(){
-  if(_peerActivityType)return; // не перебиваем анимированный статус
-  if(!wsUp){setBar('connecting','Нет связи с сервером…');setPeerStatus('offline','Не в сети');return;}
-  if(!activePid)return;
-  // Если контакт заблокирован нами — показываем статус блокировки
-  if(isContactBlocked(activePid)){setPeerStatus('blocked','Контакт заблокирован');setBar('offline','Не в сети · сообщения сохранятся');return;}
-  // Если нас заблокировал собеседник — показываем "вы заблокированы"
-  if(lsGet(`bc_blocked_by_${activePid}`,false)){setPeerStatus('blocked','Вы заблокированы');setBar('offline','Не в сети · сообщения сохранятся');return;}
-  if(online[activePid]){
-    setBar('online','Собеседник в сети');
-    setPeerStatus('online','В сети');
-  } else {
-    setBar('offline','Не в сети · сообщения сохранятся');
-    // Показываем last-seen ТОЛЬКО если собеседник включил эту опцию
-    // (факт включения подтверждается тем что он прислал нам свой timestamp)
-    const lastSeenTs  = lsGet(`bc_last_seen_${activePid}`, null);
-    const lastSeenAllowed = lsGet(`bc_ls_allowed_${activePid}`, false);
-    if(lastSeenTs && lastSeenAllowed){
-      setPeerStatus('offline', fmtLastSeen(lastSeenTs));
-    } else {
-      setPeerStatus('offline','Не в сети');
-    }
-  }
-}
 function updateSendBtn(){if(!activePid){$('sendBtn').disabled=true;return;}if(isContactBlocked(activePid)||lsGet(`bc_blocked_by_${activePid}`,false)){$('sendBtn').disabled=true;updateBar();return;}$('sendBtn').disabled=!wsUp;updateBar();}
 
 // ── CHATS ──
@@ -2249,7 +2411,205 @@ async function importAllData(e){
 
 const hl=(str,q)=>{if(!q)return str;const re=new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})`,'gi');return str.replace(re,'<span class="search-highlight">$1</span>');};
 
-async function renderChatList(){const list=$('chatList'),empty=$('emptyChatsPlaceholder');const q=($('homeSearch')?.value||'').toLowerCase().trim();let chats=await loadChats();chats=chats.sort((a,b)=>a.peerId===MY_ID?-1:b.peerId===MY_ID?1:(b.lastMsgTime||0)-(a.lastMsgTime||0));if(q)chats=chats.filter(c=>c.peerName.toLowerCase().includes(q)||c.peerId.toLowerCase().includes(q)||(c.lastMsg||'').toLowerCase().includes(q));if(currentTab==='groups')chats=chats.filter(c=>!!c.isGroup);else chats=chats.filter(c=>!c.isGroup);if(!chats.length){list.innerHTML='';empty.style.display='block';empty.textContent=currentTab==='groups'?'Нет групп':'Нет чатов';return;}empty.style.display='none';list.innerHTML=chats.map(c=>{const on=!!online[c.peerId];return`<div class="chat-item" onclick="openChatById('${esc(c.peerId)}')"><div class="chat-avatar">${c.avatar}<span class="presence-dot${on?' online':''}"></span></div><div class="chat-info"><div class="chat-name-row"><span class="chat-name">${q?hl(esc(c.peerName),q):esc(c.peerName)}</span></div><div class="chat-last-msg">${q?hl(esc(c.lastMsg||''),q):esc(c.lastMsg||'Нет сообщений')}</div></div><div class="chat-meta"><span class="chat-time">${fmtTime(c.lastMsgTime)}</span>${c.unread>0?`<span class="chat-badge">${c.unread}</span>`:''}</div></div>`;}).join('');}
+// ── Закрепить / Открепить чат ──
+async function pinChat(pid){
+  const chats=await loadChats();
+  const c=chats.find(x=>x.peerId===pid);
+  if(c){c.pinned=true;await saveChats(chats);}
+  renderChatList();
+  toast('Чат закреплён 📌');
+}
+async function unpinChat(pid){
+  const chats=await loadChats();
+  const c=chats.find(x=>x.peerId===pid);
+  if(c){c.pinned=false;await saveChats(chats);}
+  renderChatList();
+  toast('Чат откреплён');
+}
+
+// ── Контекстное меню чата на главном экране ──
+async function showChatCtx(pid,tx,ty){
+  const chats=await loadChats();
+  const chat=chats.find(c=>c.peerId===pid)||{};
+  const isPinned=!!chat.pinned&&pid!==MY_ID;
+  const isBlocked=isContactBlocked(pid);
+  closeAll();mkBack();
+  const menu=document.createElement('div');menu.className='ctx-menu';
+  const add=(ic,lb,fn,danger=false)=>{
+    const el=document.createElement('div');
+    el.className='ctx-item'+(danger?' danger':'');
+    el.innerHTML='<span>'+ic+'</span><span>'+lb+'</span>';
+    el.addEventListener('click',e=>{e.stopPropagation();fn();});
+    menu.appendChild(el);
+  };
+  const divider=()=>{const d=document.createElement('div');d.className='ctx-divider';menu.appendChild(d);};
+  // Закрепить / Открепить
+  if(pid!==MY_ID){
+    if(isPinned){
+      add('📍','Открепить',()=>{closeAll();unpinChat(pid);});
+    }else{
+      add('📌','Закрепить',()=>{closeAll();pinChat(pid);});
+    }
+  }
+  // Пометить как непрочитанное
+  // Пометить: если уже помечено — снять пометку, иначе — поставить
+  const isMarked=!!chat.marked;
+  add(isMarked?'📩':'📩',isMarked?'Снять пометку':'Пометить',async()=>{
+    closeAll();
+    if(isMarked){
+      await updateChat(pid,{marked:false});
+      toast('Пометка снята');
+    }else{
+      await updateChat(pid,{marked:true});
+      toast('Помечено');
+    }
+    renderChatList();
+  });
+  // Заблокировать / Разблокировать
+  if(pid!==MY_ID){
+    if(isBlocked){
+      add('❌','Разблокировать',()=>{
+        closeAll();
+        showConfirm({
+          icon:'❌',
+          title:'Разблокировать контакт?',
+          text:'Контакт будет разблокирован. Вы снова сможете получать от него сообщения и общаться.',
+          yesLabel:'❌ Разблокировать',
+          noLabel:'Отмена',
+          onYes:()=>{
+            setContactBlocked(pid,false);
+            if(activePid===pid)updateBlockUI(pid);
+            _sendBlockSignal(pid,false).catch(()=>{});
+            renderChatList();
+            toast('Контакт разблокирован');
+          }
+        });
+      });
+    }else{
+      add('🚫','Заблокировать',()=>{
+        closeAll();
+        showConfirm({
+          icon:'🚫',
+          title:'Заблокировать контакт?',
+          text:'Контакт будет заблокирован. Новые сообщения от него перестанут поступать. Вы сможете разблокировать его в любой момент.',
+          yesLabel:'🚫 Заблокировать',
+          noLabel:'Отмена',
+          onYes:()=>{
+            setContactBlocked(pid,true);
+            if(activePid===pid)updateBlockUI(pid);
+            _sendBlockSignal(pid,true).catch(()=>{});
+            renderChatList();
+            toast('Контакт заблокирован');
+          }
+        });
+      });
+    }
+  }
+  // Удалить
+  divider();
+  add('🗑️','Удалить',()=>{
+    closeAll();
+    if(pid===MY_ID){toast('Чат "Избранное" нельзя удалить','warn');return;}
+    showConfirm({
+      icon:'🗑',
+      title:'Удалить чат?',
+      text:'История сообщений и ключ шифрования будут удалены с этого устройства. Собеседник не будет уведомлён.',
+      yesLabel:'🗑 Удалить чат',
+      noLabel:'Отмена',
+      onYes:async()=>{
+        if(activePid===pid){activePid='';stopPeerActivity();cancelEdit();cancelReply();resetMsgSearch();exitSelectionMode();closeAll();}
+        try{
+          const allMsgs=await loadMsgs(pid);
+          for(const m of allMsgs){
+            if(m.media?.blobId)deleteBlob(m.media.blobId);
+            if(m.voice?.blobId)deleteBlob(m.voice.blobId);
+            if(m.file?.blobId)deleteBlob(m.file.blobId);
+          }
+        }catch(e){}
+        await clearMsgs(pid);
+        await deleteChatData(pid);
+        delete keyCache[pid];
+        localStorage.removeItem('bc_pwd_'+pid);
+        localStorage.removeItem('bc_secret_'+pid);
+        sessionStorage.removeItem('bc_pwd_'+pid);
+        if(activePid===''&&document.getElementById('scr-chat')?.classList.contains('active'))goHome();
+        toast('Чат удалён');
+      }
+    });
+  },true);
+  document.body.appendChild(menu);_ctx=menu;
+  requestAnimationFrame(()=>{
+    const mw=menu.offsetWidth||190,mh=menu.offsetHeight||60;
+    const vw=window.innerWidth,vh=window.innerHeight;
+    let l=tx,t=ty;
+    if(l+mw>vw-8)l=vw-mw-8;
+    if(t+mh>vh-8)t=vh-mh-8;
+    if(l<8)l=8;if(t<8)t=8;
+    menu.style.left=l+'px';menu.style.top=t+'px';
+  });
+}
+
+async function renderChatList(){
+  const list=$('chatList'),empty=$('emptyChatsPlaceholder');
+  const q=($('homeSearch')?.value||'').toLowerCase().trim();
+  let chats=await loadChats();
+  // Сортировка: Избранное → Закреплённые (по времени) → Остальные (по времени)
+  chats=chats.sort((a,b)=>{
+    if(a.peerId===MY_ID)return -1;
+    if(b.peerId===MY_ID)return 1;
+    if(a.pinned&&!b.pinned)return -1;
+    if(!a.pinned&&b.pinned)return 1;
+    return (b.lastMsgTime||0)-(a.lastMsgTime||0);
+  });
+  if(q)chats=chats.filter(c=>(c.peerName||'').toLowerCase().includes(q)||(c.peerId||'').toLowerCase().includes(q)||(c.lastMsg||'').toLowerCase().includes(q));
+  if(currentTab==='groups')chats=chats.filter(c=>!!c.isGroup);
+  else chats=chats.filter(c=>!c.isGroup);
+  if(!chats.length){list.innerHTML='';empty.style.display='block';empty.textContent=currentTab==='groups'?'Нет групп':'Нет чатов';return;}
+  empty.style.display='none';
+  list.innerHTML='';
+  const frag=document.createDocumentFragment();
+  chats.forEach(c=>{
+    const on=!!online[c.peerId];
+    const isPinned=!!c.pinned&&c.peerId!==MY_ID;
+    const isBlocked=isContactBlocked(c.peerId);
+    const item=document.createElement('div');
+    item.className='chat-item'+(isPinned?' pinned-chat':'')+(isBlocked?' blocked-chat':'');
+    const nameHtml=q?hl(esc(c.peerName),q):esc(c.peerName);
+    const lastHtml=q?hl(esc(c.lastMsg||''),q):esc(c.lastMsg||'Нет сообщений');
+    const pinBadge=isPinned?'<span class="chat-pin-badge">📌</span>':'';
+    const blockBadge=isBlocked?'<span class="chat-pin-badge" style="opacity:.5">🚫</span>':'';
+    // Если есть реальные непрочитанные — показываем цифру
+    // Если только пометка (marked) — показываем пустой кружок
+    const badge=c.unread>0
+      ?'<span class="chat-badge">'+c.unread+'</span>'
+      :(c.marked?'<span class="chat-badge dot"></span>':'');
+    item.innerHTML='<div class="chat-avatar">'+c.avatar+'<span class="presence-dot'+(on?' online':'')+'"></span></div>'
+      +'<div class="chat-info"><div class="chat-name-row"><span class="chat-name">'+nameHtml+'</span>'+pinBadge+blockBadge+'</div>'
+      +'<div class="chat-last-msg">'+lastHtml+'</div></div>'
+      +'<div class="chat-meta"><span class="chat-time">'+fmtTime(c.lastMsgTime)+'</span>'+badge+'</div>';
+    // Long-press / contextmenu → контекстное меню
+    let _lpTimer=null,_lpFired=false;
+    item.addEventListener('touchstart',e=>{
+      _lpFired=false;
+      _lpTimer=setTimeout(()=>{
+        _lpFired=true;
+        item.classList.add('ctx-pressed');
+        setTimeout(()=>item.classList.remove('ctx-pressed'),300);
+        const t=e.touches[0];
+        showChatCtx(c.peerId,t.clientX,t.clientY);
+      },500);
+    },{passive:true});
+    item.addEventListener('touchend',()=>clearTimeout(_lpTimer),{passive:true});
+    item.addEventListener('touchmove',()=>clearTimeout(_lpTimer),{passive:true});
+    item.addEventListener('contextmenu',e=>{
+      e.preventDefault();
+      showChatCtx(c.peerId,e.clientX,e.clientY);
+    });
+    item.addEventListener('click',()=>{if(!_lpFired)openChatById(c.peerId);});
+    frag.appendChild(item);
+  });
+  list.appendChild(frag);
+}
 
 function renderContacts(){const q=($('contactsSearch')?.value||'').toLowerCase();let contacts=loadContacts();if(q)contacts=contacts.filter(c=>c.name.toLowerCase().includes(q)||c.id.toLowerCase().includes(q));const list=$('contactsList');if(!contacts.length){list.innerHTML=`<div class="empty-state"><div class="empty-state-icon">👤</div><div class="empty-state-text">Нет контактов.<br>Нажмите «+ Добавить»</div></div>`;return;}list.innerHTML=contacts.map((c,i)=>{const on=!!online[c.id];return`<div class="contact-item"><div class="contact-avatar">${c.avatar||'👤'}<span class="presence-dot${on?' online':''}"></span></div><div class="contact-info" onclick="startChatWithContact('${esc(c.id)}')"><div class="contact-name">${esc(c.name)}</div><div class="contact-id">${esc(c.id)}</div></div><div class="contact-actions"><div class="icon-btn-sm" onclick="startChatWithContact('${esc(c.id)}')">💬</div><div class="contact-del-btn" onclick="delContact(${i},event)">🗑</div></div></div>`;}).join('');}
 window.delContact=(i,e)=>{e?.stopPropagation();const c=loadContacts();c.splice(i,1);saveContacts(c);renderContacts();toast('Контакт удалён');};
@@ -2272,11 +2632,11 @@ window.showContacts=()=>{renderContacts();goScreen('scr-contacts');};
 
 let activePid='',renderedCount=0;
 window.openChatById=async function(pid){
-  closeFab();await updateChat(pid,{unread:0});resetMsgSearch();exitSelectionMode();goScreen('scr-chat');
+  closeFab();await updateChat(pid,{unread:0,marked:false});resetMsgSearch();exitSelectionMode();goScreen('scr-chat');
   activePid=pid;stopPeerActivity();
   const chat=(await loadChats()).find(c=>c.peerId===pid)||{};
   $('peerName').textContent=chat.peerName||pid;
-  setPeerStatus('offline','Не в сети');$('sendBtn').disabled=true;setBar('wait','Подключение…');
+  setPeerStatus('offline','Не в сети');$('sendBtn').disabled=true;_startConnDots('Подключение');
   renderedCount=0;clearMediaPreview();
   // Инициализируем UI блокировки
   const blockBtn=$('blockContactBtn');
@@ -2293,6 +2653,7 @@ window.openChatById=async function(pid){
     if(banner){banner.textContent='🚫 Вы заблокированы этим контактом';banner.classList.add('visible');}
   }
   await loadChatHistory(pid,true);
+  initPinnedBar(pid);
   ensureWS();warmKey(pid);
   if(wsUp){updateSendBtn();wsSend({type:'query-presence',target:pid});}
   const key=await getKey(pid);
@@ -2340,7 +2701,7 @@ let processingFiles=false,queueInProgress=false,sendQueue=[];
 function setInputsDisabled(d){const a=document.querySelector('.attach-btn'),m=$('micBtn'),s=$('sendBtn');if(a){a.style.pointerEvents=d?'none':'';a.style.opacity=d?'0.5':'';}if(m){m.style.pointerEvents=d?'none':'';m.style.opacity=d?'0.5':'';}if(s)s.disabled=d||!activePid||!wsUp;}
 
 window.triggerFileSelect=()=>{if(processingFiles)return;showAttachMenu();};
-function showAttachMenu(){const existing=document.getElementById('attachMenu');if(existing){existing.remove();return;}const menu=document.createElement('div');menu.id='attachMenu';menu.style.cssText='position:absolute;bottom:calc(100% + 12px);left:4px;background:rgba(13,13,31,.98);border:1px solid var(--g-20);border-radius:20px;padding:6px;display:flex;flex-direction:column;gap:2px;box-shadow:0 12px 48px rgba(0,0,0,.85);z-index:60;min-width:170px;backdrop-filter:blur(20px);animation:menuPop .18s cubic-bezier(.34,1.56,.64,1)';if(!document.getElementById('attachMenuStyle')){const s=document.createElement('style');s.id='attachMenuStyle';s.textContent='@keyframes menuPop{from{opacity:0;transform:translateY(8px) scale(.95)}to{opacity:1;transform:translateY(0) scale(1)}}';document.head.appendChild(s);}const items=[{icon:'🖼️',label:'Фото',color:'rgba(0,255,136,.12)',action:()=>{menu.remove();ignoreNextVisibilityReturn=true;$('mediaInput').click();}},{icon:'🎬',label:'Видео',color:'rgba(0,217,255,.12)',action:()=>{menu.remove();ignoreNextVisibilityReturn=true;$('videoInput').click();}},{icon:'📁',label:'Файл',color:'rgba(255,166,43,.1)',action:()=>{menu.remove();ignoreNextVisibilityReturn=true;$('fileInput').click();}}];items.forEach(({icon,label,color,action})=>{const btn=document.createElement('div');btn.style.cssText='display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:14px;cursor:pointer;font-size:14px;font-weight:600;transition:background .15s;color:rgba(255,255,255,.9)';const iw=document.createElement('div');iw.style.cssText=`width:36px;height:36px;border-radius:10px;background:${color};display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0`;iw.textContent=icon;const lb=document.createElement('span');lb.textContent=label;btn.appendChild(iw);btn.appendChild(lb);btn.onmouseenter=()=>btn.style.background='rgba(255,255,255,.05)';btn.onmouseleave=()=>btn.style.background='';btn.onclick=e=>{e.stopPropagation();action();};menu.appendChild(btn);});$('chatInputBar').appendChild(menu);setTimeout(()=>{document.addEventListener('click',function close(e){if(!menu.contains(e.target)){menu.remove();document.removeEventListener('click',close);}});},0);}
+function showAttachMenu(){const existing=document.getElementById('attachMenu');if(existing){existing.remove();return;}const menu=document.createElement('div');menu.id='attachMenu';menu.style.cssText='position:absolute;bottom:calc(100% + 12px);left:4px;background:rgba(13,13,31,.98);border:1px solid var(--g-20);border-radius:20px;padding:6px;display:flex;flex-direction:column;gap:2px;box-shadow:0 12px 48px rgba(0,0,0,.85);z-index:60;min-width:170px;backdrop-filter:blur(20px);animation:menuPop .18s cubic-bezier(.34,1.56,.64,1)';if(!document.getElementById('attachMenuStyle')){const s=document.createElement('style');s.id='attachMenuStyle';s.textContent='@keyframes menuPop{from{opacity:0;transform:translateY(8px) scale(.95)}to{opacity:1;transform:translateY(0) scale(1)}}';document.head.appendChild(s);}const items=[{icon:'🖼️',label:'Фото',color:'rgba(0,255,136,.12)',action:()=>{menu.remove();ignoreNextVisibilityReturn=true;$('mediaInput').click();}},{icon:'🎬',label:'Видео',color:'rgba(0,217,255,.12)',action:()=>{menu.remove();ignoreNextVisibilityReturn=true;$('videoInput').click();}},{icon:'📁',label:'Файл',color:'rgba(255,166,43,.1)',action:()=>{menu.remove();ignoreNextVisibilityReturn=true;$('fileInput').click();}},{icon:'🗿',label:'Стикер',color:'rgba(139,92,246,.18)',action:()=>{menu.remove();openStickerPanel();}}];items.forEach(({icon,label,color,action})=>{const btn=document.createElement('div');btn.style.cssText='display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:14px;cursor:pointer;font-size:14px;font-weight:600;transition:background .15s;color:rgba(255,255,255,.9)';const iw=document.createElement('div');iw.style.cssText=`width:36px;height:36px;border-radius:10px;background:${color};display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0`;iw.textContent=icon;const lb=document.createElement('span');lb.textContent=label;btn.appendChild(iw);btn.appendChild(lb);btn.onmouseenter=()=>btn.style.background='rgba(255,255,255,.05)';btn.onmouseleave=()=>btn.style.background='';btn.onclick=e=>{e.stopPropagation();action();};menu.appendChild(btn);});$('chatInputBar').appendChild(menu);setTimeout(()=>{document.addEventListener('click',function close(e){if(!menu.contains(e.target)){menu.remove();document.removeEventListener('click',close);}});},0);}
 
 window.handleMediaSelect=async e=>{if(processingFiles)return;const files=Array.from(e.target.files);if(!files.length)return;$('mediaInput').value='';processingFiles=true;setInputsDisabled(true);showProcessingToast('Обработка фото…');try{for(const f of files){if(f.size>MAX_FILE_SIZE){toast('Файл слишком большой','err');continue;}if(f.type.startsWith('image/')){const c=await compressImage(f);pendingFiles.push({name:c.name,type:c.type,data:c.dataURL,size:f.size,blob:f,isMedia:true});}}}finally{processingFiles=false;setInputsDisabled(false);hideProgressToast();if(pendingFiles.length)updateFilePreview();}};
 window.handleVideoSelect=async e=>{if(processingFiles)return;const files=Array.from(e.target.files);if(!files.length)return;$('videoInput').value='';processingFiles=true;setInputsDisabled(true);showProcessingToast('Подготовка видео…');try{for(const f of files){if(f.size>MAX_FILE_SIZE){toast('Файл слишком большой','err');continue;}pendingFiles.push({name:f.name,type:f.type,data:null,size:f.size,blob:f,isMedia:false,isVideo:true});}}finally{processingFiles=false;setInputsDisabled(false);hideProgressToast();if(pendingFiles.length)updateFilePreview();}};
@@ -2591,35 +2952,20 @@ function buildFileAvailableCard(m){const fa=m.fileAvailable;const card=document.
 function buildRow(m){
   const isSent=m.type==='sent';
   const row=document.createElement('div');row.className=`msg-row ${m.type}`;row.dataset.msgid=m.id;
+  // Помечаем закреплённое сообщение
+  if(activePid&&getPinnedMsgs(activePid).some(p=>p.id===m.id)){row.classList.add('pinned-msg');}
   const check=document.createElement('div');check.className='msg-check';check.innerHTML='✓';row.appendChild(check);
   const bubble=document.createElement('div');bubble.className='bubble';
   if(m.forwarded){const fl=document.createElement('span');fl.className='forwarded-label';fl.textContent='↪️ переслано';bubble.appendChild(fl);}
-  if(m.replyTo){const rd=document.createElement('div');rd.className='reply-preview-inline';rd.textContent='↩️ '+(m.replyTo.text||'').slice(0,50);rd.onclick=e=>{
+  if(m.replyTo){const rd=document.createElement('div');rd.className='reply-preview-inline';rd.textContent='↩️ '+(m.replyTo.text||'').slice(0,50);rd.onclick=async e=>{
     e.stopPropagation();
+    // Закрываем панель стикеров
+    const sp=$('stickerPanel');
+    if(sp&&sp.classList.contains('open')) await closeStickerPanel();
     const targetRow = document.querySelector(`[data-msgid="${m.replyTo.id}"]`);
     if(!targetRow) return;
     targetRow.scrollIntoView({behavior:'smooth', block:'center'});
-    // Подсветка: после прокрутки добавляем класс на bubble
-    const targetBubble = targetRow.querySelector('.bubble');
-    if(targetBubble){
-      // Цвет подсветки зависит от типа сообщения (sent — белый, recv — акцент)
-      const isSentTarget = targetRow.classList.contains('sent');
-      targetBubble.style.setProperty('--reply-hl-color',
-        isSentTarget ? 'rgba(255,255,255,0.22)' : 'rgba(0,255,136,0.25)');
-      // Удаляем старый класс если есть (повторный тап)
-      targetBubble.classList.remove('reply-highlight');
-      // Форсируем reflow чтобы анимация перезапустилась
-      void targetBubble.offsetWidth;
-      // Добавляем с небольшой задержкой — после завершения прокрутки
-      setTimeout(()=>{
-        targetBubble.classList.add('reply-highlight');
-        // Убираем класс после окончания анимации
-        targetBubble.addEventListener('animationend', ()=>{
-          targetBubble.classList.remove('reply-highlight');
-          targetBubble.style.removeProperty('--reply-hl-color');
-        }, {once: true});
-      }, 300);
-    }
+    setTimeout(()=>_doMsgRowHighlight(targetRow), 300);
   };bubble.appendChild(rd);}
 
   if(m.fileAvailable){
@@ -2726,6 +3072,13 @@ function buildRow(m){
       bubble.appendChild(mkMeta(m,isSent));
     }
 
+  }else if(m.sticker){
+    bubble.style.cssText='background:transparent!important;border:none!important;padding:0!important;overflow:visible!important;';
+    const sw=document.createElement('div');sw.className='sticker-bubble-wrap';sw.textContent=m.sticker;bubble.appendChild(sw);
+    const mr=document.createElement('div');mr.className='sticker-meta-row';
+    const mi=document.createElement('div');mi.className='sticker-meta-inner';
+    const mt=mkMeta(m,isSent);mt.style.float='none';mt.style.margin='0';
+    mi.appendChild(mt);mr.appendChild(mi);bubble.appendChild(mr);
   }else{
     const tn=document.createElement('span');tn.className='bubble-text';tn.innerHTML=formatText(m.text||'');
     if(m.edited){const ed=document.createElement('span');ed.className='msg-edited';ed.textContent=' ред.';tn.appendChild(ed);}
@@ -3143,6 +3496,14 @@ function showCtx(m,anchor,tx,ty){
   const add=(ic,lb,fn,danger=false)=>{const el=document.createElement('div');el.className='ctx-item'+(danger?' danger':'');el.innerHTML=`<span>${ic}</span><span>${lb}</span>`;el.addEventListener('click',e=>{e.stopPropagation();fn();});menu.appendChild(el);};
   add('😀','Реакция',()=>{closeCtx();showEmo(m.id,anchor);});
   add('↩️','Ответить',()=>{closeAll();startReply(m.id);});
+  // ── ЗАКРЕПИТЬ / ОТКРЕПИТЬ ──
+  const pinned=getPinnedMsgs(activePid);
+  const isAlreadyPinned=pinned.some(p=>p.id===m.id);
+  if(isAlreadyPinned){
+    add('📍','Открепить',()=>{closeAll();showConfirm({icon:'📍',title:'Открепить сообщение?',text:'Сообщение будет откреплено у всех участников чата.',yesLabel:'📍 Открепить',noLabel:'Отмена',onYes:()=>unpinMessage(m.id)});});
+  }else{
+    add('📌','Закрепить',()=>{closeAll();pinMessage(m);});
+  }
   if(m.voice){
     add('💾','Скачать',async()=>{
       closeAll();
@@ -3225,7 +3586,22 @@ async function broadcastLastSeen(){
 
 window.leaveChat=async()=>{
   await broadcastLastSeen().catch(()=>{});
-  activePid='';stopPeerActivity();cancelEdit();cancelReply();resetMsgSearch();exitSelectionMode();closeAll();clearMediaPreview();if(isRecording)cancelRecording();_stopPreviewAudio();$('voicePreviewBar').classList.remove('active');goHome();
+  activePid='';stopPeerActivity();_stopConnDots();cancelEdit();cancelReply();resetMsgSearch();exitSelectionMode();closeAll();clearMediaPreview();if(isRecording)cancelRecording();_stopPreviewAudio();$('voicePreviewBar').classList.remove('active');
+  // Мгновенно скрываем панель стикеров (position:fixed — висит поверх всех экранов)
+  const sp=$('stickerPanel');
+  if(sp){sp.classList.remove('open','frozen');document.removeEventListener('click',_stickerOutsideClick);}
+  const ib=$('chatInputBar');if(ib)ib.classList.remove('sticker-mode');
+  window._stickerNavLock=false;
+  // Убираем оверлей подсветки строки если остался
+  document.querySelectorAll('.msg-row.row-highlighted').forEach(r=>{
+    r.style.removeProperty('--hl-top');
+    r.style.removeProperty('--hl-height');
+    r.classList.remove('row-highlighted');
+  });
+  const hlOld=document.querySelector('.msg-row-hl');if(hlOld)hlOld.remove();
+  // Скрываем панель закреплённого при выходе из чата
+  const pb=$('pinnedBar');if(pb)pb.classList.remove('visible');
+  goHome();
 };
 window.deleteChat=async()=>{
   if(!activePid)return;
@@ -3359,6 +3735,7 @@ window.addEventListener('pagehide', () => { _lastSeenBroadcastTs=0; broadcastLas
 window.addEventListener('beforeunload', () => { _lastSeenBroadcastTs=0; broadcastLastSeen().catch(()=>{}); });
 
 $('contactsSearch')?.addEventListener('input',renderContacts);
+$('homeSearch')?.addEventListener('input',()=>renderChatList());
 
 // ── VOICE RECORDING ──
 let mediaRecorder=null,audioChunks=[],isRecording=false;
@@ -3820,6 +4197,286 @@ function buildVoiceBubble(m,isSent){
   return wrap;
 }
 
+// ══════════════════════════════════════════════════════
+// ── СИСТЕМА ЗАКРЕПЛЁННЫХ СООБЩЕНИЙ (Telegram-стиль) ──
+// ══════════════════════════════════════════════════════
+// Хранилище: localStorage bc_pinned_<peerId> → массив {id, text, ts, pinnedAt}
+// Последнее закреплённое отображается вверху; тап на баре циклически листает
+// по всем закреплённым (от последнего к первому) и подсвечивает сообщение.
+
+function _pinnedKey(pid){return`bc_pinned_${pid}`;}
+
+function getPinnedMsgs(pid){
+  return lsGet(_pinnedKey(pid),[]);
+}
+
+function _savePinnedMsgs(pid,arr){
+  lsSet(_pinnedKey(pid),arr);
+}
+
+// Индекс текущего «показываемого» закреплённого (для цикличного листания)
+// -1 = показываем последнее (по умолчанию)
+let _pinnedViewIdx = -1;
+
+// Текущий peerId для которого показана панель (чтобы сбрасывать при смене чата)
+let _pinnedBarPid = '';
+
+// Закрепить сообщение и оповестить собеседника
+async function pinMessage(m){
+  if(!activePid)return;
+  const pins=getPinnedMsgs(activePid);
+  if(pins.find(p=>p.id===m.id)){toast('Уже закреплено');return;}
+  // Краткий превью текста
+  const preview=_pinPreview(m);
+  pins.push({id:m.id,text:preview,ts:m.time,pinnedAt:Date.now()});
+  _savePinnedMsgs(activePid,pins);
+  _pinnedViewIdx=-1; // сбрасываем на последнее
+  renderPinnedBar(activePid);
+  _markRowPinned(m.id,true);
+  toast('📌 Сообщение закреплено');
+  // Синхронизируем с собеседником
+  await _sendPinSignal(activePid,'pin',m.id,preview,m.time);
+}
+
+// Открепить сообщение (по ID) и оповестить собеседника
+async function unpinMessage(msgId){
+  if(!activePid)return;
+  let pins=getPinnedMsgs(activePid);
+  pins=pins.filter(p=>p.id!==msgId);
+  _savePinnedMsgs(activePid,pins);
+  _pinnedViewIdx=-1;
+  renderPinnedBar(activePid);
+  _markRowPinned(msgId,false);
+  toast('📍 Сообщение откреплено');
+  await _sendPinSignal(activePid,'unpin',msgId,null,null);
+}
+
+// Краткий превью для закреплённой панели
+function _pinPreview(m){
+  if(m.voice)return'🎙 Голосовое сообщение';
+  if(m.media)return'📷 Фотография';
+  if(m.file)return`📁 ${m.file.name||'Файл'}`;
+  if(m.fileAvailable)return`📎 ${m.fileAvailable.name||'Файл'}`;
+  return(m.text||'').replace(/\n/g,' ').slice(0,80)||'Сообщение';
+}
+
+// Помечаем/снимаем метку закреплённого у DOM-строки
+function _markRowPinned(msgId,isPinned){
+  const row=document.querySelector(`.msg-row[data-msgid="${msgId}"]`);
+  if(row){row.classList.toggle('pinned-msg',isPinned);}
+}
+
+// Перерисовать панель закреплённого вверху чата
+function renderPinnedBar(pid){
+  const bar=$('pinnedBar');
+  const previewEl=$('pinnedPreview');
+  const labelEl=$('pinnedLabel');
+  if(!bar||!previewEl||!labelEl)return;
+  const pins=getPinnedMsgs(pid);
+  if(!pins.length){
+    bar.classList.remove('visible');
+    _pinnedBarPid='';
+    return;
+  }
+  _pinnedBarPid=pid;
+  // Показываем последнее закреплённое (или то, на котором остановились)
+  const idx=_getDisplayPinIdx(pins);
+  const pin=pins[idx];
+  // Счётчик если закреплено больше одного
+  if(pins.length>1){
+    labelEl.textContent=`Закреплено · ${idx+1} / ${pins.length}`;
+  }else{
+    labelEl.textContent='Закреплено';
+  }
+  previewEl.textContent=pin.text;
+  bar.classList.add('visible');
+}
+
+// Получить индекс для отображения
+// _pinnedViewIdx указывает на то сообщение, к которому ПЕРЕЙДЁМ при следующем тапе
+// (оно же сейчас показано на панели)
+function _getDisplayPinIdx(pins){
+  if(_pinnedViewIdx<0||_pinnedViewIdx>=pins.length)return pins.length-1;
+  return _pinnedViewIdx;
+}
+
+// Клик по закреплённой панели (Telegram-логика):
+//   1. Прокручиваем к тому, что СЕЙЧАС показано на панели
+//   2. После этого переключаем панель на следующее сообщение в очереди
+window.onPinnedBarClick=async function(){
+  if(!activePid)return;
+  const pins=getPinnedMsgs(activePid);
+  if(!pins.length)return;
+
+  // Шаг 1: какое сообщение сейчас показано → к нему и прокручиваем
+  const curIdx=_getDisplayPinIdx(pins);
+  const pin=pins[curIdx];
+
+  // Шаг 2: вычисляем СЛЕДУЮЩИЙ индекс (от последнего к первому, по кругу)
+  const nextIdx=(curIdx-1+pins.length)%pins.length;
+  _pinnedViewIdx=nextIdx;
+
+  // Шаг 3: обновляем панель (теперь показывает следующее)
+  renderPinnedBar(activePid);
+
+  // Шаг 4: прокручиваем к тому сообщению на которое нажали
+  await _scrollAndHighlightMsg(pin.id);
+};
+
+// Закрытие / открепление по кнопке × на панели
+window.onPinnedCloseClick=async function(e){
+  e.stopPropagation();
+  if(!activePid)return;
+  const pins=getPinnedMsgs(activePid);
+  if(!pins.length)return;
+  const idx=_getDisplayPinIdx(pins);
+  const pin=pins[idx];
+  showConfirm({
+    icon:'📍',
+    title:'Открепить сообщение?',
+    text:'Сообщение будет откреплено у всех участников чата.',
+    yesLabel:'📍 Открепить',
+    noLabel:'Отмена',
+    onYes:()=>unpinMessage(pin.id)
+  });
+};
+
+// ── Подсветка всей строки на полную ширину чата ──────────────────────────
+// Создаём абсолютный div-оверлей в .messages-area, выровненный по позиции
+// целевой строки. Работает для любого контента: текст, стикер, голосовое.
+function _doMsgRowHighlight(targetRow){
+  if(!targetRow)return;
+  // Убираем старую подсветку если есть (повторный тап)
+  document.querySelectorAll('.msg-row.row-highlighted').forEach(r=>{
+    r.style.removeProperty('--hl-top');
+    r.style.removeProperty('--hl-height');
+    r.classList.remove('row-highlighted');
+  });
+  // Убираем старый overlay-div если остался от предыдущей версии
+  const old=document.querySelector('.msg-row-hl');
+  if(old)old.remove();
+
+  // Вычисляем реальные визуальные границы строки включая overflow-контент.
+  // Стикеры рендерятся с font-size:72px + overflow:visible — они выходят за
+  // пределы .msg-row, поэтому нужно найти самый большой дочерний элемент.
+  const rowRect=targetRow.getBoundingClientRect();
+  let topMost=rowRect.top;
+  let bottomMost=rowRect.bottom;
+  targetRow.querySelectorAll('*').forEach(child=>{
+    const r=child.getBoundingClientRect();
+    if(r.width===0&&r.height===0)return;
+    if(r.top<topMost)topMost=r.top;
+    if(r.bottom>bottomMost)bottomMost=r.bottom;
+  });
+
+  // Смещение top и высота relative к .msg-row (может быть отрицательным сверху)
+  const hlTop=topMost-rowRect.top;
+  const hlHeight=bottomMost-topMost;
+
+  // Передаём в ::before через CSS-переменные
+  targetRow.style.setProperty('--hl-top',`${hlTop}px`);
+  targetRow.style.setProperty('--hl-height',`${hlHeight}px`);
+  targetRow.classList.add('row-highlighted');
+
+  const cleanup=()=>{
+    targetRow.style.removeProperty('--hl-top');
+    targetRow.style.removeProperty('--hl-height');
+    targetRow.classList.remove('row-highlighted');
+  };
+  targetRow.addEventListener('animationend',cleanup,{once:true});
+  // Страховка: принудительно убираем через 2.7s если animationend не сработал
+  setTimeout(cleanup,2700);
+}
+
+// Прокрутка + подсветка (используется при тапе на закреплённое и ответ)
+async function _scrollAndHighlightMsg(msgId){
+  const sp=$('stickerPanel');
+  const panelWasOpen=sp&&sp.classList.contains('open');
+
+  if(panelWasOpen){
+    // Блокируем открытие панели пока идёт навигация
+    window._stickerNavLock=true;
+    // Мгновенно замораживаем и скрываем панель без ожидания анимации
+    sp.classList.add('frozen');
+    sp.classList.remove('open');
+    document.removeEventListener('click',_stickerOutsideClick);
+    const se=$('stickerSearch');if(se)se.value='';
+    stickerSearchQuery='';
+    const inputBar=$('chatInputBar');
+    if(inputBar)inputBar.classList.remove('sticker-mode');
+    // Даём браузеру один frame применить стили до scrollIntoView
+    await new Promise(res=>requestAnimationFrame(()=>requestAnimationFrame(res)));
+  }
+
+  let targetRow=document.querySelector(`.msg-row[data-msgid="${msgId}"]`);
+  // Если строки нет в DOM (старое сообщение) — пробуем загрузить историю
+  if(!targetRow){
+    await loadChatHistory(activePid,false);
+    targetRow=document.querySelector(`.msg-row[data-msgid="${msgId}"]`);
+  }
+  if(!targetRow){
+    window._stickerNavLock=false;
+    if(sp)sp.classList.remove('frozen');
+    return;
+  }
+  targetRow.scrollIntoView({behavior:'smooth',block:'center'});
+  // Подсветка всей строки — с задержкой чтобы smooth scroll успел отработать
+  setTimeout(()=>_doMsgRowHighlight(targetRow), 300);
+  // Снимаем блокировку через 600ms
+  setTimeout(()=>{
+    window._stickerNavLock=false;
+    if(sp)sp.classList.remove('frozen');
+  },600);
+}
+
+// Синхронизация закрепления через зашифрованный envelope
+async function _sendPinSignal(pid,action,msgId,preview,msgTs){
+  if(!wsUp||pid===MY_ID)return;
+  const key=keyCache[pid]||await loadPersistedKey(pid);
+  if(!key)return;
+  try{
+    const payload={type:'pin-msg',action,msgId,preview:preview||'',msgTs:msgTs||null,ts:Date.now()};
+    const enc=await encData(ENC.encode(JSON.stringify(payload)),key);
+    wsSend({type:'send-msg',target:pid,msgId:uid(),payload:payloadToB64(enc)});
+  }catch(e){}
+}
+
+// Обработка входящего pin-сигнала (в handleEnvelope)
+async function handleInPinMsg(from,env){
+  if(env.action==='pin'){
+    const pins=getPinnedMsgs(from);
+    if(!pins.find(p=>p.id===env.msgId)){
+      pins.push({id:env.msgId,text:env.preview||'Сообщение',ts:env.msgTs,pinnedAt:env.ts});
+      _savePinnedMsgs(from,pins);
+    }
+  }else if(env.action==='unpin'){
+    const pins=getPinnedMsgs(from).filter(p=>p.id!==env.msgId);
+    _savePinnedMsgs(from,pins);
+  }
+  if(currentScreen==='scr-chat'&&activePid===from){
+    _pinnedViewIdx=-1;
+    renderPinnedBar(from);
+    // Обновляем иконки закреплённых в DOM
+    if(env.action==='pin')_markRowPinned(env.msgId,true);
+    else _markRowPinned(env.msgId,false);
+  }
+}
+
+// Инициализация панели при открытии чата
+function initPinnedBar(pid){
+  _pinnedViewIdx=-1;
+  _pinnedBarPid='';
+  renderPinnedBar(pid);
+  // Помечаем все закреплённые сообщения в текущем DOM
+  const pins=getPinnedMsgs(pid);
+  document.querySelectorAll('.msg-row[data-msgid]').forEach(row=>{
+    const mid=row.dataset.msgid;
+    row.classList.toggle('pinned-msg',pins.some(p=>p.id===mid));
+  });
+}
+
+// ══════════════════════════════════════════════════════
+
 // ── INIT ──
 // Восстанавливаем pending fileId→peerId после перезагрузки
 try{const _sftp=lsGet('_fileSentToPeer',{});Object.entries(_sftp).forEach(([fid,pid])=>_fileSentToPeer.set(fid,pid));}catch(e){}
@@ -3854,7 +4511,1246 @@ async function migrateLocalStorageMessages(){
     }
   }catch(e){console.warn('Migration failed',e);}
 }
+
+// ══════════════════════════════════════════════════════════════════
+// ── СТИКЕРЫ ──
+// ══════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════
+// ── СТИКЕРЫ — ПОЛНЫЙ СЛОВАРЬ С ПОИСКОМ ПО НАЗВАНИЮ ──
+// ══════════════════════════════════════════════════════
+
+// Словарь: эмодзи → массив русских ключевых слов для поиска
+const STICKER_NAMES={
+  // Лица / эмоции
+  '😀':['улыбка','радость','счастье','смайлик','довольный'],
+  '😃':['улыбка','радость','счастье','открытый рот'],
+  '😄':['улыбка','радость','смех','глаза'],
+  '😁':['ухмылка','зубы','улыбка','смех'],
+  '😆':['смех','ха-ха','глаза','хохот'],
+  '😅':['пот','смущение','облегчение','нервный смех'],
+  '🤣':['катаюсь со смеху','ролл','смех','хохот','ха-ха'],
+  '😂':['слёзы смеха','смех','хохот','плач от смеха'],
+  '🙂':['улыбка','спокойствие','нейтральный'],
+  '😊':['улыбка','тепло','мило','радость'],
+  '😇':['ангел','нимб','невинный','добрый'],
+  '🥰':['влюблённость','сердечки','любовь','милый'],
+  '😍':['влюблённые глаза','восхищение','любовь','красота'],
+  '🤩':['звёзды в глазах','восторг','восхищение','звезда'],
+  '😘':['воздушный поцелуй','поцелуй','любовь','флирт'],
+  '😗':['поцелуй','свист'],
+  '😚':['поцелуй','закрытые глаза','любовь'],
+  '😙':['поцелуй','улыбка'],
+  '🥲':['слеза','счастье','тронут','растроган'],
+  '😋':['вкусно','язык','облизывается','еда'],
+  '😛':['язык','дразнится'],
+  '😜':['подмигивание','язык','веселье'],
+  '🤪':['безумие','дурачок','веселье'],
+  '😝':['язык','смеётся','гримаса'],
+  '🤑':['деньги','жадность','богатство'],
+  '🤗':['объятия','тепло','радость','обнимашки'],
+  '🤭':['хихиканье','тайна','смущение'],
+  '🤫':['тишина','тссс','секрет','шёпот'],
+  '🤔':['думает','размышление','вопрос','мысль'],
+  '🤐':['молчание','молчать','заткнись','рот на замке'],
+  '😐':['нейтральный','серьёзный','равнодушие'],
+  '😑':['раздражение','тупой взгляд','скучно'],
+  '😶':['нет слов','молчит','пусто'],
+  '😏':['ухмылка','хитрость','самодовольство'],
+  '😒':['недовольство','скука','безразличие'],
+  '🙄':['закатывает глаза','раздражение','надоело'],
+  '😬':['напряжение','неловкость','стресс'],
+  '🤥':['ложь','пиноккио','врёт'],
+  '😌':['облегчение','спокойствие','доволен'],
+  '😔':['грусть','разочарование','печаль'],
+  '😪':['сон','сонный','усталость'],
+  '🤤':['слюна','вкусно','желание'],
+  '😴':['спит','сон','ночь','zzz'],
+  '😷':['маска','болезнь','covid','защита'],
+  '🤒':['болезнь','температура','плохо'],
+  '🤕':['травма','бинт','боль'],
+  '🤢':['тошнота','плохо','зелёный'],
+  '🤧':['чихает','насморк','простуда'],
+  '🥵':['жарко','пот','горячо','огонь'],
+  '🥶':['холодно','мороз','замёрз','синий'],
+  '😎':['крутой','очки','солнце','стиль'],
+  '🥸':['маскировка','очки','инкогнито'],
+  '🤓':['очки','умный','ботан','гик'],
+  '🧐':['монокль','изучение','серьёзный'],
+  '😕':['запутался','разочарование','странно'],
+  '😟':['беспокойство','тревога','озабоченность'],
+  '🙁':['грусть','недовольство'],
+  '☹️':['несчастье','грусть','плач'],
+  '😮':['удивление','открытый рот','ой'],
+  '😯':['удивление','шок'],
+  '😲':['шок','удивление','ошеломление'],
+  '😳':['краснеет','смущение','шок'],
+  '🥺':['пожалуйста','грусть','умоляет','жалость'],
+  '😦':['испуг','тревога','беспокойство'],
+  '😧':['страдание','агония'],
+  '😨':['страх','испуг','ужас'],
+  '😰':['пот','тревога','стресс','нервы'],
+  '😥':['слеза','разочарование'],
+  '😢':['плачет','грусть','слёзы'],
+  '😭':['рыдает','плачет','горе','слёзы'],
+  '😱':['ужас','крик','испуг','страх'],
+  '😖':['смущение','стресс','замешательство'],
+  '😣':['страдание','боль','стресс'],
+  '😞':['разочарование','грусть'],
+  '😓':['пот','стресс','усталость'],
+  '😩':['усталость','изнеможение','страдание'],
+  '😫':['усталость','изнеможение'],
+  '🥱':['зевает','скучно','усталость'],
+  '😤':['гордость','злость','недовольство','пыхтит'],
+  '😡':['злость','ярость','красный'],
+  '🤬':['брань','матерится','ярость','злость'],
+  '😈':['дьявол','злой','рога'],
+  '👿':['злой','дьявол','сердится'],
+  '💀':['череп','смерть','мёртвый'],
+  '☠️':['череп и кости','смерть','пиратство'],
+  '💩':['какашка','смешно','какаха'],
+  '🤡':['клоун','смешно','жуткий'],
+  '👹':['демон','огр','страшный','монстр'],
+  '👺':['гоблин','маска','страшный'],
+  '👻':['призрак','хэллоуин','привидение'],
+  '👽':['инопланетянин','пришелец','космос'],
+  '👾':['монстр','игра','пиксель','инопланетянин'],
+  '🤖':['робот','машина','технологии'],
+  '😺':['кот улыбается','кошка','счастливый кот'],
+  '😸':['смеющийся кот','кошка','кот хохочет'],
+  '😹':['слёзы кот','кот смеётся'],
+  '😻':['влюблённый кот','кошка'],
+  '😼':['ухмыляющийся кот'],
+  '😽':['целующийся кот'],
+  '🙀':['шокированный кот','испуганная кошка'],
+  // Жесты / руки
+  '👋':['привет','пока','махать','рука'],
+  '🤚':['стоп','рука','ладонь'],
+  '🖐':['рука','пять','ладонь'],
+  '✋':['стоп','высокие пять','рука'],
+  '🖖':['вулкан','звёздный путь','приветствие'],
+  '👌':['окей','хорошо','отлично'],
+  '🤌':['итальянцы','идеально','жест'],
+  '🤏':['немного','щепотка','маленький'],
+  '✌️':['победа','мир','два','рок'],
+  '🤞':['скрещенные пальцы','удача','надежда'],
+  '🤟':['люблю тебя','рок','жест'],
+  '🤘':['коза','рок','металл'],
+  '🤙':['позвони мне','привет','шака'],
+  '👈':['налево','указывает','туда'],
+  '👉':['направо','указывает','сюда'],
+  '👆':['вверх','указывает','сюда'],
+  '🖕':['средний палец','оскорбление','fuck'],
+  '👇':['вниз','указывает','туда'],
+  '☝️':['один','первый','указывает вверх'],
+  '👍':['лайк','хорошо','окей','большой палец вверх'],
+  '👎':['дизлайк','плохо','нет','большой палец вниз'],
+  '✊':['кулак','сила','протест'],
+  '👊':['кулак','удар','бокс'],
+  '🤛':['кулак налево','бокс'],
+  '🤜':['кулак направо','бокс'],
+  '👏':['аплодисменты','браво','хлопает'],
+  '🙌':['поднятые руки','победа','ура'],
+  '🫶':['сердце из рук','любовь'],
+  '👐':['открытые руки','обнимает'],
+  '🤲':['просьба','ладони','дай'],
+  '🤝':['рукопожатие','договор','сделка'],
+  '🙏':['пожалуйста','молитва','спасибо','молюсь'],
+  '✍️':['пишет','подпись'],
+  '💅':['ногти','glamour','красота','педикюр'],
+  '🤳':['селфи','фото'],
+  '💪':['мышцы','сила','бицепс','спортсмен'],
+  '🦾':['протез','сила','робот'],
+  '🦵':['нога','пинок'],
+  '🦶':['стопа','нога','следы'],
+  '👂':['ухо','слушает','слух'],
+  '👃':['нос','нюхает'],
+  '👀':['глаза','смотрит','взгляд','подглядывает'],
+  '👅':['язык','вкус'],
+  '👁':['глаз','смотрит','шпионит'],
+  '🫀':['сердце','орган','бьётся'],
+  '🫁':['лёгкие','дыхание'],
+  '🦷':['зуб','стоматолог'],
+  '🦴':['кость','скелет','собака'],
+  '🧠':['мозг','умный','интеллект'],
+  '🦻':['ухо','слух','глухой'],
+  // Животные
+  '🐶':['собака','пёс','щенок'],
+  '🐱':['кот','кошка','котёнок'],
+  '🐭':['мышь','мышка','грызун'],
+  '🐹':['хомяк','мило','пушистый'],
+  '🐰':['кролик','заяц','пушистый'],
+  '🦊':['лиса','хитрый','рыжий'],
+  '🐻':['медведь','мишка','бурый'],
+  '🐼':['панда','чёрно-белый','бамбук'],
+  '🐨':['коала','австралия','мило'],
+  '🐯':['тигр','полосатый','хищник'],
+  '🦁':['лев','царь','грива','зверь'],
+  '🐮':['корова','мычит','ферма'],
+  '🐷':['свинья','хрюкает','розовый'],
+  '🐸':['лягушка','квакает','зелёный'],
+  '🐵':['обезьяна','примат'],
+  '🙈':['не вижу','обезьяна','стыд'],
+  '🙉':['не слышу','обезьяна'],
+  '🙊':['не говорю','обезьяна','молчание'],
+  '🐔':['курица','птица','кудах'],
+  '🐧':['пингвин','лёд','антарктида'],
+  '🐦':['птица','летит','пёрышко'],
+  '🦆':['утка','кряква','птица'],
+  '🦅':['орёл','гордый','хищник'],
+  '🦉':['сова','мудрость','ночь'],
+  '🦇':['летучая мышь','ночь','хэллоуин','вампир'],
+  '🐺':['волк','хищник','лес'],
+  '🐗':['кабан','дикий','клыки'],
+  '🐴':['лошадь','конь','скачет'],
+  '🦄':['единорог','магия','радуга'],
+  '🐝':['пчела','мёд','жалит'],
+  '🐛':['гусеница','червь','зелёный'],
+  '🦋':['бабочка','красота','полёт'],
+  '🐌':['улитка','медленно','панцирь'],
+  '🐞':['божья коровка','красный','точки'],
+  '🐜':['муравей','маленький','трудолюбивый'],
+  '🦟':['комар','укус','лето'],
+  '🦗':['сверчок','насекомое'],
+  '🦂':['скорпион','опасный','хвост'],
+  '🐢':['черепаха','медленно','панцирь'],
+  '🐍':['змея','жалит','опасная'],
+  '🦎':['ящерица','рептилия'],
+  '🦖':['тираннозавр','динозавр','рекс'],
+  '🦕':['диплодок','динозавр','длинная шея'],
+  '🐙':['осьминог','щупальца','море'],
+  '🦑':['кальмар','щупальца','море'],
+  '🦐':['креветка','море','морепродукты'],
+  '🦞':['омар','красный','море'],
+  '🦀':['краб','клешни','море'],
+  '🐡':['рыба','пузырь','море'],
+  '🐠':['тропическая рыба','цветная','аквариум'],
+  '🐟':['рыба','море','плавает'],
+  '🐬':['дельфин','море','прыгает'],
+  '🐳':['кит','синий','море','большой'],
+  '🐋':['кит','море','огромный'],
+  '🦈':['акула','зубы','море','опасная'],
+  '🐊':['крокодил','зубы','болото'],
+  '🦦':['выдра','милый','вода'],
+  '🦥':['ленивец','медленный','дерево'],
+  '🦘':['кенгуру','австралия','прыгает'],
+  '🦏':['носорог','африка','рог'],
+  '🦛':['бегемот','вода','большой'],
+  '🐘':['слон','хобот','большой','память'],
+  '🦒':['жираф','длинная шея','африка'],
+  '🦓':['зебра','полосатый','африка'],
+  '🦍':['горилла','обезьяна','сила'],
+  '🐆':['леопард','пятна','хищник'],
+  '🐅':['тигр','полосатый','хищник'],
+  '🐃':['бизон','буйвол','пастбище'],
+  '🐂':['бык','ферма','сила'],
+  '🐄':['корова','ферма','молоко'],
+  '🦌':['олень','рога','лес'],
+  '🐖':['свинья','хрюкает','ферма'],
+  '🐏':['баран','рога','овца'],
+  '🐑':['овца','шерсть','белый'],
+  '🐐':['козёл','рога','горы'],
+  '🦙':['лама','альпака','южная америка'],
+  '🐕':['собака','пёс','друг'],
+  '🐩':['пудель','порода','модная'],
+  '🦮':['поводырь','собака','слепой'],
+  '🐈':['кот','кошка','мяукает'],
+  '🐈‍⬛':['чёрный кот','удача','мистика'],
+  '🐓':['петух','рассвет','ферма'],
+  '🦃':['индейка','день благодарения','птица'],
+  '🦚':['павлин','хвост','красота'],
+  '🦜':['попугай','говорит','тропики'],
+  '🦢':['лебедь','белый','красота','пруд'],
+  '🦩':['фламинго','розовый','одна нога'],
+  '🕊️':['голубь','мир','белый','птица'],
+  '🐇':['кролик','ушки','белый','пасха'],
+  '🦝':['енот','маска','хитрый'],
+  '🦨':['скунс','запах','чёрно-белый'],
+  '🦡':['барсук','лес','нора'],
+  '🦫':['бобёр','плотина','вода'],
+  '🦔':['ёж','иголки','колючий'],
+  '🐿️':['бурундук','белка','орехи'],
+  '🐾':['следы лап','животное','собака','кошка'],
+  // Природа / погода
+  '🌊':['волна','море','вода','океан','прибой'],
+  '💧':['капля','вода','дождь'],
+  '💦':['брызги','вода','мокрый'],
+  '🌧':['дождь','облако','гроза'],
+  '⛈':['гроза','молния','дождь'],
+  '🌩':['молния','гроза','гром'],
+  '🌨':['снег','зима','снежинка'],
+  '❄️':['снежинка','мороз','зима','холод'],
+  '🌬':['ветер','дует','сдувает'],
+  '💨':['ветер','воздух','быстро'],
+  '🌪':['торнадо','ураган','вихрь'],
+  '🌈':['радуга','цвета','после дождя'],
+  '☀️':['солнце','жара','лето','тепло'],
+  '🌤':['солнце','облако','погода'],
+  '⛅':['облако','солнце','погода'],
+  '☁️':['облако','пасмурно','небо'],
+  '🌥':['облако','пасмурно'],
+  '🌦':['дождь','солнце','погода'],
+  '🌙':['луна','ночь','серп'],
+  '🌛':['луна','четверть','ночь'],
+  '🌜':['луна','четверть','ночь'],
+  '🌝':['полная луна','лицо','ночь'],
+  '🌚':['чёрная луна','ночь','мрак'],
+  '🌞':['солнце','лицо','тепло'],
+  '⭐':['звезда','яркий','рейтинг'],
+  '🌟':['звезда','блеск','сияние'],
+  '💫':['звезда','кружится','блеск'],
+  '✨':['блёстки','сверкает','магия','искры'],
+  '🌸':['сакура','цветок','весна','япония'],
+  '🌺':['цветок','красота','гибискус'],
+  '🌻':['подсолнух','жёлтый','солнце'],
+  '🌹':['роза','красная','любовь','цветок'],
+  '🌷':['тюльпан','весна','цветок'],
+  '💐':['букет','цветы','подарок'],
+  '🍀':['клевер','удача','зелёный'],
+  '🌿':['трава','листья','природа'],
+  '🌱':['росток','рост','новое начало'],
+  '🌲':['ель','дерево','лес','хвоя'],
+  '🌳':['дуб','дерево','парк','природа'],
+  '🌴':['пальма','тропики','пляж'],
+  '🍁':['клён','осень','канада'],
+  '🍂':['листья','осень','падают'],
+  '🍃':['листья','ветер','зелёный'],
+  '🌾':['пшеница','рожь','поле','урожай'],
+  '🍄':['гриб','красный','точки'],
+  '🌰':['каштан','осень'],
+  '🪸':['коралл','море','риф'],
+  '🌍':['земля','мир','европа','африка'],
+  '🌎':['земля','мир','америка'],
+  '🌏':['земля','мир','азия'],
+  '🗺':['карта','путешествие','мир'],
+  '🏔':['гора','снег','вершина','горы'],
+  '⛰':['гора','природа'],
+  '🗻':['фудзи','япония','гора'],
+  '🌋':['вулкан','извержение','огонь'],
+  '🏕':['кемпинг','палатка','природа'],
+  '🏖':['пляж','море','отдых','лето'],
+  '🏜':['пустыня','жара','песок'],
+  '🏝':['остров','пальма','море'],
+  '🏞':['парк','природа','красота'],
+  // Еда / напитки
+  '🍕':['пицца','еда','итальянская'],
+  '🍔':['бургер','гамбургер','фастфуд'],
+  '🍟':['картошка фри','фастфуд'],
+  '🌭':['хот-дог','сосиска','фастфуд'],
+  '🌮':['тако','мексика','еда'],
+  '🌯':['буррито','шаурма','обёртка'],
+  '🥙':['фалафель','бутерброд','овощи'],
+  '🧆':['фалафель','горох','жареный'],
+  '🥚':['яйцо','завтрак'],
+  '🍳':['жарит яйцо','завтрак','сковородка'],
+  '🥘':['паэлья','рагу','тушёное'],
+  '🍲':['горшочек','суп','тушёное'],
+  '🍱':['бенто','япония','коробка еды'],
+  '🍣':['суши','япония','рыба','рис'],
+  '🍤':['темпура','жареный','японское'],
+  '🧁':['кекс','сладкое','выпечка'],
+  '🍰':['торт','кусок','сладкое','праздник'],
+  '🎂':['торт','день рождения','праздник','свечки'],
+  '🍮':['пудинг','карамель','сладкое'],
+  '🍭':['леденец','конфета','сладкое'],
+  '🍬':['конфета','сладкое'],
+  '🍫':['шоколад','сладкое','какао'],
+  '🍩':['пончик','сладкое','кольцо'],
+  '🍪':['печенье','выпечка','сладкое'],
+  '🍯':['мёд','сладкое','пчела'],
+  '🧋':['молочный чай','боба','пузырьки'],
+  '🍺':['пиво','алкоголь','кружка'],
+  '🥂':['шампанское','тост','праздник'],
+  '🍷':['вино','красное','алкоголь'],
+  '🍸':['коктейль','бар','алкоголь'],
+  '🍹':['тропический коктейль','лето','зонтик'],
+  '🧃':['сок','коробка','детский'],
+  '🥤':['стакан','напиток','соломинка'],
+  '🧊':['лёд','холодный','кубик'],
+  '☕':['кофе','горячий','утро'],
+  '🫖':['чайник','чай','горячий'],
+  '🍵':['зелёный чай','японский','матча'],
+  '🍶':['сакэ','япония','рисовое вино'],
+  '🍼':['бутылочка','детское','молоко'],
+  '🧉':['мате','аргентина','трава'],
+  // Путешествия / транспорт
+  '✈️':['самолёт','полёт','путешествие','авиация'],
+  '🚀':['ракета','космос','запуск','быстро'],
+  '🛸':['нло','пришельцы','космос','летающая тарелка'],
+  '🚁':['вертолёт','лопасти','полёт'],
+  '🛶':['лодка','каноэ','вода','гребля'],
+  '⛵':['парусник','ветер','море'],
+  '🚤':['моторная лодка','скорость','вода'],
+  '🚢':['корабль','море','круиз'],
+  '🚂':['паровоз','поезд','путь'],
+  '🚆':['скоростной поезд','рельсы'],
+  '🚇':['метро','подземка','город'],
+  '🚌':['автобус','общественный транспорт','маршрут'],
+  '🚗':['машина','автомобиль','ехать'],
+  '🚕':['такси','жёлтый','поездка'],
+  '🚙':['суv','внедорожник','машина'],
+  '🏎':['гоночная машина','скорость','формула 1'],
+  '🚲':['велосипед','спорт','экология'],
+  '🛴':['самокат','электросамокат','кикшеринг'],
+  '🛵':['мопед','скутер','байк'],
+  '🏍':['мотоцикл','байк','скорость'],
+  '🚑':['скорая','медицина','помощь'],
+  '🚒':['пожарная','огонь','тушит'],
+  '🚓':['полиция','патруль','копы'],
+  '🚜':['трактор','ферма','сельское хозяйство'],
+  '🛻':['пикап','грузовик','внедорожник'],
+  '🧭':['компас','направление','навигация'],
+  '🏟':['стадион','спорт','трибуны'],
+  '🏛':['колонны','архитектура','история'],
+  '🗼':['эйфелева башня','париж','франция'],
+  '🗽':['статуя свободы','нью-йорк','сша'],
+  '🏰':['замок','средневековье','принцесса'],
+  '🏯':['японский замок','самурай','япония'],
+  '🗾':['япония','карта','остров'],
+  '🌉':['мост','ночь','город'],
+  '🌁':['туман','мост','побережье'],
+  '🌃':['ночной город','небоскрёбы','огни'],
+  '🌆':['закат','город','здания'],
+  '🌇':['закат','закат города','вечер'],
+  '🌄':['рассвет','горы','утро'],
+  '🌅':['восход','море','утро','рассвет'],
+  '🎠':['карусель','парк аттракционов','лошадки'],
+  '🎡':['колесо обозрения','парк','высота'],
+  '🎢':['горки','аттракцион','экстрим'],
+  '🚩':['флажок','финиш','маршрут'],
+  // Активности / спорт
+  '⚽':['футбол','мяч','спорт'],
+  '🏀':['баскетбол','мяч','прыжок'],
+  '🏈':['американский футбол','мяч','тачдаун'],
+  '⚾':['бейсбол','мяч','бита'],
+  '🥎':['софтбол','мяч'],
+  '🏐':['волейбол','мяч','сетка'],
+  '🏉':['регби','мяч','овальный'],
+  '🎾':['теннис','ракетка','корт'],
+  '🏸':['бадминтон','воланчик','ракетка'],
+  '🥊':['бокс','перчатка','удар'],
+  '🥋':['каратэ','дзюдо','боевые искусства'],
+  '🎽':['майка','спорт','бег'],
+  '🏆':['кубок','победа','чемпион','приз'],
+  '🥇':['золото','первое место','медаль'],
+  '🥈':['серебро','второе место','медаль'],
+  '🥉':['бронза','третье место','медаль'],
+  '🏅':['медаль','награда','победа'],
+  '🎯':['мишень','цель','дротики','точность'],
+  '🎳':['боулинг','кегли','удар'],
+  '🎮':['игра','геймпад','видеоигра'],
+  '🕹':['джойстик','ретро','игры'],
+  '🎲':['кубик','игра','случай','рандом'],
+  '🎻':['скрипка','музыка','оркестр'],
+  '🎷':['саксофон','джаз','музыка'],
+  '🎸':['гитара','рок','музыка'],
+  '🥁':['барабаны','бит','ритм'],
+  '🎹':['пианино','клавиши','классика'],
+  '🎺':['труба','джаз','духовые'],
+  '🎼':['ноты','музыка','партитура'],
+  '🎵':['нота','музыка','песня'],
+  '🎶':['ноты','музыка','мелодия'],
+  '🎤':['микрофон','пение','выступление'],
+  '🎧':['наушники','музыка','слушает'],
+  '🎬':['хлопушка','кино','фильм'],
+  '🎭':['маски','театр','представление'],
+  '🎨':['палитра','рисование','искусство'],
+  '🖼':['картина','рамка','галерея'],
+  '🎪':['цирк','шатёр','представление'],
+  '🤹':['жонглёр','цирк','ловкость'],
+  // Предметы / объекты
+  '💎':['бриллиант','алмаз','ювелирный','ценный'],
+  '💍':['кольцо','помолвка','свадьба','бриллиант'],
+  '👑':['корона','король','царь','власть'],
+  '🎁':['подарок','коробка','сюрприз','бант'],
+  '🎈':['шарик','праздник','день рождения'],
+  '🎉':['конфетти','праздник','вечеринка','ура'],
+  '🎊':['конфетти','праздник','серпантин'],
+  '🎀':['бант','розовый','подарок'],
+  '🔮':['хрустальный шар','гадание','магия','предсказание'],
+  '🪄':['волшебная палочка','магия','трюк'],
+  '🧿':['глаз','защита','амулет'],
+  '🧸':['мишка','игрушка','плюшевый'],
+  '🪆':['матрёшка','россия','деревянная'],
+  '🎲':['кубик','случай','игра'],
+  '🧩':['пазл','головоломка','часть'],
+  '💡':['лампочка','идея','свет'],
+  '🔦':['фонарик','свет','темнота'],
+  '🕯':['свеча','огонь','свет'],
+  '🧲':['магнит','притягивает','железо'],
+  '💻':['ноутбук','компьютер','работа'],
+  '🖥':['монитор','компьютер','экран'],
+  '📱':['телефон','смартфон','мобильный'],
+  '☎️':['телефон','звонок','старый'],
+  '📺':['телевизор','экран','кино'],
+  '📷':['фотоаппарат','фото','снимок'],
+  '📸':['селфи','вспышка','фото'],
+  '📹':['видеокамера','запись','видео'],
+  '🎥':['кинокамера','кино','съёмка'],
+  '📽':['проектор','кино','плёнка'],
+  '🔭':['телескоп','звёзды','астрономия'],
+  '🔬':['микроскоп','наука','лаборатория'],
+  '📡':['антенна','сигнал','связь'],
+  '🛰':['спутник','космос','орбита'],
+  '🔑':['ключ','замок','открыть'],
+  '🗝':['старый ключ','замок','средневековье'],
+  '🔒':['замок','закрыть','безопасность'],
+  '🔓':['открытый замок','свобода','открыть'],
+  '🔨':['молоток','стройка','удар'],
+  '⚒':['кирка','добыча','горнодобывающий'],
+  '🛠':['инструменты','ремонт'],
+  '⛏':['кирка','горнодобывающий'],
+  '🪚':['пила','дерево','плотник'],
+  '🔧':['гаечный ключ','ремонт','механик'],
+  '🔩':['болт','гайка','крепление'],
+  '⚙️':['шестерёнка','настройка','механизм'],
+  '🗡':['кинжал','меч','оружие'],
+  '⚔️':['скрещенные мечи','бой','война'],
+  '🛡':['щит','защита','броня'],
+  '🪃':['бумеранг','возвращение','австралия'],
+  '🏹':['лук','стрела','охота'],
+  '🎣':['рыбалка','крючок','удочка'],
+  '🤿':['маска','дайвинг','подводный'],
+  '🧲':['магнит','сила','железо'],
+  '💊':['таблетка','лекарство','аптека'],
+  '💉':['шприц','инъекция','вакцина'],
+  '🩺':['стетоскоп','врач','медицина'],
+  '🩻':['рентген','кости','снимок'],
+  '🩹':['пластырь','порез','первая помощь'],
+  '🧪':['пробирка','химия','эксперимент'],
+  '🧫':['чашка петри','бактерии','наука'],
+  '🧬':['днк','гены','биология'],
+  '📚':['книги','учёба','знания'],
+  '📖':['книга','читает','история'],
+  '📝':['записка','ручка','заметки'],
+  '✏️':['карандаш','рисует','заметки'],
+  '🖊':['ручка','подпись','пишет'],
+  '📌':['кнопка','доска','прикреплено'],
+  '📎':['скрепка','прикреплено','файл'],
+  '✂️':['ножницы','режет','стрижка'],
+  '🗑':['мусорное ведро','удалить','выбросить'],
+  '📦':['коробка','упаковка','посылка'],
+  '📫':['почтовый ящик','письмо','сообщение'],
+  '📮':['почта','ящик','письмо'],
+  '📜':['свиток','документ','история'],
+  '📃':['документ','страница','бумага'],
+  '📄':['документ','файл','страница'],
+  '🗃':['картотека','архив','файлы'],
+  '🗂':['папки','организация','файлы'],
+  '📁':['папка','файлы','директория'],
+  '📂':['открытая папка','файлы'],
+  '🗄':['картотека','ящики','хранение'],
+  // Символы / сердечки
+  '❤️':['красное сердце','любовь','романтика'],
+  '🧡':['оранжевое сердце','любовь','тепло'],
+  '💛':['жёлтое сердце','дружба','радость'],
+  '💚':['зелёное сердце','природа','здоровье'],
+  '💙':['синее сердце','верность','доверие'],
+  '💜':['фиолетовое сердце','загадка'],
+  '🖤':['чёрное сердце','темнота','готика'],
+  '🤍':['белое сердце','чистота','мир'],
+  '🤎':['коричневое сердце','земля','тепло'],
+  '💔':['разбитое сердце','расставание','грусть'],
+  '❣️':['восклицательный знак сердце','любовь'],
+  '💕':['два сердечка','любовь','пара'],
+  '💞':['кружащиеся сердечки','любовь'],
+  '💓':['бьющееся сердце','любовь','жизнь'],
+  '💗':['растущее сердце','любовь'],
+  '💖':['сверкающее сердце','любовь','блеск'],
+  '💘':['сердце со стрелой','купидон','любовь'],
+  '💝':['сердце с лентой','любовь','подарок'],
+  '💟':['сердце в декоре','украшение'],
+  '☮️':['мир','антивоенный','хиппи'],
+  '✝️':['крест','христианство','религия'],
+  '☪️':['мусульманство','ислам','месяц'],
+  '🕉':['индуизм','ом','религия'],
+  '✡️':['иудаизм','звезда давида','религия'],
+  '🔯':['шестиконечная звезда','иудаизм'],
+  '☯️':['инь-ян','баланс','дзен'],
+  '⚡':['молния','гром','электричество','энергия','мощь'],
+  '🔥':['огонь','горит','жарко','крутой','хот'],
+  '💧':['вода','капля','дождь'],
+  '🌊':['волна','море','вода','океан'],
+  '💨':['ветер','воздух','пшик'],
+  '🌈':['радуга','цвета','lgbtq','после дождя'],
+  // Мемы
+  '🗿':['моаи','истукан','каменное лицо','мем'],
+  '💅':['ноготки','безразличие','glamour','мем'],
+  '🤌':['итальянцы','идеально','жест','мем'],
+  '🧌':['тролль','монстр','лес','мем'],
+  '🫠':['тает','разочарование','жара','мем'],
+  '🤯':['взрыв мозга','шок','невероятно'],
+  '🥹':['трогает','растроган','слеза радости'],
+  '🫡':['честь','салют','уважение'],
+  '🤨':['подозрение','одна бровь','мем'],
+  '🫥':['невидимый','стал частью стены','исчезает'],
+  '😵':['звёзды','головокружение','оглушён'],
+  '🫣':['прикрывает глаза','не хочет видеть','мем'],
+  '🫢':['прикрывает рот','шок','ой'],
+  '🫤':['горизонтальный рот','нейтрально','скучно'],
+  '🫨':['трясётся','дрожит','страшно'],
+  '🫵':['указывает на тебя','ты','тыкает'],
+  '🫸':['толкает','стоп','рука'],
+  '🫷':['толкает','стоп','назад'],
+  '🗣':['говорит','громко','речь','крик'],
+  '👤':['силуэт','человек','аватар'],
+  '👥':['два человека','группа','люди'],
+  '🫂':['обнимашки','объятия','тепло'],
+  '💢':['злость','раздражение','аниме'],
+  // Дополнительные
+  '🎓':['диплом','образование','выпускник','учёба'],
+  '🏫':['школа','учёба','здание'],
+  '🏠':['дом','жилой','home'],
+  '🏡':['домик','уютный','сад'],
+  '🏢':['офис','работа','здание'],
+  '🏥':['больница','медицина','крест'],
+  '🏦':['банк','деньги','финансы'],
+  '🏨':['отель','путешествие','ночлег'],
+  '🏪':['магазин','торговля','покупки'],
+  '🏬':['торговый центр','магазин','молл'],
+  '⛪':['церковь','храм','религия'],
+  '🕌':['мечеть','ислам','купол'],
+  '🛕':['индуистский храм','религия'],
+  '🕍':['синагога','иудаизм'],
+  '🗿':['истукан','пасха','каменный'],
+  '🎆':['фейерверк','праздник','новый год'],
+  '🎇':['бенгальский огонь','праздник','искры'],
+  '🧨':['хлопушка','петарда','китайский'],
+  '🎑':['любование луной','япония','праздник'],
+  '🎃':['хэллоуин','тыква','страшно'],
+  '🎄':['ёлка','новый год','рождество'],
+  '🎋':['бамбук','япония','танабата'],
+  '🎍':['кадомацу','япония','новый год'],
+  '🎎':['куклы','япония','хинамацури'],
+  '🎏':['флаги','япония','карп'],
+  '🎐':['ветряной колокольчик','япония','лето'],
+  '🧧':['конверт','деньги','китайский'],
+  '🎟':['билет','кино','событие'],
+  '🎫':['билет','концерт','мероприятие'],
+  '🚪':['дверь','вход','выход'],
+  '🪟':['окно','вид','прозрачность'],
+  '🛋':['диван','уют','отдых'],
+  '🪑':['стул','сидеть','мебель'],
+  '🚽':['туалет','унитаз','wc'],
+  '🪠':['вантуз','туалет','прочистить'],
+  '🚿':['душ','чистота','купаться'],
+  '🛁':['ванна','расслабиться','пузыри'],
+  '🪥':['зубная щётка','чистить зубы'],
+  '💈':['парикмахерская','стрижка','полосатый'],
+  '🪒':['бритва','бритьё','острый'],
+  '🧴':['лосьон','уход','косметика'],
+  '🧷':['булавка','прикрепить','шитьё'],
+  '🧹':['метла','уборка','чисто'],
+  '🧺':['корзина','стирка','бельё'],
+  '🧻':['туалетная бумага','рулон'],
+  '🧼':['мыло','мыть','чистота'],
+  '🧽':['губка','уборка','мытьё'],
+  '🪣':['ведро','вода','уборка'],
+  '🪤':['мышеловка','ловушка','сыр'],
+  '🧰':['ящик с инструментами','ремонт'],
+  '⚗️':['перегонный куб','химия','наука'],
+  '🔮':['хрустальный шар','гадание','предсказание'],
+  '🧿':['глаз','оберег','сглаз'],
+  '📿':['чётки','ожерелье','религия'],
+  '💎':['алмаз','бриллиант','ценность'],
+  '🔔':['колокол','звонок','уведомление'],
+  '🔕':['колокол зачёркнутый','тишина','без звука'],
+  '🎵':['нота','музыка','звук'],
+  '🎶':['ноты','музыка','мелодия'],
+  '📢':['мегафон','объявление','громко'],
+  '📣':['мегафон','кричит','громко'],
+  '🔊':['громко','звук','колонка'],
+  '🔇':['без звука','тихо','заглушить'],
+  '📻':['радио','музыка','ретро'],
+  '🎙':['микрофон','студия','запись'],
+  '📯':['почтовый рожок','труба','объявление'],
+  '🎚':['ползунок','настройка','звук'],
+  '🎛':['панель управления','настройка','кнопки'],
+  '🔈':['звук','тихо','колонка'],
+  '🔉':['звук','средне','колонка'],
+  '🔔':['колокол','уведомление','звонит'],
+  '🔗':['ссылка','цепь','связь'],
+  '⛓':['цепь','скованный','металл'],
+  '🪝':['крючок','вешалка','рыбалка'],
+  '📌':['кнопка','прикреплено','важно'],
+  '📍':['маркер','место','геолокация'],
+  '🗺':['карта','путешествие','мир'],
+  '🧭':['компас','направление','север'],
+  '🏳':['белый флаг','сдаётся','мир'],
+  '🏴':['чёрный флаг','пираты'],
+  '🚩':['красный флаг','тревога','маршрут'],
+  '🏁':['финиш','гонки','клетчатый'],
+  '🚫':['запрещено','нет','стоп'],
+  '⛔':['стоп','знак','запрещено'],
+  '🔞':['18 плюс','взрослое','ограничение'],
+  '🆘':['sos','помощь','опасность'],
+  '✅':['галочка','готово','верно'],
+  '❌':['крест','нет','неверно'],
+  '❎':['крест','нет','кнопка'],
+  '💯':['сто','идеально','100'],
+  '✔️':['галочка','верно','да'],
+  '💱':['обмен','валюта','деньги'],
+  '💲':['доллар','деньги','валюта'],
+  '💰':['мешок денег','богатство','деньги'],
+  '💴':['йена','япония','деньги'],
+  '💵':['доллар','сша','деньги'],
+  '💶':['евро','европа','деньги'],
+  '💷':['фунт','великобритания','деньги'],
+  '💸':['летящие деньги','трата','деньги'],
+  '💳':['кредитная карта','оплата','банк'],
+  '🏧':['банкомат','деньги','снять'],
+  '🎰':['игровой автомат','казино','удача'],
+  '🃏':['карта джокер','игра','козырь'],
+  '🀄':['маджонг','азия','игра'],
+  '🎴':['японские карты','игра'],
+  '⏰':['будильник','время','просыпаться'],
+  '⌛':['песочные часы','время','ждать'],
+  '⏳':['песочные часы','время','скоро'],
+  '🕐':['час','время','единица'],
+  '🗓':['календарь','дата','расписание'],
+  '📅':['календарь','дата','встреча'],
+  '📆':['отрывной календарь','дата'],
+  // Флаги стран
+  '🇷🇺':['россия','флаг','рф','страна'],
+  '🇺🇸':['сша','флаг','америка','штаты'],
+  '🇬🇧':['британия','флаг','англия','uk'],
+  '🇩🇪':['германия','флаг','germany'],
+  '🇫🇷':['франция','флаг','france'],
+  '🇯🇵':['япония','флаг','japan'],
+  '🇨🇳':['китай','флаг','china'],
+  '🇰🇷':['корея','флаг','korea'],
+  '🇮🇹':['италия','флаг','italy'],
+  '🇪🇸':['испания','флаг','spain'],
+  '🇧🇷':['бразилия','флаг','brazil'],
+  '🇦🇺':['австралия','флаг','australia'],
+  '🇨🇦':['канада','флаг','canada'],
+  '🇮🇳':['индия','флаг','india'],
+  '🇺🇦':['украина','флаг','ukraine'],
+  // Зодиак
+  '♈':['овен','зодиак','март','апрель'],
+  '♉':['телец','зодиак','апрель','май'],
+  '♊':['близнецы','зодиак','май','июнь'],
+  '♋':['рак','зодиак','июнь','июль'],
+  '♌':['лев','зодиак','июль','август'],
+  '♍':['дева','зодиак','август','сентябрь'],
+  '♎':['весы','зодиак','сентябрь','октябрь'],
+  '♏':['скорпион','зодиак','октябрь','ноябрь'],
+  '♐':['стрелец','зодиак','ноябрь','декабрь'],
+  '♑':['козерог','зодиак','декабрь','январь'],
+  '♒':['водолей','зодиак','январь','февраль'],
+  '♓':['рыбы','зодиак','февраль','март'],
+  // Новые эмодзи / люди
+  '🧑':['человек','нейтральный','персона'],
+  '👶':['младенец','малыш','ребёнок'],
+  '🧒':['ребёнок','дети','малыш'],
+  '👦':['мальчик','парень','ребёнок'],
+  '👧':['девочка','ребёнок','малышка'],
+  '🧑‍💻':['программист','разработчик','кодер','айтишник'],
+  '🧑‍🎨':['художник','творчество','искусство'],
+  '🧑‍🍳':['повар','кулинар','шеф'],
+  '🧑‍🔬':['учёный','наука','исследователь'],
+  '🧑‍🚀':['космонавт','астронавт','ракета'],
+  '🧑‍⚕️':['врач','медик','доктор'],
+  '🧑‍🏫':['учитель','преподаватель','школа'],
+  '🧑‍🎤':['певец','рок','музыкант'],
+  '🧑‍🏭':['рабочий','завод','производство'],
+  '🕵️':['детектив','шпион','расследование'],
+  '💂':['гвардеец','охрана','великобритания'],
+  '🧙':['волшебник','маг','заклинание'],
+  '🧚':['фея','волшебство','крылья'],
+  '🧛':['вампир','кровь','ночь','хэллоуин'],
+  '🧜':['русалка','море','хвост'],
+  '🧝':['эльф','фэнтези','лес'],
+  '🦸':['супергерой','сила','плащ'],
+  '🦹':['злодей','суперзлодей','мем'],
+  '🤴':['принц','корона','королевский'],
+  '👸':['принцесса','корона','сказка'],
+  '🫅':['человек с короной','власть','знать'],
+  // Технологии / программирование (мем-паки для айтишников)
+  '⌨️':['клавиатура','печатает','программирование'],
+  '🖥️':['монитор','компьютер','экран'],
+  '🖱️':['мышь','клик','компьютер'],
+  '💾':['дискета','сохранить','ретро'],
+  '📀':['диск','cd','данные'],
+  '💿':['диск','музыка','ретро'],
+  '🖨️':['принтер','печать','бумага'],
+  '📲':['телефон','уведомление','звонок'],
+  '🔋':['батарея','заряд','энергия'],
+  '🪫':['разряженная батарея','нет заряда','пусто'],
+  '💡':['идея','лампочка','свет','озарение'],
+  '🔌':['розетка','зарядка','питание'],
+  '🖲️':['трекбол','ретро','компьютер'],
+  '🗜️':['сжатие','архив','данные'],
+  '🔐':['замок','безопасность','пароль'],
+  '🔑':['ключ','доступ','пароль'],
+  '🗝️':['старый ключ','тайна','доступ'],
+  // Астрология и космос
+  '🌌':['галактика','космос','звёзды'],
+  '🪐':['сатурн','планета','кольца'],
+  '🌑':['новолуние','ночь','тёмный'],
+  '🌒':['луна','серп','рост'],
+  '🌓':['луна','половина','баланс'],
+  '🌔':['луна','прибывающая'],
+  '🌕':['полнолуние','луна','свет'],
+  '🌖':['луна','убывающая'],
+  '🌗':['луна','последняя четверть'],
+  '🌘':['луна','убывающий серп'],
+  '☄️':['комета','астероид','космос'],
+  '🛸':['нло','инопланетяне','тарелка'],
+  '🚀':['ракета','космос','старт','поехали'],
+  '🛩️':['самолёт','полёт','авиация'],
+  '🪁':['рогатка','меткий','игрушка'],
+  '🎯':['цель','мишень','точно','попал'],
+  // Еда — новинки
+  '🫕':['тажин','горшок','готовить'],
+  '🫙':['банка','консерва','хранение'],
+  '🥫':['консервы','еда','банка'],
+  '🧆':['фалафель','еда','шарики'],
+  '🧇':['вафли','завтрак','мягкие'],
+  '🥞':['блины','завтрак','стопка'],
+  '🥓':['бекон','завтрак','жарить'],
+  '🌽':['кукуруза','лето','вкусно'],
+  '🫑':['перец','зелёный','овощи'],
+  '🥦':['брокколи','овощи','зелёный'],
+  '🥕':['морковь','оранжевый','кролик'],
+  '🧅':['лук','плачет','готовка'],
+  '🥑':['авокадо','здоровое','зелёный'],
+  '🍇':['виноград','фрукты','вино'],
+  '🍓':['клубника','ягода','красный'],
+  '🫐':['черника','ягода','синий'],
+  '🍒':['вишня','красный','вкусно'],
+  '🍑':['персик','фрукт','мягкий'],
+  '🥭':['манго','тропики','жёлтый'],
+  '🍍':['ананас','тропики','колючий'],
+  '🥥':['кокос','тропики','молоко'],
+  '🌶️':['перец','острый','огонь'],
+  '🫚':['масло','готовить','кухня'],
+  '🍜':['рамен','лапша','япония'],
+  '🍝':['спагетти','паста','италия'],
+  '🥘':['паэлья','суп','готовить'],
+  '🫔':['буррито','тортилья','мексика'],
+  '🥗':['салат','зелень','здоровое'],
+  '🍱':['бенто','коробка','япония'],
+  // Новые символы
+  '♾️':['бесконечность','навсегда','цикл'],
+  '🔁':['повтор','снова','цикл'],
+  '🔂':['повторить одно','музыка'],
+  '🔀':['перемешать','случайный','shuffle'],
+  '⏩':['перемотка','быстро','вперёд'],
+  '⏪':['назад','перемотка','rewind'],
+  '⏫':['быстро вверх','skip'],
+  '⏬':['быстро вниз','skip'],
+  '▶️':['плей','воспроизвести','запустить'],
+  '⏸️':['пауза','остановить'],
+  '⏹️':['стоп','остановить'],
+  '⏺️':['запись','рекордер'],
+  '🆕':['новый','new','свежий'],
+  '🆓':['бесплатно','free','даром'],
+  '🆒':['cool','крутой','клёвый'],
+  '🆗':['ок','хорошо','договорились'],
+  '🆙':['вверх','up','повышение'],
+  '🆚':['vs','против','сравнение'],
+  '🉐':['торговля','выгода'],
+  '🈵':['полный','максимум','japan'],
+  '🈶':['оплачено','деньги'],
+  '🉑':['принято','accept'],
+  '🔴':['красный круг','стоп','нет'],
+  '🟠':['оранжевый круг','средне'],
+  '🟡':['жёлтый круг','осторожно','пауза'],
+  '🟢':['зелёный круг','ок','онлайн'],
+  '🔵':['синий круг','информация'],
+  '🟣':['фиолетовый круг'],
+  '⚫':['чёрный круг','пусто'],
+  '⚪':['белый круг','нейтральный'],
+  '🟤':['коричневый круг'],
+  '🔶':['оранжевый ромб','предупреждение'],
+  '🔷':['синий ромб','информация'],
+  '🔸':['маленький оранжевый ромб'],
+  '🔹':['маленький синий ромб'],
+};
+
+// Все паки стикеров
+const STICKER_PACKS=[
+  {
+    id:'recent',
+    icon:'🕐',
+    name:'Недавние',
+    stickers:[]
+  },
+  {
+    id:'smileys',
+    icon:'😀',
+    name:'Смайлики',
+    stickers:['😀','😃','😄','😁','😆','😅','🤣','😂','🙂','😊','😇','🥰','😍','🤩','😘','😗','😚','😙','🥲','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔','🤐','😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤧','🥵','🥶','🥴','😵','🤯','🥳','🥸','🧐','🤓','🤩','😶‍🌫️','🫨']
+  },
+  {
+    id:'faces',
+    icon:'😢',
+    name:'Эмоции',
+    stickers:['😎','🥸','🤓','🧐','😕','😟','🙁','☹️','😮','😯','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','🤬','😈','👿','💀','☠️','💩','🤡','👹','👺','👻','👽','👾','🤖','😺','😸','😹','😻','😼','😽','🙀','🫠','🫡','🥹','🤨','🫥','😵','🫣','🫢','🫤','🫨']
+  },
+  {
+    id:'gestures',
+    icon:'👋',
+    name:'Жесты',
+    stickers:['👋','🤚','🖐','✋','🖖','👌','🤌','🤏','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','👍','👎','✊','👊','🤛','🤜','👏','🙌','🫶','👐','🤲','🤝','🙏','✍️','💅','🤳','💪','🦾','🦵','🦶','👂','👃','👀','👅','👁','🫀','🫁','🦷','🦴','🧠','🦻','🫵','🫸','🫷']
+  },
+  {
+    id:'animals',
+    icon:'🐶',
+    name:'Животные',
+    stickers:['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🙈','🙉','🙊','🐔','🐧','🐦','🦆','🦅','🦉','🦇','🐺','🐗','🐴','🦄','🐝','🪲','🐛','🦋','🐌','🐞','🐜','🦟','🦗','🦂','🐢','🐍','🦎','🦖','🦕','🐙','🦑','🦐','🦞','🦀','🐡','🐠','🐟','🐬','🐳','🐋','🦈','🐊','🦦','🦥','🦘','🦏','🦛','🐘','🦒','🦓','🦬','🐃','🐂','🐄','🐎','🐖','🐏','🐑','🦙','🐐','🦌','🐕','🐩','🦮','🐈','🪶','🦤','🦚','🦜','🦢','🪽','🐓','🦃','🦩']
+  },
+  {
+    id:'nature',
+    icon:'🌊',
+    name:'Природа',
+    stickers:['🌊','💧','💦','🌧','⛈','🌩','🌨','❄️','🌬','💨','🌪','🌈','☀️','🌤','⛅','☁️','🌙','🌛','🌜','🌝','🌚','🌞','⭐','🌟','💫','✨','🌸','🌺','🌻','🌹','🌷','💐','🍀','🌿','🌱','🌲','🌳','🌴','🍁','🍂','🍃','🌾','🍄','🌰','🏔','🗻','🌋','🏕','🏖','🏜','🏝','🏞','🌍','🌎','🌏','🌌','🪐','☄️','🌑','🌕','🌊','🪸','🪨','🪵','🌵','🎋','🎍','☘️','🪴']
+  },
+  {
+    id:'food',
+    icon:'🍕',
+    name:'Еда',
+    stickers:['🍕','🍔','🍟','🌭','🌮','🌯','🥙','🧆','🥚','🍳','🥘','🍲','🥣','🥗','🍿','🧈','🥫','🍱','🍣','🍤','🍥','🥮','🍡','🧁','🍰','🎂','🍮','🍭','🍬','🍫','🍩','🍪','🌰','🥜','🍯','🧋','🍺','🥂','🍷','🍸','🍹','🧃','🥤','🧊','🍼','☕','🫖','🍵','🧉','🍶','🥐','🥖','🫓','🥨','🧀','🥞','🧇','🥓','🌽','🫑','🥦','🥕','🧅','🥑','🍇','🍓','🫐','🍒','🍑','🥭','🍍','🥥','🌶️','🫙','🍜','🍝','🫔','🍛','🍚','🍙','🍘','🍠','🥟','🦪','🧆','🫕']
+  },
+  {
+    id:'travel',
+    icon:'✈️',
+    name:'Транспорт',
+    stickers:['✈️','🚀','🛸','🚁','🛶','⛵','🚤','🛥','🚢','🚂','🚃','🚄','🚅','🚆','🚇','🚈','🚉','🚊','🚝','🚞','🚋','🚌','🚍','🏎','🚐','🚑','🚒','🚓','🚕','🚗','🚙','🛻','🚚','🚜','🛵','🏍','🚲','🛴','🛹','🛼','🚏','⛽','🚦','🚥','🗺','🧭','🏔','🗻','🌋','🏕','🏖','🏜','🏝','🏞','🏟','🏛','🗼','🗽','🏰','🌉','🌃','🌆','🌅','🏙','🌇','🌁','⛩','🕌','⛪','🏯','🏰','🗿','🛕','🕍']
+  },
+  {
+    id:'activities',
+    icon:'⚽',
+    name:'Спорт',
+    stickers:['⚽','🏀','🏈','⚾','🥎','🏐','🏉','🥏','🎾','🪃','🏸','🏒','🥅','⛳','🎿','🛹','🎣','🤿','🥊','🥋','🎽','⛸','🏋️','🤼','🤸','🏊','🚴','🏇','🤺','🤾','🤽','🏄','🧘','🤾','🏌️','🏄','🧗','🤸','🏋️','🤼','🏆','🥇','🥈','🥉','🏅','🎖','🎗','🎫','🎟','🎪','🤹','🎭','🎨','🖼','🎬','🎤','🎧','🎼','🎵','🎶','🎷','🥁','🎸','🎹','🎻','🎺','🪗','🪘','🪕']
+  },
+  {
+    id:'objects',
+    icon:'💎',
+    name:'Предметы',
+    stickers:['💎','💍','👑','🏆','🎁','🎈','🎉','🎊','🎀','🔮','🪄','🧿','🧸','🪆','🎲','♟','🎯','🎳','🎮','🕹','🎰','🧩','🪀','🪁','🧵','🧶','💡','🔦','🕯','🪔','🧲','💻','🖥','🖨','⌨️','🖱','📱','☎️','📺','📷','📸','📹','🎥','📽','🔭','🔬','📡','🛰','🔑','🗝','🔒','🔓','🔨','🪓','⛏','🔧','🔩','⚙️','🛠','🪛','🪚','🔫','🪃','🛡','⚔️','🪤','🪣','🧰','🪜','🧲','🪝']
+  },
+  {
+    id:'symbols',
+    icon:'❤️',
+    name:'Символы',
+    stickers:['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟','❤️‍🔥','❤️‍🩹','🩷','🩵','🩶','☮️','⚡','🔥','💧','🌊','💨','🌈','⭐','🌟','💫','✨','♾️','✅','❌','💯','🔴','🟠','🟡','🟢','🔵','🟣','⚫','⚪','🔶','🔷','🔸','🔹','▶️','⏸️','⏹️','⏺️','🔁','🔂','🔀','⏩','⏪','🆕','🆓','🆒','🆗','🆙','🆚']
+  },
+  {
+    id:'memes',
+    icon:'🗿',
+    name:'Мемы',
+    stickers:['🗿','💅','🤌','😤','🥴','🤡','💀','👁','🧌','🫠','🤯','🥹','🫡','🤨','🫥','😵','🥸','🙃','😬','🤪','😜','😝','🤑','👻','💩','🤖','👽','🫣','🫢','🫤','🫨','🥲','🤭','🤫','😒','🙄','😏','🫵','🫸','🫷','🤙','🤘','🤞','✌️','🤟','🖖','🗣','👤','👥','🫂','💢','🎭','🤹','🃏','🎰','🦹','🦸','🧙','🧛','🧟','🧞','😈','👿','🤺','🥷']
+  },
+  {
+    id:'people',
+    icon:'🧑',
+    name:'Люди',
+    stickers:['🧑','👶','🧒','👦','👧','🧑‍💻','🧑‍🎨','🧑‍🍳','🧑‍🔬','🧑‍🚀','🧑‍⚕️','🧑‍🏫','🧑‍🎤','🧑‍🏭','🕵️','💂','🧙','🧚','🧛','🧜','🧝','🦸','🦹','🤴','👸','🫅','🧑‍🦯','🧑‍🦼','🧑‍🦽','👮','🧑‍🚒','🧑‍✈️','🧑‍🌾','🧑‍🔧','🧑‍🏫','👷','🎅','🤶','🧓','👴','👵','🙅','🙆','💁','🙋','🧏','🙇','🤦','🤷','💆','💇','🛀','🧖','🕺','💃','🚶','🧍','🧎','🏃']
+  },
+  {
+    id:'flags',
+    icon:'🏳️',
+    name:'Флаги',
+    stickers:['🇷🇺','🇺🇸','🇬🇧','🇩🇪','🇫🇷','🇯🇵','🇨🇳','🇰🇷','🇮🇹','🇪🇸','🇧🇷','🇦🇺','🇨🇦','🇮🇳','🇺🇦','🇵🇱','🇳🇱','🇸🇪','🇳🇴','🇩🇰','🇫🇮','🇨🇭','🇦🇹','🇧🇪','🇵🇹','🇬🇷','🇹🇷','🇮🇱','🇸🇦','🇦🇪','🇲🇽','🇦🇷','🇨🇱','🇨🇴','🇵🇪','🇹🇭','🇻🇳','🇵🇭','🇮🇩','🇲🇾','🇸🇬','🇳🇿','🇿🇦','🇪🇬','🇰🇪','🇳🇬','🇵🇰','🇧🇩','🇮🇷','🇮🇶','🏴‍☠️','🏳️','🏴','🚩','🏁','🏳️‍🌈','🏳️‍⚧️']
+  },
+  {
+    id:'zodiac',
+    icon:'⭐',
+    name:'Зодиак',
+    stickers:['♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓','⛎','🔯','✡️','🕉','☪️','✝️','☮️','☯️','🌙','⭐','🌟','💫','✨','🌠','🌌','🪐','🌙','☀️','🌑','🌒','🌓','🌔','🌕','🌖','🌗','🌘','🌛','🌜','🌝','🌚','🌞','☄️','🌈','⚡','🔮','🪄','🧿','📿','🔭','🛸','🚀']
+  },
+  {
+    id:'tech',
+    icon:'💻',
+    name:'Технологии',
+    stickers:['💻','🖥️','🖱️','⌨️','🖨️','📱','📲','☎️','📞','📟','📠','📺','📻','🎙️','🎚️','🎛️','🔋','🪫','🔌','💡','🔦','🕯️','💾','📀','💿','📼','📷','📸','📹','🎥','📽️','🎞️','📡','🛰️','🔭','🔬','🧬','🧪','🧫','🧲','🪄','🖲️','🗜️','💽','🖊️','✏️','📝','📌','📍','🔐','🔑','🗝️','🔒','🔓','🛡️','⚙️','🔧','🔩','🪛','🪚','🔨','🪓','⛏️','🛠️']
+  }
+];
+
+// Недавние стикеры — хранятся в localStorage
+const RECENT_MAX = 24;
+function getRecentStickers(){
+  try{return JSON.parse(localStorage.getItem('bc_recent_stickers')||'[]');}catch(e){return[];}
+}
+function addRecentSticker(emoji){
+  let rec=getRecentStickers();
+  rec=rec.filter(s=>s!==emoji);
+  rec.unshift(emoji);
+  if(rec.length>RECENT_MAX)rec=rec.slice(0,RECENT_MAX);
+  try{localStorage.setItem('bc_recent_stickers',JSON.stringify(rec));}catch(e){}
+}
+
+// Поиск стикера по запросу (имя, категория, ключевые слова на русском)
+function searchStickers(q){
+  q=q.trim().toLowerCase();
+  if(!q)return[];
+  const results=[];
+  const seen=new Set();
+  // Транслитерация частых опечаток
+  const aliases={
+    'water':'вода','wave':'волна','plane':'самолёт','airplane':'самолёт',
+    'hug':'объятия','abrazo':'объятия','love':'любовь','heart':'сердце',
+    'fire':'огонь','cat':'кот','dog':'собака','smile':'улыбка',
+    'angry':'злость','cry':'плачет','laugh':'смех','ok':'окей',
+    'thumbs up':'лайк','thumbsup':'лайк','thumbs down':'дизлайк',
+    'kiss':'поцелуй','star':'звезда','sun':'солнце','moon':'луна',
+    'food':'еда','car':'машина','house':'дом','music':'музыка',
+    'cool':'крутой','meme':'мем','flag':'флаг','rocket':'ракета',
+    'robot':'робот','alien':'инопланетянин','ghost':'призрак',
+    'skull':'череп','clown':'клоун','party':'праздник',
+    'sport':'спорт','tech':'технологии','people':'люди',
+    'zodiac':'зодиак','space':'космос','planet':'планета',
+    'pizza':'пицца','sushi':'суши','coffee':'кофе',
+    'train':'поезд','ship':'корабль','trophy':'кубок',
+    'phone':'телефон','laptop':'ноутбук','camera':'камера',
+    'russia':'россия','usa':'сша','japan':'япония','china':'китай',
+    'лол':'смех','кек':'смех','хаха':'смех','ахаха':'смех',
+    'пж':'пожалуйста','спс':'спасибо','лайк':'лайк','дизлайк':'дизлайк',
+    'го':'привет','кот':'кот','котик':'кот','котэ':'кот',
+    'пёс':'собака','огонь':'огонь','айти':'технологии','код':'программирование',
+    'луна':'луна','космос':'космос','флаг':'флаг',
+    'овен':'овен','телец':'телец','близнецы':'близнецы','рак':'рак',
+    'лев':'лев','дева':'дева','весы':'весы','скорпион':'скорпион',
+    'стрелец':'стрелец','козерог':'козерог','водолей':'водолей','рыбы':'рыбы',
+  };
+  const qRu = aliases[q] || q;
+
+  STICKER_PACKS.forEach(p=>{
+    if(p.id==='recent')return;
+    // Совпадение с именем пака
+    const packNameMatch = p.name.toLowerCase().includes(qRu)||p.id.toLowerCase().includes(q);
+    p.stickers.forEach(s=>{
+      if(seen.has(s))return;
+      const names = STICKER_NAMES[s]||[];
+      const emojiMatch = s.toLowerCase().includes(q);
+      const nameMatch = names.some(n=>n.toLowerCase().includes(qRu));
+      if(emojiMatch||nameMatch||packNameMatch){
+        seen.add(s);
+        results.push({emoji:s,relevance:nameMatch?2:(packNameMatch?1:0)});
+      }
+    });
+  });
+  // Сортируем по релевантности
+  results.sort((a,b)=>b.relevance-a.relevance);
+  return results.map(r=>r.emoji);
+}
+
+let stickerActivePack=1; // 0 = recent, 1 = smileys
+let stickerSearchQuery='';
+
+function openStickerPanel(){
+  if(!activePid||isContactBlocked(activePid))return;
+  // Блокируем открытие если сейчас идёт навигация к сообщению
+  if(window._stickerNavLock)return;
+  const panel=$('stickerPanel');
+  if(!panel)return;
+  // Если есть недавние — показываем их, иначе смайлики
+  const rec=getRecentStickers();
+  if(rec.length>0){
+    STICKER_PACKS[0].stickers=rec;
+    stickerActivePack=0;
+  }else{
+    stickerActivePack=1;
+  }
+  renderStickerTabs();
+  renderStickerGrid(stickerActivePack,'');
+  panel.classList.remove('frozen');
+  panel.classList.add('open');
+  $('messageInput').blur();
+  if(!panel._listenersAttached){
+    panel._listenersAttached=true;
+    const closeBtn=$('stickerPanelCloseBtn');
+    if(closeBtn){
+      closeBtn.addEventListener('click',(e)=>{e.stopPropagation();closeStickerPanel();});
+    }
+    const searchInput=$('stickerSearch');
+    if(searchInput){
+      searchInput.addEventListener('input',()=>{
+        const q=(searchInput.value||'').trim();
+        stickerSearchQuery=q;
+        renderStickerGrid(stickerActivePack,q);
+      });
+      searchInput.addEventListener('click',(e)=>e.stopPropagation());
+      searchInput.addEventListener('focus',(e)=>e.stopPropagation());
+    }
+  }
+  setTimeout(()=>{document.addEventListener('click',_stickerOutsideClick);},80);
+}
+
+function _stickerOutsideClick(e){
+  const panel=$('stickerPanel');
+  if(!panel)return;
+  if(!panel.contains(e.target)){
+    const ab=document.querySelector('.attach-btn');
+    if(ab&&ab.contains(e.target))return;
+    const pb=$('pinnedBar');
+    if(pb&&pb.contains(e.target))return;
+    closeStickerPanel();
+  }
+}
+
+function closeStickerPanel(){
+  const panel=$('stickerPanel');
+  if(!panel)return Promise.resolve();
+  if(!panel.classList.contains('open'))return Promise.resolve();
+  panel.classList.remove('open');
+  const inputBar=$('chatInputBar');
+  if(inputBar)inputBar.classList.remove('sticker-mode');
+  document.removeEventListener('click',_stickerOutsideClick);
+  const se=$('stickerSearch');if(se)se.value='';
+  stickerSearchQuery='';
+  // Возвращаем Promise который резолвится после окончания CSS-анимации (340ms)
+  return new Promise(res=>setTimeout(res,360));
+}
+
+function filterStickers(){
+  const q=($('stickerSearch')?.value||'').trim();
+  stickerSearchQuery=q;
+  renderStickerGrid(stickerActivePack,q);
+}
+
+function renderStickerTabs(){
+  const wrap=$('stickerTabScroll');
+  if(!wrap)return;
+  wrap.innerHTML='';
+  const rec=getRecentStickers();
+  STICKER_PACKS.forEach((pack,idx)=>{
+    // Пропускаем "Недавние" если там пусто
+    if(pack.id==='recent'&&rec.length===0)return;
+    const tab=document.createElement('div');
+    tab.className='sticker-pack-tab'+(idx===stickerActivePack?' active':'');
+    tab.textContent=pack.icon;
+    tab.title=pack.name;
+    tab.setAttribute('title',pack.name);
+    tab.onclick=(e)=>{
+      e.stopPropagation();
+      stickerActivePack=idx;
+      stickerSearchQuery='';
+      const se=$('stickerSearch');if(se){se.value='';se.blur();}
+      renderStickerTabs();
+      renderStickerGrid(idx,'');
+    };
+    wrap.appendChild(tab);
+  });
+}
+
+function renderStickerGrid(packIdx,query){
+  const grid=$('stickerGrid');
+  const nameEl=$('stickerPackName');
+  const gridWrap=$('stickerGridWrap');
+  if(!grid||!gridWrap)return;
+
+  // Всегда держим #stickerGrid в DOM — только очищаем содержимое.
+  // Убираем старый empty-блок если есть, восстанавливаем grid.
+  const oldEmpty=gridWrap.querySelector('.sticker-empty');
+  if(oldEmpty)oldEmpty.remove();
+  if(!gridWrap.contains(grid))gridWrap.appendChild(grid);
+  grid.innerHTML='';
+
+  let stickers=[];
+  let title='';
+  const q=(query||'').trim().toLowerCase();
+
+  if(q){
+    stickers=searchStickers(q);
+    const count=stickers.length;
+    if(!count){
+      if(nameEl)nameEl.innerHTML='';
+      const empty=document.createElement('div');
+      empty.className='sticker-empty';
+      empty.innerHTML=`<div class="sticker-empty-icon">🔍</div><div>Ничего не найдено по запросу<br><strong style="color:var(--g)">"${q}"</strong><br><span style="opacity:.6;font-size:11px">Попробуй: вода, объятия, самолёт, огонь</span></div>`;
+      // Вставляем empty ПЕРЕД grid (grid остаётся в DOM, просто пустой)
+      gridWrap.insertBefore(empty,grid);
+      return;
+    }
+    title=`РЕЗУЛЬТАТЫ ПОИСКА <span class="sticker-pack-name-count">${count}</span>`;
+  }else{
+    const pack=STICKER_PACKS[packIdx]||STICKER_PACKS[1];
+    if(pack.id==='recent') pack.stickers=getRecentStickers();
+    stickers=pack.stickers;
+    title=pack.name.toUpperCase();
+  }
+
+  if(nameEl)nameEl.innerHTML=title+(stickers.length?' <span style="opacity:.42;font-weight:400">· '+stickers.length+'</span>':'');
+
+  if(!stickers.length){
+    const empty=document.createElement('div');
+    empty.className='sticker-empty';
+    empty.innerHTML=`<div class="sticker-empty-icon">${STICKER_PACKS[packIdx]?.icon||'🗿'}</div><div>Здесь пусто</div>`;
+    gridWrap.insertBefore(empty,grid);
+    return;
+  }
+
+  stickers.forEach((emoji,i)=>{
+    const cell=document.createElement('div');
+    cell.className='sticker-cell';
+    cell.textContent=emoji;
+    const names=STICKER_NAMES[emoji];
+    if(names&&names.length) cell.title=names[0];
+    if(i<30){
+      cell.style.animationDelay=(i*12)+'ms';
+      cell.classList.add('new-appear');
+    }
+    cell.onclick=(e)=>{
+      e.stopPropagation();
+      cell.classList.add('sending');
+      setTimeout(()=>cell.classList.remove('sending'),360);
+      sendSticker(emoji);
+    };
+    grid.appendChild(cell);
+  });
+}
+
+async function sendSticker(emoji){
+  if(!activePid||!wsUp){toast('Нет соединения','err');return;}
+  if(isContactBlocked(activePid))return;
+  closeStickerPanel();
+  const key=await getKey(activePid);
+  if(!key){toast('Сначала установите ключ шифрования','warn');return;}
+  // Запоминаем в недавние
+  addRecentSticker(emoji);
+  const msgId=uid();
+  const now=new Date().toISOString();
+  const emojiName=STICKER_NAMES[emoji]?STICKER_NAMES[emoji][0]:'стикер';
+  const envelope={type:'sticker',id:msgId,sticker:emoji,ts:Date.now()};
+  const localMsg={id:msgId,sticker:emoji,type:'sent',time:now,reactions:{},edited:false,replyTo:null,delivered:false,forwarded:false};
+  await upsertMsg(activePid,localMsg);
+  await updateChat(activePid,{lastMsg:`${emoji} Стикер`,lastMsgTime:Date.now()});
+  appendOrReloadMsg(activePid,localMsg);
+  renderChatList();
+  try{
+    const enc=await encData(ENC.encode(JSON.stringify(envelope)),key);
+    wsSend({type:'send-msg',target:activePid,msgId,payload:payloadToB64(enc)});
+  }catch(e){toast('Ошибка отправки стикера','err');}
+}
+// ── КОНЕЦ СТИКЕРОВ ──
+
 })();
 </script>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     STICKER PANEL — на уровне body с position:fixed
+     Предотвращает reflow-баг при scrollIntoView внутри flex scr-chat
+     ═══════════════════════════════════════════════════════════════════ -->
+<div class="sticker-panel" id="stickerPanel">
+  <div class="sticker-drag-handle"></div>
+  <div class="sticker-panel-topbar">
+    <div class="sticker-search-wrap">
+      <div class="sticker-search-inner">
+        <span class="sticker-search-icon">🔍</span>
+        <input class="sticker-search" id="stickerSearch" placeholder="Поиск: вода, объятия, самолёт…" autocomplete="off" autocorrect="off" spellcheck="false">
+      </div>
+    </div>
+    <div class="sticker-panel-close" id="stickerPanelCloseBtn">✕</div>
+  </div>
+  <div class="sticker-panel-header">
+    <div class="sticker-tab-scroll" id="stickerTabScroll"></div>
+  </div>
+  <div class="sticker-pack-name" id="stickerPackName"></div>
+  <div class="sticker-grid-wrap" id="stickerGridWrap">
+    <div class="sticker-grid" id="stickerGrid"></div>
+  </div>
+</div>
 </body>
 </html>
