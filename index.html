@@ -15,7 +15,8 @@
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
-      --g:#00ff88;--b:#00d9ff;--bg:#07070f;
+      --g:#00ff88;
+    --g-rgb:0,255,136;--b:#00d9ff;--bg:#07070f;
       --panel:rgba(255,255,255,0.035);
       --border:var(--g-12);--border-hi:var(--g-35);
       --text:rgba(255,255,255,0.92);--muted:rgba(255,255,255,0.38);
@@ -252,7 +253,7 @@
     body.power-save .fab-menu.open{opacity:1!important}
     /* Спиннер загрузки файла */
     body.power-save .spinner-done{animation:none!important}
-    .messages-area{flex:1;overflow-y:auto;overflow-x:hidden;padding:10px 10px 6px;display:flex;flex-direction:column;gap:3px;position:relative}
+    .messages-area{flex:1;overflow-y:auto;overflow-x:hidden;padding:10px 10px 6px;display:flex;flex-direction:column;gap:3px;position:relative;transition:padding-left .22s cubic-bezier(.25,.46,.45,.94)}
     .messages-area::-webkit-scrollbar{width:3px}
     .messages-area::-webkit-scrollbar-thumb{background:var(--g-20);border-radius:2px}
     .msg-row{display:flex;flex-direction:column;max-width:80%;animation:mpop .25s cubic-bezier(.2,.9,.4,1.1);position:relative}
@@ -261,12 +262,82 @@
     /* Дата-сепаратор тоже чуть отделяем */
     .date-separator+.msg-row{margin-top:2px}
     @keyframes mpop{from{opacity:0;transform:translateY(12px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
-    .msg-row.sent{align-self:flex-end;align-items:flex-end}
-    .msg-row.recv{align-self:flex-start;align-items:flex-start}
-    .msg-check{position:absolute;left:-30px;top:50%;transform:translateY(-50%);width:22px;height:22px;border-radius:50%;border:2px solid rgba(255,255,255,.3);background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;color:var(--g);font-size:13px;transition:all .15s}
-    .msg-check.checked{background:var(--g);border-color:var(--g);color:#000}
-    .selection-mode .msg-check{display:flex}
-    .selection-mode .msg-row{padding-left:36px}
+    .msg-row.sent{align-self:flex-end;align-items:flex-end;margin-left:auto}
+    .msg-row.recv{align-self:flex-start;align-items:flex-start;margin-right:auto}
+    /* ── ВЫДЕЛЕНИЕ СООБЩЕНИЙ (Telegram-стиль) ──
+       Кружки всегда слева. Сообщения сдвигаются вправо с анимацией.
+       Выбранное сообщение подсвечивается фоном. */
+    /* ══════════════════════════════════════════════════════
+       ВЫДЕЛЕНИЕ СООБЩЕНИЙ — ТОЧНО КАК В TELEGRAM
+       ══════════════════════════════════════════════════════
+       Кружки фиксированы у ЛЕВОГО КРАЯ ЭКРАНА.
+       .messages-area получает padding-left:44px — место под кружки.
+       Recv-сообщения сдвигаются вправо через translateX.
+       Sent-сообщения не трогаем — они и так справа.
+    */
+
+    /* ── КРУЖОК ВЫДЕЛЕНИЯ ── */
+    .msg-check{
+      width:24px; height:24px;
+      border-radius:50%;
+      border:2px solid rgba(255,255,255,.32);
+      background:transparent;
+      display:flex; align-items:center; justify-content:center;
+      color:#000; font-size:13px; font-weight:800;
+      flex-shrink:0;
+      user-select:none;
+      transform:scale(0);
+      opacity:0;
+      pointer-events:none;
+      transition:transform .22s cubic-bezier(.34,1.56,.64,1),
+                 opacity .18s,
+                 background .15s,
+                 border-color .15s;
+    }
+    .msg-check.checked{
+      background:var(--g);
+      border-color:var(--g);
+      color:#000;
+    }
+
+    /* ── ОБЁРТКА СТРОКИ: кружок слева + сообщение справа ── */
+    .msg-row-outer{
+      display:flex;
+      flex-direction:row;
+      align-items:center;
+      width:100%;
+      box-sizing:border-box;
+      transition:background .15s;
+    }
+    /* Слот под кружок: в обычном режиме ширина 0, скрыт */
+    .msg-check-slot{
+      width:0;
+      flex-shrink:0;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      overflow:hidden;
+      transition:width .2s cubic-bezier(.25,.46,.45,.94);
+    }
+
+    /* ── РЕЖИМ ВЫДЕЛЕНИЯ ── */
+    .messages-area.selection-mode .msg-check-slot{
+      width:40px;
+    }
+    .messages-area.selection-mode .msg-check{
+      opacity:1;
+      transform:scale(1);
+      pointer-events:auto;
+    }
+    /* msg-row берёт оставшееся место */
+    .messages-area.selection-mode .msg-row{
+      flex:1;
+      min-width:0;
+    }
+    /* Подсветка выбранной строки */
+    .msg-row-outer.row-selected{
+      background:rgba(var(--g-rgb,0,255,136),.10);
+    }
     .bubble{position:relative;padding:7px 10px 7px 12px;border-radius:18px;font-size:14.5px;line-height:1.45;word-break:break-word;cursor:pointer;transition:opacity .15s,transform .1s;overflow:hidden}
     .msg-row.sent .bubble{background:var(--bubble-sent-bg);border:1px solid var(--bubble-sent-border);border-bottom-right-radius:4px;color:rgba(255,255,255,.96)}
     .msg-row.recv .bubble{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-bottom-left-radius:4px;color:rgba(255,255,255,.92)}
@@ -316,37 +387,134 @@
     .msg-edited{font-size:10px;color:rgba(255,255,255,.4);font-style:italic;margin-left:2px}
     .forwarded-label{display:block;font-size:11px;color:var(--g);margin-bottom:4px}
     .reply-preview-inline{display:block;background:var(--g-10);border-left:3px solid var(--g);padding:5px 9px;margin-bottom:6px;border-radius:8px;font-size:12px;color:var(--g);cursor:pointer}
-    .reactions-strip{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}
+    .reactions-strip{display:flex;flex-wrap:wrap;gap:5px;margin-top:2px}
     .reaction-chip{display:flex;align-items:center;gap:3px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:30px;padding:4px 9px;font-size:13px;cursor:pointer;transition:all .2s cubic-bezier(.2,.9,.4,1.1)}
     .reaction-chip:hover{background:var(--g-12);border-color:var(--border-hi);transform:scale(1.05)}
     .reaction-chip.mine{background:var(--g-12);border-color:var(--g-30)}
     .reaction-chip .rc-count{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted)}
-    .media-content{margin:5px -2px 0 -2px;border-radius:12px;overflow:hidden;max-width:260px}
-    .media-img{width:100%;height:auto;display:block;border-radius:12px;cursor:pointer}
-    .media-caption{margin-top:4px;font-size:13px;color:rgba(255,255,255,.8)}
+    .media-content{margin:0;border-radius:inherit;overflow:hidden;display:block;line-height:0}
+    .media-img{width:100%;height:auto;display:block;cursor:pointer;border-radius:inherit}
+    .media-caption{padding:5px 10px 4px;font-size:13px;color:rgba(255,255,255,.88);line-height:1.4;background:transparent}
+    /* Пузырь-обёртка для фото (без padding, как в Telegram) */
+    .media-bubble{position:relative;display:inline-block;border-radius:16px;overflow:hidden;cursor:pointer;line-height:0;vertical-align:top}
+    .msg-row.sent .media-bubble{border-bottom-right-radius:4px}
+    .msg-row.recv .media-bubble{border-bottom-left-radius:4px}
+    /* Мета поверх фото */
+    .media-meta-overlay{position:absolute;bottom:5px;right:7px;display:flex;align-items:center;gap:3px;background:rgba(0,0,0,0.42);backdrop-filter:blur(4px);border-radius:10px;padding:2px 5px 2px 6px;line-height:1;pointer-events:none}
+    .media-meta-overlay .msg-time-inline{font-size:11px;color:rgba(255,255,255,.95);font-family:'JetBrains Mono',monospace}
+    .media-meta-overlay .msg-ticks{font-size:12px}
+    .media-meta-overlay .msg-ticks.double{color:#fff}
+    .media-meta-overlay .msg-ticks.single{color:rgba(255,255,255,.75)}
+    /* Фото с подписью — подпись снизу отдельной строкой */
+    .media-with-caption{border-radius:16px;overflow:hidden}
+    .msg-row.sent .media-with-caption{border-bottom-right-radius:4px}
+    .msg-row.recv .media-with-caption{border-bottom-left-radius:4px}
+    .media-caption-row{padding:5px 10px 6px;font-size:13px;color:rgba(255,255,255,.88);line-height:1.4;background:transparent}
     .lightbox-overlay{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.92);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .25s;overflow:hidden;touch-action:none}
     .lightbox-overlay.open{opacity:1;pointer-events:all}
     .lightbox-img{max-width:95vw;max-height:95vh;object-fit:contain;border-radius:16px;transform-origin:center center;transition:transform .05s linear;will-change:transform;touch-action:none;user-select:none;-webkit-user-drag:none}
     .lightbox-close{position:absolute;top:20px;right:20px;color:white;font-size:30px;cursor:pointer;z-index:10;padding:8px}
     .lightbox-zoom-hint{position:absolute;bottom:24px;left:50%;transform:translateX(-50%);font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(255,255,255,.35);pointer-events:none;letter-spacing:.5px;opacity:1;transition:opacity .5s}
     .lightbox-zoom-hint.hidden{opacity:0}
-    /* FILE CARD */
-    .file-card{display:flex;align-items:center;gap:10px;background:linear-gradient(135deg,rgba(255,255,255,0.06),rgba(0,255,136,0.03));border:1px solid var(--g-20);border-radius:14px;padding:10px 12px;margin-top:6px;width:260px;max-width:100%;backdrop-filter:blur(4px);box-shadow:0 2px 6px rgba(0,0,0,0.3)}
-    .file-icon-wrap{width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative}
-    .file-icon-static{background:var(--g-10);border:2px solid var(--g-25);font-size:22px;cursor:default}
+    /* ═══════════════════════════════════════════════════════
+       FILE CARD — Telegram-стиль: без пузыря, время поверх
+    ═══════════════════════════════════════════════════════ */
+    /* Внешняя плитка — нет нижнего паддинга под absolute-оверлей, всё inline */
+    .tg-file-wrap{position:relative;display:inline-flex;align-items:center;gap:12px;border-radius:16px;padding:9px 10px;min-width:200px;max-width:min(272px,72vw);width:min(272px,72vw);box-sizing:border-box;overflow:hidden;cursor:pointer;transition:background .18s}
+    .msg-row.sent  .tg-file-wrap{background:var(--bubble-sent-bg);border:1px solid var(--bubble-sent-border);border-bottom-right-radius:4px}
+    .msg-row.recv  .tg-file-wrap{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-bottom-left-radius:4px}
+    .tg-file-icon{width:42px;height:42px;min-width:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;position:relative;cursor:pointer}
+    .tg-file-icon-static{background:var(--g-15);border:2px solid var(--g-35)}
+    .tg-file-icon-dl{background:rgba(0,217,255,.16);border:2px solid rgba(0,217,255,.45);transition:background .2s,transform .15s}
+    .tg-file-icon-dl:active{transform:scale(.9)}
+    .tg-file-icon-dl:hover{background:rgba(0,217,255,.26)}
+    /* Правая колонка: имя + нижняя строка (размер + тип + время + галочки) */
+    .tg-file-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+    .tg-file-name{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);line-height:1.3}
+    /* Нижняя строка — размер · тип · [spacer] · время · галочки — всё в одну линию */
+    .tg-file-bottom{display:flex;align-items:center;gap:4px;min-width:0}
+    .tg-file-size{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:rgba(255,255,255,.5);white-space:nowrap;flex-shrink:0}
+    .tg-file-type-badge{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;background:rgba(255,255,255,.1);border-radius:5px;padding:1px 5px;color:rgba(255,255,255,.45);flex-shrink:0;display:inline-block}
+    /* Растяжка — заполняет пространство между размером и временем */
+    .tg-file-spacer{flex:1;min-width:4px}
+    /* Время и галочки — inline, в одну строку с размером */
+    .tg-file-meta-inline{display:flex;align-items:center;gap:3px;flex-shrink:0;line-height:1}
+    .tg-file-meta-inline .msg-time-inline{font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(255,255,255,.55);white-space:nowrap}
+    .msg-row.sent .tg-file-meta-inline .msg-time-inline{color:rgba(255,255,255,.75)}
+    .tg-file-meta-inline .msg-ticks{font-size:11px}
+    .tg-file-meta-inline .msg-ticks.double{color:rgba(255,255,255,.85)}
+    .tg-file-meta-inline .msg-ticks.single{color:rgba(255,255,255,.55)}
+    /* Старые overlay-классы — больше не используются, но оставляем для совместимости */
+    .tg-file-meta-overlay{display:none}
+    /* Тип файла — полоска прогресса загрузки */
+    .tg-file-uploading-bar{position:absolute;bottom:0;left:0;height:2px;background:var(--g);border-radius:0 1px 1px 0;transition:width .3s ease;width:0%}
+    /* Совместимость со старым кодом */
+    .file-card{display:flex;align-items:center;gap:10px;background:linear-gradient(135deg,rgba(255,255,255,0.06),rgba(0,255,136,0.03));border:1px solid var(--g-20);border-radius:14px;padding:9px 10px;margin-top:6px;width:min(272px,72vw);max-width:100%;backdrop-filter:blur(4px);box-shadow:0 2px 6px rgba(0,0,0,0.3)}
+    .file-icon-wrap{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative}
+    .file-icon-static{background:var(--g-10);border:2px solid var(--g-25);font-size:20px;cursor:default}
     .file-icon-download{background:rgba(0,217,255,.12);border:2px solid rgba(0,217,255,.35);cursor:pointer;transition:background .2s,transform .15s}
     .file-icon-download:hover{background:rgba(0,217,255,.22);transform:scale(1.06)}
     .file-icon-download:active{transform:scale(.92)}
-    .file-dl-arrow{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:20px}
-    .tg-spinner{width:46px;height:46px;position:relative;flex-shrink:0}
-    .tg-spinner svg{width:46px;height:46px;transform:rotate(-90deg)}
+    .file-dl-arrow{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:18px}
+    .tg-spinner{width:42px;height:42px;position:relative;flex-shrink:0}
+    .tg-spinner svg{width:42px;height:42px;transform:rotate(-90deg)}
     .tg-spinner-track{fill:none;stroke:rgba(255,255,255,.12);stroke-width:3}
-    .tg-spinner-fill{fill:none;stroke:var(--g);stroke-width:3;stroke-linecap:round;stroke-dasharray:132;stroke-dashoffset:132;transition:stroke-dashoffset .25s ease}
-    .tg-spinner-icon{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--g)}
+    .tg-spinner-fill{fill:none;stroke:var(--g);stroke-width:3;stroke-linecap:round;stroke-dasharray:122;stroke-dashoffset:122;transition:stroke-dashoffset .25s ease}
+    .tg-spinner-icon{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--g)}
     .file-info{flex:1;min-width:0}
-    .file-name{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}
-    .file-size{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);margin-top:2px}
+    .file-name{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}
+    .file-size{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--muted);margin-top:2px}
     video,audio{max-width:260px;width:100%;border-radius:12px;margin-top:4px;background:#000}
+    /* ── fileAvailable аудио (получатель не скачал) ── */
+    .tg-audio-pending-wrap{position:relative;display:inline-flex;align-items:center;gap:12px;border-radius:16px;padding:9px 10px;min-width:200px;max-width:min(272px,72vw);width:min(272px,72vw);box-sizing:border-box;overflow:hidden;cursor:pointer}
+    .msg-row.sent  .tg-audio-pending-wrap{background:var(--bubble-sent-bg);border:1px solid var(--bubble-sent-border);border-bottom-right-radius:4px}
+    .msg-row.recv  .tg-audio-pending-wrap{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-bottom-left-radius:4px}
+    .tg-audio-dl-btn{width:42px;height:42px;min-width:42px;border-radius:50%;background:rgba(0,217,255,.16);border:2px solid rgba(0,217,255,.45);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;cursor:pointer;transition:background .2s,transform .15s;position:relative}
+    .tg-audio-dl-btn:active{transform:scale(.9)}
+    .tg-audio-dl-btn:hover{background:rgba(0,217,255,.26)}
+    /* ══════════════════════════════════════════════════════
+       КАСТОМНЫЙ ВИДЕОПЛЕЕР (Telegram-стиль)
+       ══════════════════════════════════════════════════════ */
+    /* Превью в чате — динамический размер как у фото */
+    .vid-bubble{position:relative;display:inline-block;border-radius:16px;overflow:hidden;cursor:pointer;line-height:0;vertical-align:top;background:#000}
+    .msg-row.sent .vid-bubble{border-bottom-right-radius:4px}
+    .msg-row.recv .vid-bubble{border-bottom-left-radius:4px}
+    .vid-bubble-thumb{display:block;width:100%;height:100%;object-fit:cover;pointer-events:none;user-select:none}
+    /* Кнопка Play поверх превью */
+    .vid-play-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+    .vid-play-btn{width:54px;height:54px;border-radius:50%;background:rgba(0,0,0,.52);backdrop-filter:blur(6px);border:2.5px solid rgba(255,255,255,.75);display:flex;align-items:center;justify-content:center;font-size:20px;color:#fff;flex-shrink:0;pointer-events:none}
+    .vid-play-btn::after{content:'▶';margin-left:3px}
+    /* Длительность в левом верхнем углу */
+    .vid-dur-badge{position:absolute;top:7px;left:8px;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);border-radius:8px;padding:2px 7px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:#fff;pointer-events:none;line-height:1.4}
+    /* Мета (время+галочки) поверх превью — правый нижний угол */
+    .vid-meta-overlay{position:absolute;bottom:5px;right:7px;display:flex;align-items:center;gap:3px;background:rgba(0,0,0,.42);backdrop-filter:blur(4px);border-radius:10px;padding:2px 5px 2px 6px;line-height:1;pointer-events:none}
+    .vid-meta-overlay .msg-time-inline{font-size:11px;color:rgba(255,255,255,.95);font-family:'JetBrains Mono',monospace}
+    .vid-meta-overlay .msg-ticks{font-size:12px}
+    .vid-meta-overlay .msg-ticks.double{color:#fff}
+    .vid-meta-overlay .msg-ticks.single{color:rgba(255,255,255,.75)}
+    /* Полноэкранный видеоплеер (lightbox-стиль) */
+    .vid-lightbox{position:fixed;inset:0;z-index:1001;background:rgba(0,0,0,.97);display:flex;flex-direction:column;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .22s}
+    .vid-lightbox.open{opacity:1;pointer-events:all}
+    /* Крестик закрытия */
+    .vid-lb-close{position:absolute;top:18px;right:18px;width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.12);border:none;color:#fff;font-size:22px;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:10;transition:background .15s}
+    .vid-lb-close:hover{background:rgba(255,255,255,.22)}
+    /* Сам video-тег */
+    .vid-lb-video{width:100%;max-width:100vw;max-height:calc(100vh - 90px);object-fit:contain;cursor:pointer;outline:none;display:block;background:#000}
+    /* Нижняя панель управления */
+    .vid-lb-controls{position:absolute;bottom:0;left:0;right:0;padding:10px 16px 18px;background:linear-gradient(to top,rgba(0,0,0,.75) 0%,transparent 100%)}
+    /* Полоса прогресса — точь в точь как у аудиоплеера */
+    .vid-lb-seek-wrap{position:relative;width:100%;height:24px;display:flex;align-items:center;cursor:pointer;touch-action:none;margin-bottom:4px}
+    .vid-lb-seek-track{position:absolute;left:0;right:0;height:3px;background:rgba(255,255,255,.25);border-radius:2px}
+    .vid-lb-seek-fill{position:absolute;left:0;top:50%;height:3px;transform:translateY(-50%);background:rgba(255,255,255,.9);border-radius:2px;width:0%;pointer-events:none;transition:width .08s linear}
+    .vid-lb-seek-thumb{position:absolute;top:50%;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 6px rgba(0,0,0,.5);transform:translateY(-50%) translateX(-50%);left:0%;pointer-events:none}
+    /* Нижняя строка: таймер */
+    .vid-lb-bottom{display:flex;align-items:center;justify-content:space-between}
+    .vid-lb-timer{font-family:'JetBrains Mono',monospace;font-size:12px;color:rgba(255,255,255,.75)}
+    /* Иконка паузы/плей поверх видео при тапе */
+    .vid-lb-tap-icon{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) scale(0);background:rgba(0,0,0,.5);border-radius:50%;width:64px;height:64px;display:flex;align-items:center;justify-content:center;font-size:24px;color:#fff;pointer-events:none;transition:transform .15s,opacity .2s;opacity:0}
+    .vid-lb-tap-icon.show{transform:translate(-50%,-50%) scale(1);opacity:1}
+    body.power-save .vid-lb-seek-fill{transition:none!important}
+    body.power-save .vid-lb-seek-thumb{transition:none!important}
     /* UPLOAD PROGRESS */
     .upload-media-wrap{position:relative;display:inline-block;border-radius:12px;overflow:hidden;max-width:260px}
     .upload-media-wrap img{width:100%;height:auto;display:block;opacity:.75;filter:brightness(.6)}
@@ -356,15 +524,17 @@
     .upload-spinner-fill{fill:none;stroke:#fff;stroke-width:3;stroke-linecap:round;stroke-dasharray:132;stroke-dashoffset:132;transition:stroke-dashoffset .3s ease}
     .upload-spinner-icon{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff;filter:drop-shadow(0 1px 3px rgba(0,0,0,.6))}
     .upload-pct{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.8);letter-spacing:.5px}
-    .file-upload-spinner{width:46px;height:46px;position:relative;flex-shrink:0}
-    .file-upload-spinner svg{width:46px;height:46px;transform:rotate(-90deg)}
+    .file-upload-spinner{width:42px;height:42px;position:relative;flex-shrink:0}
+    .file-upload-spinner svg{width:42px;height:42px;transform:rotate(-90deg)}
     .file-upload-spinner-track{fill:rgba(0,0,0,.25);stroke:rgba(255,255,255,.15);stroke-width:3}
-    .file-upload-spinner-fill{fill:none;stroke:var(--g);stroke-width:3;stroke-linecap:round;stroke-dasharray:132;stroke-dashoffset:132;transition:stroke-dashoffset .3s ease}
-    .file-upload-spinner-icon{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--g)}
+    .file-upload-spinner-fill{fill:none;stroke:var(--g);stroke-width:3;stroke-linecap:round;stroke-dasharray:122;stroke-dashoffset:122;transition:stroke-dashoffset .3s ease}
+    .file-upload-spinner-icon{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:15px;color:var(--g)}
     @keyframes spinnerDone{0%{transform:scale(1)}50%{transform:scale(1.15)}100%{transform:scale(1)}}
     .spinner-done{animation:spinnerDone .3s ease}
     /* VOICE */
     .voice-bubble{display:flex;align-items:center;gap:10px;padding:8px 12px 8px 8px}
+    /* Обёртка голосового — Telegram-стиль: ~72% экрана, не шире 280px */
+    .voice-bubble-cont{max-width:min(280px,72vw);width:min(280px,72vw);box-sizing:border-box}
     .voice-play-btn{width:42px;height:42px;min-width:42px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .15s,filter .2s;font-size:15px;flex-shrink:0}
     .msg-row.sent .voice-play-btn{background:rgba(255,255,255,.92);color:#1a1a2e;box-shadow:0 2px 10px rgba(0,0,0,.35)}
     .msg-row.recv .voice-play-btn{background:var(--g-85);color:#000;box-shadow:0 2px 8px var(--g-35)}
@@ -372,8 +542,8 @@
     .voice-play-btn.playing{animation:playPulse 1.4s ease-in-out infinite}
     @keyframes playPulse{0%,100%{filter:brightness(1)}50%{filter:brightness(1.25)}}
     .voice-right{flex:1;display:flex;flex-direction:column;gap:4px;min-width:0}
-    .voice-waveform{display:flex;align-items:center;gap:2px;height:24px;cursor:pointer;overflow:hidden}
-    .wf-bar{border-radius:2px;width:3px;flex-shrink:0;transition:background .25s,height .12s}
+    .voice-waveform{display:flex;align-items:center;gap:2px;height:24px;cursor:pointer;overflow:hidden;width:100%}
+    .wf-bar{border-radius:2px;min-width:2px;flex:1;transition:background .25s,height .12s}
     .msg-row.sent .wf-bar{background:rgba(255,255,255,.25)}
     .msg-row.recv .wf-bar{background:rgba(255,255,255,.28)}
     .msg-row.sent .wf-bar.played{background:rgba(255,255,255,.95);box-shadow:0 0 3px rgba(255,255,255,.4)}
@@ -506,6 +676,48 @@
     /* DATE SEPARATOR */
     .date-separator{display:flex;align-items:center;justify-content:center;margin:10px 0 6px;pointer-events:none;user-select:none}
     .date-separator-pill{background:rgba(0,0,0,.55);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.08);border-radius:30px;padding:4px 12px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:rgba(255,255,255,.55);letter-spacing:.3px;white-space:nowrap}
+    /* Системное сообщение (автоудаление, служебные) */
+    .sys-msg{display:flex;align-items:center;justify-content:center;margin:8px 0 4px;user-select:none;pointer-events:none}
+    .sys-msg-pill{background:rgba(0,0,0,.55);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.08);border-radius:30px;padding:5px 14px;font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(255,255,255,.5);letter-spacing:.2px;text-align:center;max-width:80%;line-height:1.5}
+    /* Кнопка таймера — активное состояние когда автоудаление включено */
+    .hdr-btn.autodel-active{background:rgba(var(--g-rgb,.4),0.18);border-color:var(--g-40);color:var(--g)}
+    /* Шторка выбора времени автоудаления */
+    .autodel-sheet{position:fixed;inset:0;z-index:310;display:flex;flex-direction:column;justify-content:flex-end;pointer-events:none;opacity:0;transition:opacity .25s}
+    .autodel-sheet.open{opacity:1;pointer-events:all}
+    .autodel-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(4px)}
+    .autodel-panel{position:relative;background:var(--panel-bg,#12121f);border-radius:24px 24px 0 0;padding:0 0 calc(28px + var(--safe-b,0px));border-top:1px solid rgba(255,255,255,.08);transform:translateY(100%);transition:transform .3s cubic-bezier(.2,.9,.3,1)}
+    .autodel-sheet.open .autodel-panel{transform:translateY(0)}
+    .autodel-drag{width:40px;height:4px;border-radius:2px;background:rgba(255,255,255,.15);margin:12px auto 4px}
+    .autodel-title{text-align:center;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:1px;color:rgba(255,255,255,.35);text-transform:uppercase;padding:6px 20px 14px}
+    .autodel-options{display:flex;flex-direction:column;gap:0;padding:0 12px 6px}
+    .autodel-opt{display:flex;align-items:center;gap:14px;padding:15px 16px;border-radius:16px;cursor:pointer;transition:background .15s;font-size:15px;color:var(--text)}
+    .autodel-opt:hover,.autodel-opt:active{background:rgba(255,255,255,.07)}
+    .autodel-opt.selected{color:var(--g)}
+    .autodel-opt-icon{font-size:20px;width:26px;text-align:center}
+    .autodel-opt-label{flex:1;font-family:-apple-system,sans-serif}
+    .autodel-opt-check{font-size:16px;color:var(--g);opacity:0}
+    .autodel-opt.selected .autodel-opt-check{opacity:1}
+    .autodel-divider{height:1px;background:rgba(255,255,255,.06);margin:4px 16px}
+    /* "⚙️ Настроить" — отличается лёгким акцентом текста */
+    .autodel-opt.autodel-opt-gear .autodel-opt-label{color:var(--g)}
+    .autodel-opt.autodel-opt-gear .autodel-opt-icon{opacity:.9}
+    /* ══════════════════════════════════════════════════════
+       КАСТОМНЫЙ ПИКЕР АВТОУДАЛЕНИЯ (Telegram-стиль "wheel picker")
+       ══════════════════════════════════════════════════════ */
+    .autodel-custom-title{text-align:center;font-size:17px;font-weight:700;color:var(--text);padding:4px 20px 10px;font-family:-apple-system,sans-serif}
+    .autodel-picker-wrap{position:relative;height:220px;margin:0 16px 4px;overflow:hidden}
+    .autodel-picker-scroll{height:100%;overflow-y:auto;scroll-snap-type:y mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+    .autodel-picker-scroll::-webkit-scrollbar{display:none}
+    .autodel-picker-row{height:44px;display:flex;align-items:center;justify-content:center;scroll-snap-align:center;font-family:-apple-system,sans-serif;font-size:16px;font-weight:500;color:rgba(255,255,255,.32);transition:color .15s,font-weight .15s,font-size .15s;cursor:pointer}
+    .autodel-picker-row.center{color:var(--text);font-weight:700;font-size:17.5px}
+    .autodel-picker-pad{height:88px;flex-shrink:0}
+    .autodel-picker-highlight{position:absolute;left:0;right:0;top:88px;height:44px;pointer-events:none;border-top:1.5px solid var(--g);border-bottom:1.5px solid var(--g);background:var(--g-08)}
+    body.power-save .autodel-picker-row{transition:none!important}
+    /* Кнопка снизу — как в Telegram (акцентная, на всю ширину) */
+    .autodel-custom-btn-wrap{padding:10px 16px 4px}
+    .autodel-custom-btn{display:flex;align-items:center;justify-content:center;width:100%;padding:14px;border-radius:14px;background:var(--g);color:#06060e;font-family:'Syne',sans-serif;font-size:15px;font-weight:800;border:none;cursor:pointer;transition:transform .12s,opacity .15s;letter-spacing:.2px}
+    .autodel-custom-btn:active{transform:scale(.97);opacity:.9}
+    .autodel-custom-btn.btn-disable{background:rgba(255,79,106,.85);color:#fff}
     /* FLOATING DATE — position:fixed, поверх messagesArea, по центру */
     #floatingDate{position:fixed;left:0;right:0;display:flex;justify-content:center;z-index:200;pointer-events:none;opacity:0;transition:opacity .2s ease;will-change:opacity}
     #floatingDate.visible{opacity:1}
@@ -651,29 +863,30 @@
     .chat-input-bar.blocked-mode .msg-input{opacity:.45;pointer-events:none;cursor:not-allowed}
     .blocked-banner{display:none;align-items:center;justify-content:center;gap:8px;padding:10px 16px;background:rgba(255,79,106,.07);border-top:1px solid rgba(255,79,106,.15);font-family:'JetBrains Mono',monospace;font-size:12px;color:rgba(255,79,106,.8);flex-shrink:0}
     .blocked-banner.visible{display:flex}
-    /* Пузырь для аудио: фон как у обычного sent/recv bubble */
+    /* Пузырь для аудио (mp3): рендерится как самостоятельный блок без внешнего пузыря */
     .msg-row.sent  .audio-bubble{background:var(--bubble-sent-bg);border:1px solid var(--bubble-sent-border);border-bottom-right-radius:4px}
     .msg-row.recv  .audio-bubble{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-bottom-left-radius:4px}
-    .audio-bubble{border-radius:18px;padding:10px 12px 8px;display:flex;align-items:center;gap:12px;width:260px;max-width:min(260px,75vw);box-sizing:border-box;cursor:default}
-    /* Кнопка play — 46px круг */
-    .audio-play-btn{width:46px;height:46px;min-width:46px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .15s,filter .2s;font-size:16px;flex-shrink:0;outline:none}
+    /* Telegram-пропорция: ~72vw, не шире 272px — одинаково с голосовым */
+    .audio-bubble{border-radius:18px;padding:8px 10px 8px 8px;display:flex;align-items:center;gap:10px;width:min(272px,72vw);max-width:min(272px,72vw);box-sizing:border-box;cursor:default;position:relative}
+    /* Кнопка play — 42px круг (чуть компактнее) */
+    .audio-play-btn{width:42px;height:42px;min-width:42px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .15s,filter .2s;font-size:15px;flex-shrink:0;outline:none}
     .msg-row.sent .audio-play-btn{background:rgba(255,255,255,.92);color:#1a1a2e;box-shadow:0 2px 10px rgba(0,0,0,.35)}
     .msg-row.recv .audio-play-btn{background:var(--g-85);color:#000;box-shadow:0 2px 8px var(--g-35)}
     .audio-play-btn:active{transform:scale(.88)}
     .audio-play-btn.playing{animation:playPulse 1.4s ease-in-out infinite}
     /* Правая колонка */
-    .audio-right{flex:1;display:flex;flex-direction:column;gap:4px;min-width:0;overflow:hidden}
-    .audio-title{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:rgba(255,255,255,.95);line-height:1.3}
+    .audio-right{flex:1;display:flex;flex-direction:column;gap:3px;min-width:0;overflow:hidden}
+    .audio-title{font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:rgba(255,255,255,.95);line-height:1.3}
     /* Полоса прогресса */
-    .audio-seek-wrap{position:relative;width:100%;height:22px;display:flex;align-items:center;cursor:pointer;touch-action:none}
+    .audio-seek-wrap{position:relative;width:100%;height:20px;display:flex;align-items:center;cursor:pointer;touch-action:none}
     .audio-seek-track{position:absolute;left:0;right:0;height:3px;background:rgba(255,255,255,.22);border-radius:2px}
     .audio-seek-fill{position:absolute;left:0;top:50%;height:3px;transform:translateY(-50%);background:rgba(255,255,255,.9);border-radius:2px;width:0%;pointer-events:none}
     .msg-row.recv .audio-seek-fill{background:var(--g)}
-    .audio-seek-thumb{position:absolute;top:50%;width:13px;height:13px;border-radius:50%;background:#fff;box-shadow:0 1px 5px rgba(0,0,0,.45);transform:translateY(-50%) translateX(-50%);left:0%;pointer-events:none;transition:left .08s linear}
+    .audio-seek-thumb{position:absolute;top:50%;width:12px;height:12px;border-radius:50%;background:#fff;box-shadow:0 1px 5px rgba(0,0,0,.45);transform:translateY(-50%);left:0;pointer-events:none;transition:left .08s linear}
     .msg-row.recv .audio-seek-thumb{background:var(--g)}
     /* Нижняя строка */
-    .audio-bottom{display:flex;align-items:center;justify-content:space-between;margin-top:1px}
-    .audio-timer{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:rgba(255,255,255,.55);white-space:nowrap;flex-shrink:0}
+    .audio-bottom{display:flex;align-items:center;justify-content:space-between;margin-top:0}
+    .audio-timer{font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(255,255,255,.55);white-space:nowrap;flex-shrink:0}
     .audio-msg-meta{display:flex;align-items:center;flex-shrink:0}
     .audio-msg-meta .msg-meta{float:none;margin:0}
     /* ══════════════════════════════════════════════════════
@@ -804,7 +1017,7 @@
     </div>
     <div class="hdr-btn" id="searchToggleBtn" onclick="toggleMsgSearch()">🔍</div>
     <div class="hdr-btn" id="blockContactBtn" onclick="toggleBlockContact()">🚫</div>
-    <div class="hdr-btn" onclick="forgetPassword()">🔓</div>
+    <div class="hdr-btn" id="autoDelBtn" onclick="openAutoDelSheet()" title="Автоудаление сообщений">⏱️</div>
     <div class="hdr-btn" style="color:var(--err)" onclick="deleteChat()">🗑</div>
   </div>
   <!-- PINNED MESSAGE BAR -->
@@ -899,6 +1112,23 @@
   <img class="lightbox-img" id="lightboxImg" src="" alt="" draggable="false">
   <div class="lightbox-zoom-hint" id="lightboxZoomHint">щипок для масштаба · двойной тап для сброса</div>
 </div>
+
+<!-- КАСТОМНЫЙ ВИДЕОПЛЕЕР (fullscreen lightbox) -->
+<div class="vid-lightbox" id="vidLightbox">
+  <button class="vid-lb-close" id="vidLbClose">✕</button>
+  <video class="vid-lb-video" id="vidLbVideo" playsinline webkit-playsinline preload="metadata"></video>
+  <div class="vid-lb-tap-icon" id="vidLbTapIcon">▶</div>
+  <div class="vid-lb-controls">
+    <div class="vid-lb-seek-wrap" id="vidLbSeekWrap">
+      <div class="vid-lb-seek-track"></div>
+      <div class="vid-lb-seek-fill" id="vidLbFill"></div>
+      <div class="vid-lb-seek-thumb" id="vidLbThumb"></div>
+    </div>
+    <div class="vid-lb-bottom">
+      <span class="vid-lb-timer" id="vidLbTimer">0:00 / 0:00</span>
+    </div>
+  </div>
+</div>
 <input type="file" id="fileInput" accept="*/*" multiple style="display:none" onchange="handleFileSelect(event)">
 <input type="file" id="mediaInput" accept="image/*" multiple style="display:none" onchange="handleMediaSelect(event)">
 <input type="file" id="videoInput" accept="video/*" multiple style="display:none" onchange="handleVideoSelect(event)">
@@ -967,7 +1197,7 @@ const SIGNAL_URL='wss://signal-server-aipd.onrender.com';
 const A2_MEM=65536,A2_TIME=3,A2_PAR=1;
 const QUICK_EMOJIS=['❤️','👍','😂','🔥','👏','😮','😢','➕'];
 const EXTENDED_EMOJIS=['❤️‍🔥','😁','👎','🥴','👌','😭','😱','💋','🤝','🥰','🤔','🤯','😡','🎉','🤩','🤮','💩','🙏','🕊️','🤡','🥱','😍','🐳','🌚','🌭','💯','⚡','🍌','🏆','💔','😑','🍓','🍾','🖕','😈','😴','🤓','👻','👨‍💻','👀','🎃','🙈','😇','✍️','🤗','🫡','💅','🤪','🗿','🆒','💘','🦄','😘','💊','😎','👾','🤨','🙉','🥺','☠️','💦','🫂','💪','🤧'];
-const WF_BARS=40,PREV_WF_BARS=25,MAX_VOICE_SEC=300,MAX_REACTIONS_PER_MSG=3;
+const WF_BARS=30,PREV_WF_BARS=25,MAX_VOICE_SEC=120,MAX_REACTIONS_PER_MSG=3;
 const MAX_FILE_SIZE=500*1024*1024,CHUNK_SIZE=256*1024,STORE_BATCH=3;
 
 const ENC=new TextEncoder(),DEC=new TextDecoder();
@@ -992,7 +1222,86 @@ function readFileAsArrayBuffer(file){return new Promise((res,rej)=>{const r=new 
 function readFileAsDataURL(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(file);});}
 function getFileIcon(mt){mt=mt||'';if(mt.startsWith('video/'))return'🎬';if(mt.startsWith('audio/'))return'🎵';if(mt.includes('pdf'))return'📄';if(mt.includes('zip')||mt.includes('rar')||mt.includes('7z'))return'🗜️';if(mt.includes('text')||mt.includes('doc'))return'📝';return'📁';}
 function formatSize(bytes){if(bytes<1024)return bytes+' B';if(bytes<1048576)return(bytes/1024).toFixed(1)+' KB';if(bytes<1073741824)return(bytes/1048576).toFixed(1)+' MB';return(bytes/1073741824).toFixed(2)+' GB';}
-function downloadFile(dataUrl,fileName){const a=document.createElement('a');a.href=dataUrl;a.download=fileName;document.body.appendChild(a);a.click();document.body.removeChild(a);toast('Скачивание '+fileName);}
+function downloadFile(dataUrl,fileName){const a=document.createElement('a');a.href=dataUrl;a.download=fileName;document.body.appendChild(a);a.click();document.body.removeChild(a);}
+
+// ── Сохранить медиа (фото/видео) в галерею ──
+async function saveToGallery(dataUrlOrBlobId,mimeType,fileName,isBlob){
+  try{
+    let blob;
+    if(isBlob){
+      const buf=await loadBlob(dataUrlOrBlobId);
+      if(!buf){toast('Файл недоступен','err');return;}
+      blob=new Blob([buf],{type:mimeType||'image/jpeg'});
+    }else{
+      // dataUrl → Blob
+      const res=await fetch(dataUrlOrBlobId);
+      blob=await res.blob();
+    }
+    const isVideo=mimeType&&mimeType.startsWith('video/');
+    const ext=isVideo?(fileName?.split('.').pop()||'mp4'):(fileName?.split('.').pop()||'jpg');
+    const name=fileName||('kchat_'+(isVideo?'video':'photo')+'_'+Date.now()+'.'+ext);
+    // Пробуем Web Share API (работает в мобильных браузерах — Safari iOS, Chrome Android)
+    if(navigator.canShare&&navigator.canShare({files:[new File([blob],name,{type:blob.type})]})){
+      try{
+        await navigator.share({files:[new File([blob],name,{type:blob.type})],title:name});
+        toast(isVideo?'Видео сохранено 📹':'Изображение сохранено 🖼️');
+        return;
+      }catch(e){
+        if(e.name==='AbortError')return; // пользователь отменил
+        // fallback ниже
+      }
+    }
+    // Fallback: скачивание через <a> (Android Chrome сохраняет в Downloads)
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download=name;
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url),5000);
+    toast(isVideo?'Видео сохранено 📹':'Изображение сохранено 🖼️');
+  }catch(e){
+    console.error('saveToGallery error',e);
+    toast('Ошибка сохранения','err');
+  }
+}
+
+// ── Сохранить файл в Downloads ──
+async function saveToFiles(dataUrlOrBlobId,mimeType,fileName,isBlob){
+  try{
+    let blob;
+    if(isBlob){
+      const buf=await loadBlob(dataUrlOrBlobId);
+      if(!buf){toast('Файл недоступен','err');return;}
+      blob=new Blob([buf],{type:mimeType||'application/octet-stream'});
+    }else{
+      const res=await fetch(dataUrlOrBlobId);
+      blob=await res.blob();
+    }
+    const name=fileName||('kchat_file_'+Date.now());
+    // Пробуем File System Access API (Chrome Desktop, Android Chrome 86+)
+    if(window.showSaveFilePicker){
+      try{
+        const ext=name.split('.').pop()||'bin';
+        const fh=await window.showSaveFilePicker({suggestedName:name,types:[{description:'File',accept:{[blob.type||'application/octet-stream']:['.'+(ext)]}}]});
+        const writable=await fh.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        toast('Файл сохранён 💾');
+        return;
+      }catch(e){
+        if(e.name==='AbortError')return;
+        // fallback ниже
+      }
+    }
+    // Fallback: <a download>
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download=name;
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url),5000);
+    toast('Файл сохранён 💾');
+  }catch(e){
+    console.error('saveToFiles error',e);
+    toast('Ошибка сохранения','err');
+  }
+}
 
 // ── ID ──
 function mkId(){let id=localStorage.getItem('bc_my_id');if(!id){const h=()=>Math.random().toString(36).slice(2,6);id=`bc-${h()}-${h()}`;localStorage.setItem('bc_my_id',id);}return id.toLowerCase();}
@@ -1288,7 +1597,7 @@ async function finalizeUploadUI(fileId,pid){
   if(activePid===pid){
     const msgs=await loadMsgs(pid);
     const m=msgs.find(x=>x.id===fileId);
-    if(m){const existingRow=document.querySelector(`.msg-row[data-msgid="${fileId}"]`);if(existingRow)existingRow.replaceWith(buildRow(m));}
+    if(m){const existingRow=document.querySelector(`.msg-row[data-msgid="${fileId}"]`);if(existingRow)(existingRow.closest('.msg-row-outer')||existingRow).replaceWith(buildRow(m));}
   }
 }
 
@@ -1377,19 +1686,37 @@ async function sendFileToServer(fileInfo,caption){
   return fileId;
 }
 
-// ИСПРАВЛЕНИЕ 1: handleFileAvailable — строгая проверка дублей
+// ИСПРАВЛЕНИЕ: handleFileAvailable — строгая проверка дублей + правильный unread
 async function handleFileAvailable(msg){
   const{fileId,senderId,name,size,mimeType,totalChunks,caption,ts}=msg;
   if(senderId===MY_ID)return;
   const ct=loadContacts().find(c=>c.id===senderId);
   await getOrCreateChat(senderId,ct?.name,ct?.avatar);
   const existing=await loadMsgs(senderId);
-  if(existing.find(m=>m.id===fileId))return; // дубль — пропускаем
+  if(existing.find(m=>m.id===fileId)){
+    // Дубль — только обновляем DOM если нужно, счётчик НЕ трогаем
+    if(currentScreen==='scr-chat'&&activePid===senderId){
+      const existingRow=document.querySelector(`.msg-row[data-msgid="${fileId}"]`);
+      if(!existingRow){
+        const placeholderMsg=existing.find(m=>m.id===fileId);
+        if(placeholderMsg)appendOrReloadMsg(senderId,placeholderMsg);
+      }
+    }
+    return;
+  }
   const placeholderMsg={id:fileId,text:caption||'',type:'recv',time:new Date(ts||Date.now()).toISOString(),reactions:{},edited:false,replyTo:null,delivered:true,forwarded:false,fileAvailable:{name,size,mimeType,totalChunks,senderId}};
   await upsertMsg(senderId,placeholderMsg);
   await updateChat(senderId,{lastMsg:`📎 ${name}`,lastMsgTime:new Date(placeholderMsg.time).getTime()});
-  if(currentScreen==='scr-chat'&&activePid===senderId)appendOrReloadMsg(senderId,placeholderMsg);
-  else{const chat=(await loadChats()).find(c=>c.peerId===senderId);await updateChat(senderId,{unread:(chat?.unread||0)+1});toast(`📎 ${chat?.peerName||senderId}: ${name}`);}
+  if(currentScreen==='scr-chat'&&activePid===senderId){
+    // Чат открыт — показываем без инкремента unread (пользователь уже смотрит)
+    const existingRow=document.querySelector(`.msg-row[data-msgid="${fileId}"]`);
+    if(!existingRow)appendOrReloadMsg(senderId,placeholderMsg);
+  }else{
+    // Чат не открыт — инкрементируем счётчик один раз
+    const chat=(await loadChats()).find(c=>c.peerId===senderId);
+    await updateChat(senderId,{unread:(chat?.unread||0)+1});
+    toast(`📎 ${chat?.peerName||senderId}: ${name}`);
+  }
 }
 
 async function downloadFileFromServer(fileId,senderId){
@@ -1493,7 +1820,7 @@ async function assembleFile(fileId){
     const renderMsg={...finalMsg,file:{...finalMsg.file,_tempUrl:_blobUrl}};
     if(currentScreen==='scr-chat'&&activePid===ft.senderId){
       const existingRow=document.querySelector(`.msg-row[data-msgid="${fileId}"]`);
-      if(existingRow)existingRow.replaceWith(buildRow(renderMsg));
+      if(existingRow)(existingRow.closest('.msg-row-outer')||existingRow).replaceWith(buildRow(renderMsg));
       else appendOrReloadMsg(ft.senderId,renderMsg);
     }
     wsSend({type:'ack-file',fileId});toast(`${ft.name} загружен ✓`);
@@ -1509,9 +1836,34 @@ async function assembleFile(fileId){
   }catch(e){console.error('assembleFile error',e);toast('Ошибка сборки файла','err');const spinner=document.querySelector(`.tg-spinner[data-fileid="${fileId}"]`);if(spinner)resetSpinnerToDownload(spinner,fileId,ft.senderId);}
 }
 
-function updateSpinnerProgress(fileId,pct){const spinner=document.querySelector(`.tg-spinner[data-fileid="${fileId}"]`);if(!spinner)return;const fill=spinner.querySelector('.tg-spinner-fill');if(fill)fill.style.strokeDashoffset=Math.max(0,132-132*pct/100);const icon=spinner.querySelector('.tg-spinner-icon');if(icon&&pct>=100){icon.textContent='✓';icon.style.color='var(--g)';}}
-function resetSpinnerToDownload(spinner,fileId,fromId){const iconWrap=document.createElement('div');iconWrap.className='file-icon-wrap file-icon-download';const arrow=document.createElement('div');arrow.className='file-dl-arrow';arrow.textContent='⬇️';iconWrap.appendChild(arrow);iconWrap.onclick=e=>{e.stopPropagation();startDownloadUI(iconWrap,fileId,fromId);};spinner.replaceWith(iconWrap);}
-function startDownloadUI(iconWrap,fileId,fromId){const spinner=document.createElement('div');spinner.className='tg-spinner';spinner.dataset.fileid=fileId;spinner.innerHTML=`<svg viewBox="0 0 46 46"><circle class="tg-spinner-track" cx="23" cy="23" r="21"/><circle class="tg-spinner-fill" cx="23" cy="23" r="21" stroke-dasharray="132" stroke-dashoffset="132"/></svg><div class="tg-spinner-icon">⬇</div>`;const card=iconWrap.closest('.file-card');iconWrap.replaceWith(spinner);if(card){const sizeEl=card.querySelector('.file-size');if(sizeEl)sizeEl.textContent='Загрузка…';}downloadFileFromServer(fileId,fromId);}
+function updateSpinnerProgress(fileId,pct){const spinner=document.querySelector(`.tg-spinner[data-fileid="${fileId}"]`);if(!spinner)return;const fill=spinner.querySelector('.tg-spinner-fill');if(fill)fill.style.strokeDashoffset=Math.max(0,122-122*pct/100);const icon=spinner.querySelector('.tg-spinner-icon');if(icon&&pct>=100){icon.textContent='✓';icon.style.color='var(--g)';}}
+function resetSpinnerToDownload(spinner,fileId,fromId){
+  const iconWrap=document.createElement('div');
+  // Поддерживаем и старый .file-card и новый .tg-file-wrap
+  const isNewStyle = spinner.closest('.tg-file-wrap,.tg-audio-pending-wrap');
+  if(isNewStyle){
+    iconWrap.className='tg-file-icon tg-file-icon-dl';
+    iconWrap.innerHTML='⬇';
+  } else {
+    iconWrap.className='file-icon-wrap file-icon-download';
+    const arrow=document.createElement('div');
+    arrow.className='file-dl-arrow';
+    arrow.textContent='⬇️';
+    iconWrap.appendChild(arrow);
+  }
+  iconWrap.onclick=e=>{e.stopPropagation();startDownloadUI(iconWrap,fileId,fromId);};
+  spinner.replaceWith(iconWrap);
+}
+function startDownloadUI(iconWrap,fileId,fromId){
+  const spinner=document.createElement('div');
+  spinner.className='tg-spinner';
+  spinner.dataset.fileid=fileId;
+  spinner.innerHTML=`<svg viewBox="0 0 42 42"><circle class="tg-spinner-track" cx="21" cy="21" r="19"/><circle class="tg-spinner-fill" cx="21" cy="21" r="19" stroke-dasharray="122" stroke-dashoffset="122"/></svg><div class="tg-spinner-icon">⬇</div>`;
+  const card=iconWrap.closest('.tg-file-wrap,.tg-audio-pending-wrap,.file-card');
+  iconWrap.replaceWith(spinner);
+  if(card){const sizeEl=card.querySelector('.tg-file-size,.file-size');if(sizeEl)sizeEl.textContent='Загрузка…';}
+  downloadFileFromServer(fileId,fromId);
+}
 
 // handleFileRef — запасной путь, если file-available не пришёл (оффлайн-кейс).
 // Строгая проверка: если сообщение уже есть — пропускаем.
@@ -1520,12 +1872,28 @@ async function handleFileRef(from,env){
   const ct=loadContacts().find(c=>c.id===from);
   await getOrCreateChat(from,ct?.name,ct?.avatar);
   const existing=await loadMsgs(from);
-  if(existing.find(m=>m.id===fileId))return; // уже есть — пропускаем
+  if(existing.find(m=>m.id===fileId)){
+    // Дубль — только обновляем DOM если нужно, счётчик НЕ трогаем
+    if(currentScreen==='scr-chat'&&activePid===from){
+      const existingRow=document.querySelector(`.msg-row[data-msgid="${fileId}"]`);
+      if(!existingRow){
+        const placeholderMsg=existing.find(m=>m.id===fileId);
+        if(placeholderMsg)appendOrReloadMsg(from,placeholderMsg);
+      }
+    }
+    return;
+  }
   const placeholderMsg={id:fileId,text:text||'',type:'recv',time:new Date(ts||Date.now()).toISOString(),reactions:{},edited:false,replyTo:rt||null,delivered:true,forwarded:false,fileAvailable:{name:finfo.name,size:finfo.size,mimeType:finfo.mimeType,totalChunks:finfo.totalChunks,senderId:from}};
   await upsertMsg(from,placeholderMsg);
   await updateChat(from,{lastMsg:`📎 ${finfo.name}`,lastMsgTime:new Date(placeholderMsg.time).getTime()});
-  if(currentScreen==='scr-chat'&&activePid===from)appendOrReloadMsg(from,placeholderMsg);
-  else{const chat=(await loadChats()).find(c=>c.peerId===from);await updateChat(from,{unread:(chat?.unread||0)+1,marked:false});toast(`📎 ${chat?.peerName||from}: ${finfo.name}`);}
+  if(currentScreen==='scr-chat'&&activePid===from){
+    const existingRow=document.querySelector(`.msg-row[data-msgid="${fileId}"]`);
+    if(!existingRow)appendOrReloadMsg(from,placeholderMsg);
+  }else{
+    const chat=(await loadChats()).find(c=>c.peerId===from);
+    await updateChat(from,{unread:(chat?.unread||0)+1,marked:false});
+    toast(`📎 ${chat?.peerName||from}: ${finfo.name}`);
+  }
 }
 
 // ── WS ──
@@ -1664,9 +2032,18 @@ async function decryptAndStore(from,payload,key){try{const buf=typeof payload===
 
 async function handleEnvelope(from,env){
   if(env.type==='sticker'){
-    const m={id:env.id,sticker:env.sticker,type:'recv',time:new Date(env.ts||Date.now()).toISOString(),reactions:{},edited:false,replyTo:null,delivered:true,forwarded:false};
+    const m={id:env.id,sticker:env.sticker,type:'recv',time:new Date(env.ts||Date.now()).toISOString(),reactions:{},edited:false,replyTo:env.replyTo||null,delivered:true,forwarded:false};
     const ct=loadContacts().find(co=>co.id===from);
     await getOrCreateChat(from,ct?.name,ct?.avatar);
+    // Дедупликация
+    const _existSticker=await loadMsgs(from);
+    if(_existSticker.some(x=>x.id===m.id)){
+      if(currentScreen==='scr-chat'&&activePid===from){
+        const existingRow=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);
+        if(!existingRow)appendOrReloadMsg(from,m);
+      }
+      return;
+    }
     await upsertMsg(from,m);
     await updateChat(from,{lastMsg:'🗿 Стикер',lastMsgTime:new Date(m.time).getTime()});
     if(currentScreen==='scr-chat'&&activePid===from){
@@ -1718,7 +2095,19 @@ async function handleEnvelope(from,env){
         }).catch(()=>{});
       }else{m.voice=env.voice;m.voiceDuration=env.voiceDuration;m.voiceListened=false;}
     }
-    const ct=loadContacts().find(c=>c.id===from);await getOrCreateChat(from,ct?.name,ct?.avatar);await upsertMsg(from,m);
+    const ct=loadContacts().find(c=>c.id===from);await getOrCreateChat(from,ct?.name,ct?.avatar);
+    // ── Дедупликация: проверяем нет ли уже такого сообщения в базе ──
+    const _existingMsgs=await loadMsgs(from);
+    const _isDup=_existingMsgs.some(x=>x.id===m.id);
+    if(_isDup){
+      // Дубль — только обновляем DOM если нужно, счётчик не трогаем
+      if(currentScreen==='scr-chat'&&activePid===from){
+        const existingRow=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);
+        if(!existingRow)appendOrReloadMsg(from,m);
+      }
+      return;
+    }
+    await upsertMsg(from,m);
     const lastPreview=env.type==='voice'?'🎙 Голосовое':env.type==='media'?'📷 Фото':(env.text||'').slice(0,28);
     await updateChat(from,{lastMsg:lastPreview,lastMsgTime:new Date(m.time).getTime()});
     if(currentScreen==='scr-chat'&&activePid===from){
@@ -1800,6 +2189,8 @@ async function handleEnvelope(from,env){
     }
   }else if(env.type==='pin-msg'){
     await handleInPinMsg(from,env);
+  }else if(env.type==='autodel-set'){
+    await handleInAutoDelSet(from,env);
   }
 }
 
@@ -2074,6 +2465,12 @@ function applyTheme(themeId){
     ['--g-40',.40],['--g-85',.85],['--g-glow',.70],
   ];
   alphas.forEach(([name,a]) => r.setProperty(name, hexToRgba(t.g, a)));
+  // --g-rgb для использования в rgba(var(--g-rgb), alpha)
+  const _hex=t.g;
+  const _rr=parseInt(_hex.slice(1,3),16);
+  const _gg=parseInt(_hex.slice(3,5),16);
+  const _bb=parseInt(_hex.slice(5,7),16);
+  r.setProperty('--g-rgb', `${_rr},${_gg},${_bb}`);
   // Фон пузыря отправителя — затемнённый акцентный цвет
   const bubbleBg = `linear-gradient(135deg,${hexToRgba(t.g,.45)},${hexToRgba(t.g,.28)})`;
   const bubbleBorder = hexToRgba(t.g, 0.5);
@@ -2549,14 +2946,19 @@ const hl=(str,q)=>{if(!q)return str;const re=new RegExp(`(${q.replace(/[.*+?^${}
 async function pinChat(pid){
   const chats=await loadChats();
   const c=chats.find(x=>x.peerId===pid);
-  if(c){c.pinned=true;await saveChats(chats);}
+  if(c){
+    c.pinned=true;
+    // pinOrder — время закрепления. Чем больше → тем выше в списке (как в Telegram).
+    c.pinOrder=Date.now();
+    await saveChats(chats);
+  }
   renderChatList();
   toast('Чат закреплён 📌');
 }
 async function unpinChat(pid){
   const chats=await loadChats();
   const c=chats.find(x=>x.peerId===pid);
-  if(c){c.pinned=false;await saveChats(chats);}
+  if(c){c.pinned=false;c.pinOrder=0;await saveChats(chats);}
   renderChatList();
   toast('Чат откреплён');
 }
@@ -2687,12 +3089,22 @@ async function renderChatList(){
   const list=$('chatList'),empty=$('emptyChatsPlaceholder');
   const q=($('homeSearch')?.value||'').toLowerCase().trim();
   let chats=await loadChats();
-  // Сортировка: Избранное → Закреплённые (по времени) → Остальные (по времени)
+  // Сортировка: Избранное → Закреплённые (по pinOrder убыв.) → Остальные (по lastMsgTime)
+  // pinOrder — timestamp закрепления. Последний закреплённый → вверху (как в Telegram).
+  // Новые сообщения НЕ меняют порядок закреплённых чатов.
   chats=chats.sort((a,b)=>{
     if(a.peerId===MY_ID)return -1;
     if(b.peerId===MY_ID)return 1;
-    if(a.pinned&&!b.pinned)return -1;
-    if(!a.pinned&&b.pinned)return 1;
+    const aPinned=!!a.pinned&&a.peerId!==MY_ID;
+    const bPinned=!!b.pinned&&b.peerId!==MY_ID;
+    if(aPinned&&!bPinned)return -1;
+    if(!aPinned&&bPinned)return 1;
+    if(aPinned&&bPinned){
+      // Оба закреплены — сортируем по pinOrder убыванию:
+      // чем позже закреплён → тем выше (как в Telegram)
+      return (b.pinOrder||0)-(a.pinOrder||0);
+    }
+    // Оба не закреплены — по времени последнего сообщения
     return (b.lastMsgTime||0)-(a.lastMsgTime||0);
   });
   if(q)chats=chats.filter(c=>(c.peerName||'').toLowerCase().includes(q)||(c.peerId||'').toLowerCase().includes(q)||(c.lastMsg||'').toLowerCase().includes(q));
@@ -2788,10 +3200,21 @@ window.openChatById=async function(pid){
   }
   await loadChatHistory(pid,true);
   initPinnedBar(pid);
+  initAutoDelBtn(pid);
   ensureWS();warmKey(pid);
   if(wsUp){updateSendBtn();wsSend({type:'query-presence',target:pid});}
   const key=await getKey(pid);
-  if(key){await drainPending(pid,key);if(activePid===pid)await loadChatHistory(pid,false);}
+  if(key){
+    await drainPending(pid,key);
+    // После drain пересчитываем renderedCount из реальной БД перед дозагрузкой
+    if(activePid===pid){
+      const msgsAfterDrain=await loadMsgs(pid);
+      const domRows=$('messagesArea')?.querySelectorAll('.msg-row[data-msgid],.sys-msg[data-msgid]');
+      // renderedCount = кол-во строк в DOM (не в БД!) — чтобы slice не захватил лишнее
+      renderedCount=domRows?domRows.length:renderedCount;
+      await loadChatHistory(pid,false);
+    }
+  }
   if(activePid===pid)requestAnimationFrame(()=>{const a=$('messagesArea');if(a)a.scrollTop=a.scrollHeight;});
   // Отправляем read-receipt собеседнику — у него появятся ✔✔ на его отправленных
   // Делаем это с небольшой задержкой чтобы чат успел отрисоваться
@@ -2933,12 +3356,439 @@ async function deleteMsg(msgId){if(!confirm('Удалить сообщение?'
     if(_m0.voice?.blobId)deleteBlob(_m0.voice.blobId);
     if(_m0.file?.blobId)deleteBlob(_m0.file.blobId);
   }
-  await withChatLock(activePid,async()=>{const msgs=await loadMsgs(activePid);const idx=msgs.findIndex(m=>m.id===msgId);if(idx===-1)return;msgs.splice(idx,1);await saveMsgs(activePid,msgs);});const row=document.querySelector(`.msg-row[data-msgid="${msgId}"]`);if(row)row.remove();const msgs=await loadMsgs(activePid);const last=msgs[msgs.length-1];await updateChat(activePid,{lastMsg:last?.text||(last?.voice?'🎙 Голосовое':last?.media?'📷 Фото':last?.file?`📁 ${last.file.name}`:''),lastMsgTime:last?.time?new Date(last.time).getTime():null});if(activePid!==MY_ID){const key=keyCache[activePid];if(key){const enc=await encData(ENC.encode(JSON.stringify({type:'delete',msgId,ts:Date.now()})),key);wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:payloadToB64(enc)});}}}
-async function handleInDelete(from,msgId){await withChatLock(from,async()=>{const msgs=await loadMsgs(from);const idx=msgs.findIndex(m=>m.id===msgId);if(idx===-1)return;msgs.splice(idx,1);await saveMsgs(from,msgs);});if(activePid===from){const row=document.querySelector(`.msg-row[data-msgid="${msgId}"]`);if(row)row.remove();}}
+  await withChatLock(activePid,async()=>{const msgs=await loadMsgs(activePid);const idx=msgs.findIndex(m=>m.id===msgId);if(idx===-1)return;msgs.splice(idx,1);await saveMsgs(activePid,msgs);});const row=document.querySelector(`.msg-row[data-msgid="${msgId}"]`);if(row)(row.closest('.msg-row-outer')||row).remove();const msgs=await loadMsgs(activePid);const last=msgs[msgs.length-1];await updateChat(activePid,{lastMsg:last?.text||(last?.voice?'🎙 Голосовое':last?.media?'📷 Фото':last?.file?`📁 ${last.file.name}`:''),lastMsgTime:last?.time?new Date(last.time).getTime():null});if(activePid!==MY_ID){const key=keyCache[activePid];if(key){const enc=await encData(ENC.encode(JSON.stringify({type:'delete',msgId,ts:Date.now()})),key);wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:payloadToB64(enc)});}}}
+async function handleInDelete(from,msgId){await withChatLock(from,async()=>{const msgs=await loadMsgs(from);const idx=msgs.findIndex(m=>m.id===msgId);if(idx===-1)return;msgs.splice(idx,1);await saveMsgs(from,msgs);});if(activePid===from){const row=document.querySelector(`.msg-row[data-msgid="${msgId}"]`);if(row)(row.closest('.msg-row-outer')||row).remove();}}
+
+// ══════════════════════════════════════════════════════
+// ── АВТОУДАЛЕНИЕ СООБЩЕНИЙ (Telegram-стиль) ──
+// ══════════════════════════════════════════════════════
+// Хранение: localStorage bc_autodel_<peerId> → {ttl: ms|null, setBy: peerId, setAt: ts}
+// TTL вариантов: null = выкл, 86400000 = 1 день, 604800000 = 7 дней, 2592000000 = 1 мес
+
+const AUTODEL_QUICK_OPTIONS=[
+  {key:'off',icon:'⏱',label:'Выключить',ttl:null},
+  {key:'1d', icon:'🕐',label:'1 день',   ttl:86400000},
+  {key:'7d', icon:'📅',label:'7 дней',   ttl:604800000},
+  {key:'1mo',icon:'📆',label:'1 месяц',  ttl:2592000000},
+];
+
+// Полный список для кастомного пикера "Автоудаление через..." (Telegram-стиль)
+const _DAY=86400000;
+const AUTODEL_CUSTOM_OPTIONS=[
+  {key:'none', label:'Нет',       ttl:null},
+  {key:'1d',   label:'1 день',    ttl:1*_DAY},
+  {key:'2d',   label:'2 дня',     ttl:2*_DAY},
+  {key:'3d',   label:'3 дня',     ttl:3*_DAY},
+  {key:'4d',   label:'4 дня',     ttl:4*_DAY},
+  {key:'5d',   label:'5 дней',    ttl:5*_DAY},
+  {key:'6d',   label:'6 дней',    ttl:6*_DAY},
+  {key:'1w',   label:'1 нед.',    ttl:7*_DAY},
+  {key:'2w',   label:'2 нед.',    ttl:14*_DAY},
+  {key:'3w',   label:'3 нед.',    ttl:21*_DAY},
+  {key:'1mo',  label:'1 месяц',   ttl:30*_DAY},
+  {key:'2mo',  label:'2 месяца',  ttl:60*_DAY},
+  {key:'3mo',  label:'3 месяца',  ttl:90*_DAY},
+  {key:'4mo',  label:'4 месяца',  ttl:120*_DAY},
+  {key:'5mo',  label:'5 месяцев', ttl:150*_DAY},
+  {key:'6mo',  label:'6 месяцев', ttl:180*_DAY},
+  {key:'1y',   label:'1 год',     ttl:365*_DAY},
+];
+
+function _autoDelKey(pid){return`bc_autodel_${pid}`;}
+
+function getAutoDelState(pid){
+  return lsGet(_autoDelKey(pid),{ttl:null,key:'off',setBy:null,setAt:0});
+}
+
+// Определяем "ключ" варианта по ttl (для обратной совместимости со старыми
+// сохранёнными состояниями, где поля key ещё не было)
+function _keyForTtl(ttl){
+  if(!ttl)return'off';
+  const q=AUTODEL_QUICK_OPTIONS.find(o=>o.ttl===ttl);
+  if(q)return q.key;
+  const c=AUTODEL_CUSTOM_OPTIONS.find(o=>o.ttl===ttl);
+  if(c)return c.key;
+  return'off';
+}
+
+// Возвращаем подпись варианта. key имеет приоритет (различает дубликаты
+// ttl, напр. "7 дней" из быстрого меню и "1 нед." из кастомного пикера —
+// оба ttl=604800000, но разные подписи)
+function _autoDelLabel(ttl,key){
+  if(!ttl)return null;
+  if(key){
+    const c=AUTODEL_CUSTOM_OPTIONS.find(o=>o.key===key&&o.ttl===ttl);
+    if(c)return c.label;
+    const q=AUTODEL_QUICK_OPTIONS.find(o=>o.key===key&&o.ttl===ttl);
+    if(q)return q.label;
+  }
+  const q2=AUTODEL_QUICK_OPTIONS.find(o=>o.ttl===ttl);
+  if(q2)return q2.label;
+  const c2=AUTODEL_CUSTOM_OPTIONS.find(o=>o.ttl===ttl);
+  return c2?c2.label:null;
+}
+
+// Строим системное сообщение в DOM
+function buildSysMsg(text){
+  const wrap=document.createElement('div');
+  wrap.className='sys-msg';
+  const pill=document.createElement('div');
+  pill.className='sys-msg-pill';
+  pill.textContent=text;
+  wrap.appendChild(pill);
+  return wrap;
+}
+
+// Добавляем системное сообщение в чат и сохраняем в историю
+async function _insertSysMsg(pid, text){
+  // Сохраняем в историю как служебный тип
+  const sysRecord={
+    id:uid(),
+    type:'system',
+    text,
+    time:new Date().toISOString()
+  };
+  await upsertMsg(pid, sysRecord);
+  // Если чат открыт — показываем сразу
+  if(activePid===pid){
+    const area=$('messagesArea');
+    if(area){
+      const el=buildSysMsg(text);
+      area.appendChild(el);
+      area.scrollTop=area.scrollHeight;
+    }
+  }
+}
+
+// Обновляем кнопку в шапке
+function _updateAutoDelBtn(pid){
+  const btn=$('autoDelBtn');
+  if(!btn)return;
+  const st=getAutoDelState(pid||activePid);
+  const stKey=st.key||_keyForTtl(st.ttl);
+  btn.classList.toggle('autodel-active',!!st.ttl);
+  btn.title=st.ttl?`Автоудаление: ${_autoDelLabel(st.ttl,stKey)}`:'Автоудаление сообщений';
+}
+
+// Открыть шторку выбора времени
+window.openAutoDelSheet=function(){
+  if(!activePid)return;
+  const st=getAutoDelState(activePid);
+  const stKey=st.key||_keyForTtl(st.ttl);
+  const sheet=$('autoDelSheet');
+  const opts=$('autoDelOptions');
+  if(!sheet||!opts)return;
+  opts.innerHTML='';
+
+  // Если включён вариант не из быстрых 4 (выбран через "⚙️ Настроить") —
+  // показываем его отдельной строкой ВВЕРХУ списка с галочкой (как в Telegram)
+  const isCustomSelected = !!st.ttl && !AUTODEL_QUICK_OPTIONS.some(o=>o.key===stKey);
+  if(isCustomSelected){
+    const customLabel=_autoDelLabel(st.ttl,stKey)||'';
+    const div=document.createElement('div');
+    div.className='autodel-opt selected';
+    div.innerHTML=`<span class="autodel-opt-icon">⏱</span><span class="autodel-opt-label">${customLabel}</span><span class="autodel-opt-check">✔</span>`;
+    div.onclick=()=>{closeAutoDelSheet();};
+    opts.appendChild(div);
+    const div0=document.createElement('div');
+    div0.className='autodel-divider';
+    opts.appendChild(div0);
+  }
+
+  AUTODEL_QUICK_OPTIONS.forEach((opt,i)=>{
+    const isSelected = !isCustomSelected && opt.key===stKey;
+    const div=document.createElement('div');
+    div.className='autodel-opt'+(isSelected?' selected':'');
+    div.innerHTML=`<span class="autodel-opt-icon">${opt.icon}</span><span class="autodel-opt-label">${opt.label}</span><span class="autodel-opt-check">✔</span>`;
+    div.onclick=()=>{closeAutoDelSheet();_applyAutoDelChoice(opt.ttl,opt.key);};
+    opts.appendChild(div);
+    if(i===0){
+      const div2=document.createElement('div');
+      div2.className='autodel-divider';
+      opts.appendChild(div2);
+    }
+  });
+
+  // Разделитель + кнопка "⚙️ Настроить" — открывает кастомный пикер
+  const div3=document.createElement('div');
+  div3.className='autodel-divider';
+  opts.appendChild(div3);
+
+  const gear=document.createElement('div');
+  gear.className='autodel-opt autodel-opt-gear';
+  gear.innerHTML=`<span class="autodel-opt-icon">⚙️</span><span class="autodel-opt-label">Настроить</span>`;
+  gear.onclick=()=>{
+    closeAutoDelSheet();
+    setTimeout(()=>openAutoDelCustomSheet(),260);
+  };
+  opts.appendChild(gear);
+
+  const titleEl=$('autoDelTitle');
+  if(titleEl){
+    const lbl=_autoDelLabel(st.ttl,stKey);
+    titleEl.textContent=lbl
+      ?`⏱ АВТОУДАЛЕНИЕ · ${lbl.toUpperCase()}`
+      :'⏱ АВТОУДАЛЕНИЕ СООБЩЕНИЙ';
+  }
+
+  sheet.classList.add('open');
+};
+
+window.closeAutoDelSheet=function(){
+  const sheet=$('autoDelSheet');
+  if(sheet)sheet.classList.remove('open');
+};
+
+// ── КАСТОМНЫЙ ПИКЕР "Автоудаление через..." (Telegram-стиль) ─────────────────
+const AUTODEL_ROW_H=44; // высота одной строки пикера (синхронизирована с CSS)
+let _autoDelPickerIdx=0;
+
+window.openAutoDelCustomSheet=function(){
+  if(!activePid)return;
+  const sheet=$('autoDelCustomSheet');
+  const scroll=$('autoDelPickerScroll');
+  if(!sheet||!scroll)return;
+
+  const st=getAutoDelState(activePid);
+  const stKey=st.key||_keyForTtl(st.ttl);
+
+  // Находим индекс текущего варианта в полном списке
+  let initIdx=AUTODEL_CUSTOM_OPTIONS.findIndex(o=>o.key===stKey);
+  if(initIdx<0)initIdx=AUTODEL_CUSTOM_OPTIONS.findIndex(o=>o.ttl===st.ttl);
+  if(initIdx<0)initIdx=0;
+
+  // Строим строки пикера
+  scroll.innerHTML='';
+  const padTop=document.createElement('div');padTop.className='autodel-picker-pad';
+  scroll.appendChild(padTop);
+  AUTODEL_CUSTOM_OPTIONS.forEach((opt,i)=>{
+    const row=document.createElement('div');
+    row.className='autodel-picker-row'+(i===initIdx?' center':'');
+    row.textContent=opt.label;
+    row.dataset.idx=i;
+    row.onclick=()=>{_autoDelPickerScrollTo(i,true);};
+    scroll.appendChild(row);
+  });
+  const padBot=document.createElement('div');padBot.className='autodel-picker-pad';
+  scroll.appendChild(padBot);
+
+  _autoDelPickerIdx=initIdx;
+  _updateAutoDelCustomBtn(initIdx);
+  _initAutoDelPickerScroll();
+
+  // Кнопка снизу — применяет выбранный вариант (привязываем один раз)
+  const btn=$('autoDelCustomBtn');
+  if(btn&&!btn._bound){
+    btn._bound=true;
+    btn.onclick=()=>_applyAutoDelCustomChoice();
+  }
+
+  // Ставим начальную позицию без анимации
+  scroll.scrollTop=initIdx*AUTODEL_ROW_H;
+
+  sheet.classList.add('open');
+};
+
+window.closeAutoDelCustomSheet=function(){
+  const sheet=$('autoDelCustomSheet');
+  if(sheet)sheet.classList.remove('open');
+};
+
+function _autoDelPickerScrollTo(idx,smooth){
+  const scroll=$('autoDelPickerScroll');
+  if(!scroll)return;
+  idx=Math.max(0,Math.min(AUTODEL_CUSTOM_OPTIONS.length-1,idx));
+  scroll.scrollTo({top:idx*AUTODEL_ROW_H,behavior:smooth?'smooth':'auto'});
+}
+
+// Обновляем подпись кнопки внизу пикера в зависимости от выбранной строки
+function _updateAutoDelCustomBtn(idx){
+  const btn=$('autoDelCustomBtn');
+  if(!btn)return;
+  const opt=AUTODEL_CUSTOM_OPTIONS[idx];
+  if(!opt)return;
+  if(opt.ttl){
+    btn.textContent='Включить удаление по таймеру';
+    btn.classList.remove('btn-disable');
+  }else{
+    btn.textContent='Отключить автоудаление';
+    btn.classList.add('btn-disable');
+  }
+}
+
+// Слушаем скролл пикера — определяем центральную строку и обновляем подсветку+кнопку
+function _initAutoDelPickerScroll(){
+  const scroll=$('autoDelPickerScroll');
+  if(!scroll||scroll._inited)return;
+  scroll._inited=true;
+  let raf=null;
+  scroll.addEventListener('scroll',()=>{
+    if(raf)return;
+    raf=requestAnimationFrame(()=>{
+      raf=null;
+      const idx=Math.round(scroll.scrollTop/AUTODEL_ROW_H);
+      const clamped=Math.max(0,Math.min(AUTODEL_CUSTOM_OPTIONS.length-1,idx));
+      if(clamped!==_autoDelPickerIdx){
+        _autoDelPickerIdx=clamped;
+        scroll.querySelectorAll('.autodel-picker-row').forEach((r,i)=>{
+          r.classList.toggle('center',i===clamped);
+        });
+        _updateAutoDelCustomBtn(clamped);
+      }
+    });
+  },{passive:true});
+}
+
+// Применить выбор из кастомного пикера (кнопка снизу)
+function _applyAutoDelCustomChoice(){
+  const opt=AUTODEL_CUSTOM_OPTIONS[_autoDelPickerIdx];
+  if(!opt)return;
+  closeAutoDelCustomSheet();
+  _applyAutoDelChoice(opt.ttl,opt.key);
+}
+
+// Применяем выбранный вариант
+async function _applyAutoDelChoice(newTtl,newKey){
+  if(!activePid)return;
+  const oldSt=getAutoDelState(activePid);
+  const oldKey=oldSt.key||_keyForTtl(oldSt.ttl);
+  const effKey=newKey||_keyForTtl(newTtl);
+  if(oldSt.ttl===newTtl&&oldKey===effKey)return; // ничего не изменилось
+
+  // Сохраняем локально
+  lsSet(_autoDelKey(activePid),{ttl:newTtl,key:effKey,setBy:MY_ID,setAt:Date.now()});
+  _updateAutoDelBtn(activePid);
+
+  // Системное сообщение
+  const label=_autoDelLabel(newTtl,effKey);
+  const sysText=newTtl
+    ?`${_whoName(MY_ID)} включил(а) автоудаление сообщений через ${label}`
+    :`${_whoName(MY_ID)} выключил(а) автоудаление сообщений`;
+  await _insertSysMsg(activePid, sysText);
+
+  // Запускаем/останавливаем таймер
+  _scheduleAutoDelTimer(activePid, newTtl);
+
+  // Синхронизируем с собеседником
+  await _sendAutoDelSignal(activePid, newTtl, effKey);
+}
+
+// Имя для системного сообщения
+function _whoName(id){
+  if(id===MY_ID){
+    const me=lsGet('bc_my_name',null);
+    return me||'Вы';
+  }
+  const ct=loadContacts().find(c=>c.id===id);
+  return ct?.name||id;
+}
+
+// Посылаем зашифрованный сигнал автоудаления собеседнику
+async function _sendAutoDelSignal(pid, ttl, key){
+  if(!wsUp||pid===MY_ID)return;
+  const cryptoKey=keyCache[pid]||await loadPersistedKey(pid);
+  if(!cryptoKey)return;
+  try{
+    const payload={type:'autodel-set',ttl:ttl||null,key:key||null,setBy:MY_ID,ts:Date.now()};
+    const enc=await encData(ENC.encode(JSON.stringify(payload)),cryptoKey);
+    wsSend({type:'send-msg',target:pid,msgId:uid(),payload:payloadToB64(enc)});
+  }catch(e){}
+}
+
+// Обработка входящего сигнала (вызывается из handleEnvelope)
+async function handleInAutoDelSet(from, env){
+  const newKey=env.key||_keyForTtl(env.ttl||null);
+  lsSet(_autoDelKey(from),{ttl:env.ttl||null,key:newKey,setBy:from,setAt:env.ts||Date.now()});
+
+  if(activePid===from) _updateAutoDelBtn(from);
+
+  const label=_autoDelLabel(env.ttl,newKey);
+  const sysText=(env.ttl)
+    ?`${_whoName(from)} включил(а) автоудаление сообщений через ${label}`
+    :`${_whoName(from)} выключил(а) автоудаление сообщений`;
+  await _insertSysMsg(from, sysText);
+
+  _scheduleAutoDelTimer(from, env.ttl||null);
+}
+
+// ── Таймер автоудаления ─────────────────────────────────────────────────────
+const _autoDelTimers=new Map(); // pid → intervalId
+
+function _scheduleAutoDelTimer(pid, ttl){
+  // Останавливаем старый
+  if(_autoDelTimers.has(pid)){
+    clearInterval(_autoDelTimers.get(pid));
+    _autoDelTimers.delete(pid);
+  }
+  if(!ttl)return;
+  // Проверяем и удаляем просроченные сообщения каждые 60 сек
+  const id=setInterval(()=>_runAutoDelSweep(pid,ttl),60000);
+  _autoDelTimers.set(pid,id);
+  // Сразу первый прогон
+  _runAutoDelSweep(pid,ttl);
+}
+
+async function _runAutoDelSweep(pid, ttl){
+  const st=getAutoDelState(pid);
+  if(!st.ttl)return; // уже выключено
+  const cutoff=Date.now()-ttl;
+  await withChatLock(pid,async()=>{
+    const msgs=await loadMsgs(pid);
+    const toDelete=msgs.filter(m=>
+      m.type!=='system' &&
+      new Date(m.time).getTime()<cutoff
+    );
+    if(!toDelete.length)return;
+    const remaining=msgs.filter(m=>
+      m.type==='system'||new Date(m.time).getTime()>=cutoff
+    );
+    await saveMsgs(pid,remaining);
+    // Удаляем blob-данные
+    for(const m of toDelete){
+      if(m.media?.blobId)deleteBlob(m.media.blobId).catch(()=>{});
+      if(m.voice?.blobId)deleteBlob(m.voice.blobId).catch(()=>{});
+      if(m.file?.blobId)deleteBlob(m.file.blobId).catch(()=>{});
+    }
+    // Если чат открыт — убираем из DOM
+    if(activePid===pid){
+      for(const m of toDelete){
+        const row=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);
+        if(row)(row.closest('.msg-row-outer')||row).remove();
+      }
+    }
+    // Обновляем превью чата
+    const last=remaining.filter(m=>m.type!=='system').pop();
+    await updateChat(pid,{
+      lastMsg:last?.text||(last?.voice?'🎙 Голосовое':last?.media?'📷 Фото':last?.file?`📁 ${last.file.name}`:''),
+      lastMsgTime:last?.time?new Date(last.time).getTime():null
+    });
+  });
+}
+
+// Восстанавливаем таймеры при старте приложения
+function _restoreAutoDelTimers(){
+  // Перебираем все ключи bc_autodel_*
+  for(let i=0;i<localStorage.length;i++){
+    const k=localStorage.key(i);
+    if(!k||!k.startsWith('bc_autodel_'))continue;
+    const pid=k.replace('bc_autodel_','');
+    const st=lsGet(k,{ttl:null});
+    if(st.ttl)_scheduleAutoDelTimer(pid,st.ttl);
+  }
+}
+_restoreAutoDelTimers();
+
+// ── Инициализация кнопки при открытии чата ──────────────────────────────────
+function initAutoDelBtn(pid){
+  _updateAutoDelBtn(pid);
+  const btn=$('autoDelBtn');
+  // Скрываем кнопку в "Избранном" (MY_ID чат с собой)
+  if(btn)btn.style.display=(pid===MY_ID)?'none':'flex';
+}
 
 // ── REPLY ──
 let replyTo=null;
-async function startReply(msgId){const msgs=await loadMsgs(activePid);const m=msgs.find(m=>m.id===msgId);if(!m)return;replyTo={id:m.id,text:(m.fileAvailable?`📎 ${m.fileAvailable.name}`:m.file?`📁 ${m.file.name}`:m.voice?'🎙 Голосовое':m.media?'📷 Фото':m.text||'')};$('replyBarPreview').textContent=replyTo.text.slice(0,80);$('replyBar').classList.add('visible');$('messageInput').focus();}
+async function startReply(msgId){const msgs=await loadMsgs(activePid);const m=msgs.find(m=>m.id===msgId);if(!m)return;replyTo={id:m.id,text:(m.sticker?`${m.sticker} Стикер`:m.fileAvailable?`📎 ${m.fileAvailable.name}`:m.file?`📁 ${m.file.name}`:m.voice?'🎙 Голосовое':m.media?'📷 Фото':m.text||'')};$('replyBarPreview').textContent=replyTo.text.slice(0,80);$('replyBar').classList.add('visible');$('messageInput').focus();}
 window.cancelReply=()=>{replyTo=null;$('replyBar').classList.remove('visible');};
 
 // ══════════════════════════════════════════════════════
@@ -3079,16 +3929,226 @@ function buildFileUploadSpinnerEl(fileId){
   return spinnerEl;
 }
 
-function buildFileCardStatic(file){const card=document.createElement('div');card.className='file-card';const iw=document.createElement('div');iw.className='file-icon-wrap file-icon-static';iw.textContent=getFileIcon(file.type);card.appendChild(iw);const info=document.createElement('div');info.className='file-info';const ne=document.createElement('div');ne.className='file-name';ne.textContent=file.name;const se=document.createElement('div');se.className='file-size';se.textContent=formatSize(file.size);info.appendChild(ne);info.appendChild(se);card.appendChild(info);return card;}
-function buildFileCardUploading(file,fileId){const card=document.createElement('div');card.className='file-card';const spinner=buildFileUploadSpinnerEl(fileId);card.appendChild(spinner);const info=document.createElement('div');info.className='file-info';const ne=document.createElement('div');ne.className='file-name';ne.textContent=file.name;const se=document.createElement('div');se.className='file-size';se.textContent='Загрузка…';info.appendChild(ne);info.appendChild(se);card.appendChild(info);return card;}
-function buildFileAvailableCard(m){const fa=m.fileAvailable;const card=document.createElement('div');card.className='file-card';const iw=document.createElement('div');iw.className='file-icon-wrap file-icon-download';iw.title='Скачать файл';const arrow=document.createElement('div');arrow.className='file-dl-arrow';arrow.textContent='⬇️';iw.appendChild(arrow);iw.onclick=e=>{e.stopPropagation();startDownloadUI(iw,m.id,fa.senderId);};card.appendChild(iw);const info=document.createElement('div');info.className='file-info';const ne=document.createElement('div');ne.className='file-name';ne.textContent=fa.name;const se=document.createElement('div');se.className='file-size';se.textContent=formatSize(fa.size);info.appendChild(ne);info.appendChild(se);card.appendChild(info);return card;}
+// ── Вспомогательная: inline-мета (время + галочки) для нижней строки TG-file ──
+function buildTgFileMeta(m, isSent){
+  const ov = document.createElement('div');
+  ov.className = 'tg-file-meta-inline';
+  const tEl = document.createElement('span');
+  tEl.className = 'msg-time-inline';
+  tEl.textContent = new Date(m.time||Date.now()).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});
+  ov.appendChild(tEl);
+  if(isSent){
+    const tk = document.createElement('span');
+    tk.className = 'msg-ticks'+(m.delivered?' double':' single');
+    tk.textContent = m.delivered?'✔✔':'✔';
+    ov.appendChild(tk);
+  }
+  return ov;
+}
+
+// ── Telegram-стиль: файл уже скачан / у отправителя ──
+function buildFileCardStatic(file, m, isSent){
+  const wrap = document.createElement('div');
+  wrap.className = 'tg-file-wrap';
+
+  const icon = document.createElement('div');
+  icon.className = 'tg-file-icon tg-file-icon-static';
+  icon.textContent = getFileIcon(file.type);
+  wrap.appendChild(icon);
+
+  const info = document.createElement('div');
+  info.className = 'tg-file-info';
+
+  const name = document.createElement('div');
+  name.className = 'tg-file-name';
+  name.textContent = file.name;
+  info.appendChild(name);
+
+  // Нижняя строка: размер · тип · spacer · время · галочки — всё в одну линию
+  const bottomRow = document.createElement('div');
+  bottomRow.className = 'tg-file-bottom';
+
+  const sz = document.createElement('span');
+  sz.className = 'tg-file-size';
+  sz.textContent = formatSize(file.size);
+  bottomRow.appendChild(sz);
+
+  const ext = (file.name||'').split('.').pop().toUpperCase().slice(0,6);
+  if(ext){
+    const badge = document.createElement('span');
+    badge.className = 'tg-file-type-badge';
+    badge.textContent = ext;
+    bottomRow.appendChild(badge);
+  }
+
+  const spacer = document.createElement('span');
+  spacer.className = 'tg-file-spacer';
+  bottomRow.appendChild(spacer);
+
+  if(m) bottomRow.appendChild(buildTgFileMeta(m, isSent));
+
+  info.appendChild(bottomRow);
+  wrap.appendChild(info);
+
+  return wrap;
+}
+
+// ── Telegram-стиль: файл загружается (отправитель) ──
+function buildFileCardUploading(file, fileId, m, isSent){
+  const wrap = document.createElement('div');
+  wrap.className = 'tg-file-wrap';
+
+  // Спиннер загрузки
+  const spinnerEl = document.createElement('div');
+  spinnerEl.className = 'file-upload-spinner';
+  const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.setAttribute('viewBox','0 0 42 42');
+  const track = document.createElementNS('http://www.w3.org/2000/svg','circle');
+  track.setAttribute('class','file-upload-spinner-track');
+  track.setAttribute('cx','21');track.setAttribute('cy','21');track.setAttribute('r','19');
+  const fill = document.createElementNS('http://www.w3.org/2000/svg','circle');
+  fill.setAttribute('class','file-upload-spinner-fill');
+  fill.setAttribute('cx','21');fill.setAttribute('cy','21');fill.setAttribute('r','19');
+  svg.appendChild(track);svg.appendChild(fill);
+  const iconEl = document.createElement('div');
+  iconEl.className = 'file-upload-spinner-icon';
+  iconEl.textContent = '⬆';
+  spinnerEl.appendChild(svg);spinnerEl.appendChild(iconEl);
+  registerUploadUI(fileId, spinnerEl, fill, null);
+  wrap.appendChild(spinnerEl);
+
+  const info = document.createElement('div');
+  info.className = 'tg-file-info';
+  const name = document.createElement('div');
+  name.className = 'tg-file-name';
+  name.textContent = file.name;
+  info.appendChild(name);
+
+  // Нижняя строка: "Загрузка…" · spacer · время · галочки
+  const bottomRow = document.createElement('div');
+  bottomRow.className = 'tg-file-bottom';
+  const sz = document.createElement('span');
+  sz.className = 'tg-file-size';
+  sz.textContent = 'Загрузка…';
+  bottomRow.appendChild(sz);
+  const spacer = document.createElement('span');
+  spacer.className = 'tg-file-spacer';
+  bottomRow.appendChild(spacer);
+  if(m) bottomRow.appendChild(buildTgFileMeta(m, isSent));
+  info.appendChild(bottomRow);
+  wrap.appendChild(info);
+
+  return wrap;
+}
+
+// ── Telegram-стиль: файл доступен для скачивания (получатель) ──
+function buildFileAvailableCard(m){
+  const fa = m.fileAvailable;
+  const isSent = m.type === 'sent';
+
+  const isAudio = fa.type && fa.type.startsWith('audio/');
+  const isVideo = fa.type && fa.type.startsWith('video/');
+
+  // ── Вспомогательная: строит нижнюю строку (размер · [тип] · spacer · время) ──
+  function makeBottomRow(sizeText, extText){
+    const row = document.createElement('div');
+    row.className = 'tg-file-bottom';
+    const sz = document.createElement('span');
+    sz.className = 'tg-file-size';
+    sz.textContent = sizeText;
+    row.appendChild(sz);
+    if(extText){
+      const badge = document.createElement('span');
+      badge.className = 'tg-file-type-badge';
+      badge.textContent = extText;
+      row.appendChild(badge);
+    }
+    const spacer = document.createElement('span');
+    spacer.className = 'tg-file-spacer';
+    row.appendChild(spacer);
+    row.appendChild(buildTgFileMeta(m, isSent));
+    return row;
+  }
+
+  if(isAudio){
+    // Аудио — плитка с кнопкой скачать
+    const wrap = document.createElement('div');
+    wrap.className = 'tg-audio-pending-wrap';
+    const dlBtn = document.createElement('div');
+    dlBtn.className = 'tg-audio-dl-btn';
+    dlBtn.innerHTML = '⬇';
+    dlBtn.onclick = e => { e.stopPropagation(); startDownloadUI(dlBtn, m.id, fa.senderId); };
+    wrap.appendChild(dlBtn);
+    const info = document.createElement('div');
+    info.className = 'tg-file-info';
+    const name = document.createElement('div');
+    name.className = 'tg-file-name';
+    name.textContent = fa.name ? fa.name.replace(/\.[^/.]+$/,'') : 'Аудио';
+    info.appendChild(name);
+    info.appendChild(makeBottomRow(formatSize(fa.size) + ' · MP3', ''));
+    wrap.appendChild(info);
+    return wrap;
+  }
+
+  if(isVideo){
+    // Видео — плитка с кнопкой скачать
+    const wrap = document.createElement('div');
+    wrap.className = 'tg-file-wrap';
+    const icon = document.createElement('div');
+    icon.className = 'tg-file-icon tg-file-icon-dl';
+    icon.innerHTML = '⬇';
+    icon.onclick = e => { e.stopPropagation(); startDownloadUI(icon, m.id, fa.senderId); };
+    wrap.appendChild(icon);
+    const info = document.createElement('div');
+    info.className = 'tg-file-info';
+    const name = document.createElement('div');
+    name.className = 'tg-file-name';
+    name.textContent = fa.name || 'Видео';
+    info.appendChild(name);
+    const ext = (fa.name||'').split('.').pop().toUpperCase().slice(0,6);
+    info.appendChild(makeBottomRow(formatSize(fa.size), ext));
+    wrap.appendChild(info);
+    return wrap;
+  }
+
+  // Обычный файл
+  const wrap = document.createElement('div');
+  wrap.className = 'tg-file-wrap';
+  const icon = document.createElement('div');
+  icon.className = 'tg-file-icon tg-file-icon-dl';
+  icon.innerHTML = '⬇';
+  icon.onclick = e => { e.stopPropagation(); startDownloadUI(icon, m.id, fa.senderId); };
+  wrap.appendChild(icon);
+  const info = document.createElement('div');
+  info.className = 'tg-file-info';
+  const name = document.createElement('div');
+  name.className = 'tg-file-name';
+  name.textContent = fa.name;
+  info.appendChild(name);
+  const ext = (fa.name||'').split('.').pop().toUpperCase().slice(0,6);
+  info.appendChild(makeBottomRow(formatSize(fa.size), ext));
+  wrap.appendChild(info);
+  return wrap;
+}
+
 
 function buildRow(m){
+  // Системные сообщения (автоудаление и др.) — центрированные, не пузырь
+  if(m.type==='system'){
+    const el=buildSysMsg(m.text||'');
+    el.dataset.msgid=m.id;
+    return el;
+  }
   const isSent=m.type==='sent';
+  // Внешний враппер: полная ширина, flex-row, кружок слева + msg-row справа
+  const outer=document.createElement('div');outer.className='msg-row-outer';
+  const slot=document.createElement('div');slot.className='msg-check-slot';
+  const check=document.createElement('div');check.className='msg-check';check.innerHTML='✓';
+  slot.appendChild(check);outer.appendChild(slot);
   const row=document.createElement('div');row.className=`msg-row ${m.type}`;row.dataset.msgid=m.id;
   // Помечаем закреплённое сообщение
   if(activePid&&getPinnedMsgs(activePid).some(p=>p.id===m.id)){row.classList.add('pinned-msg');}
-  const check=document.createElement('div');check.className='msg-check';check.innerHTML='✓';row.appendChild(check);
+  outer.appendChild(row);
   const bubble=document.createElement('div');bubble.className='bubble';
   if(m.forwarded){const fl=document.createElement('span');fl.className='forwarded-label';fl.textContent='↪️ переслано';bubble.appendChild(fl);}
   if(m.replyTo){const rd=document.createElement('div');rd.className='reply-preview-inline';rd.textContent='↩️ '+(m.replyTo.text||'').slice(0,50);rd.onclick=async e=>{
@@ -3103,12 +4163,14 @@ function buildRow(m){
   };bubble.appendChild(rd);}
 
   if(m.fileAvailable){
-    // Получатель — кнопка Download
-    bubble.appendChild(buildFileAvailableCard(m));bubble.appendChild(mkMeta(m,isSent));
+    // Получатель — плитка Telegram-стиль без пузыря
+    bubble.style.cssText='padding:0;background:transparent;border:none;box-shadow:none;overflow:visible;';
+    bubble.appendChild(buildFileAvailableCard(m));
 
   }else if(m.uploading&&m.file){
     // ОТПРАВИТЕЛЬ — ИДЁТ ЗАГРУЗКА
     const isImg=m.file.type&&m.file.type.startsWith('image/');
+    const isVid=m.file.type&&m.file.type.startsWith('video/');
     if(isImg&&m.file.data){
       bubble.style.cssText='padding:4px 4px 7px 4px;';
       const mediaWrap=document.createElement('div');mediaWrap.className='upload-media-wrap';
@@ -3119,61 +4181,150 @@ function buildRow(m){
       if(m.text){const tn=document.createElement('span');tn.className='bubble-text';tn.style.cssText='display:block;padding:4px 6px 0;';tn.innerHTML=formatText(m.text);bubble.appendChild(tn);}
       bubble.appendChild(mkMeta(m,isSent));
     }else{
-      bubble.appendChild(buildFileCardUploading(m.file,m.id));
-      if(m.text){const tn=document.createElement('span');tn.className='bubble-text';tn.innerHTML=formatText(m.text);bubble.appendChild(tn);}
-      bubble.appendChild(mkMeta(m,isSent));
+      // Файл загружается — плитка без пузыря (видео, аудио, прочее)
+      bubble.style.cssText='padding:0;background:transparent;border:none;box-shadow:none;overflow:visible;';
+      bubble.appendChild(buildFileCardUploading(m.file,m.id,m,isSent));
+      if(m.text){const tn=document.createElement('span');tn.className='bubble-text';tn.style.cssText='display:block;margin-top:4px;padding:6px 8px;background:rgba(255,255,255,.05);border-radius:12px;font-size:13px';tn.innerHTML=formatText(m.text);bubble.appendChild(tn);}
     }
 
   }else if(m.voice?.data||m.voice?.blobId){
     bubble.style.cssText='padding:0;overflow:visible;background:transparent;border:none';
     const vb=buildVoiceBubble(m,isSent);
     const vcont=document.createElement('div');
+    vcont.className='voice-bubble-cont';
     const sentBg=getComputedStyle(document.documentElement).getPropertyValue('--bubble-sent-bg').trim()||'linear-gradient(135deg,rgba(0,255,136,.45),rgba(0,255,136,.28))';
     const sentBorder=getComputedStyle(document.documentElement).getPropertyValue('--bubble-sent-border').trim()||'rgba(0,255,136,0.28)';
-    vcont.style.cssText=`border-radius:18px;overflow:hidden;border:1px solid ${isSent?sentBorder:'rgba(255,255,255,.1)'};background:${isSent?sentBg:'rgba(255,255,255,.07)'};${isSent?'border-bottom-right-radius:4px':'border-bottom-left-radius:4px'}`;
+    vcont.style.cssText+= `;border-radius:18px;overflow:hidden;border:1px solid ${isSent?sentBorder:'rgba(255,255,255,.1)'};background:${isSent?sentBg:'rgba(255,255,255,.07)'};${isSent?'border-bottom-right-radius:4px':'border-bottom-left-radius:4px'}`;
     vcont.appendChild(vb);bubble.appendChild(vcont);
 
   }else if(m.media?.data||m.media?.blobId){
-    const md=document.createElement('div');md.className='media-content';
-    const img=document.createElement('img');img.className='media-img';img.style.minHeight='80px';
+    // ── TELEGRAM-СТИЛЬ: динамический размер + мета поверх фото ──
+    const hasCaption = !!(m.caption && m.caption.trim());
+
+    // Внешняя обёртка
+    const outerWrap = document.createElement('div');
+    outerWrap.className = hasCaption ? 'media-with-caption' : 'media-bubble';
+
+    // Обёртка фото (position:relative для overlay)
+    const imgWrap = document.createElement('div');
+    imgWrap.style.cssText = 'position:relative;line-height:0;display:block';
+    if(hasCaption){
+      imgWrap.style.borderRadius = '0';
+    }
+
+    const img = document.createElement('img');
+    img.className = 'media-img';
+    img.style.cssText = 'display:block;width:100%;height:auto;';
+
+    // Telegram: min 120px, max 260px ширина, max 320px высота
+    // Ограничиваем через CSS-переменные, пересчитываем по реальным размерам при загрузке
+    const MAX_W = Math.min(260, window.innerWidth * 0.72);
+    const MAX_H = 320;
+    const MIN_W = 120;
+    img.style.maxWidth = MAX_W + 'px';
+    img.style.maxHeight = MAX_H + 'px';
+    img.style.minWidth  = MIN_W + 'px';
+    img.style.objectFit = 'cover';
+
+    // После загрузки — вычисляем оптимальный размер
+    img.addEventListener('load', function(){
+      const nw = img.naturalWidth, nh = img.naturalHeight;
+      if(!nw||!nh) return;
+      const ratio = nw / nh;
+      let w, h;
+      if(ratio >= 1){
+        // Альбомная / квадратная
+        w = Math.min(nw, MAX_W);
+        h = w / ratio;
+        if(h > MAX_H){ h = MAX_H; w = h * ratio; }
+      } else {
+        // Портретная
+        h = Math.min(nh, MAX_H);
+        w = h * ratio;
+        if(w > MAX_W){ w = MAX_W; h = w / ratio; }
+        if(w < MIN_W){ w = MIN_W; h = w / ratio; }
+      }
+      w = Math.round(w); h = Math.round(h);
+      img.style.width  = w + 'px';
+      img.style.height = h + 'px';
+      img.style.maxWidth  = '';
+      img.style.maxHeight = '';
+      img.style.minWidth  = '';
+      img.style.objectFit = '';
+      outerWrap.style.width = w + 'px';
+    });
+
+    // Загрузка src
+    const _setImgSrc = (src) => {
+      img.src = src;
+      img.onclick = e => { e.stopPropagation(); openLightbox(src); };
+    };
+
     if(m.media.data){
-      // Обратная совместимость: старый формат с data:URL
-      img.src=m.media.data;
-      img.addEventListener('click',e=>{e.stopPropagation();openLightbox(m.media.data);});
+      _setImgSrc(m.media.data);
     } else {
-      // Новый формат: lazy load из blobs
-      img.src='data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; // 1px placeholder
-      img.style.background='rgba(255,255,255,.05)';
-      const blobId=m.media.blobId;
-      const mimeType=m.media.type||'image/jpeg';
-      const loadImg=async()=>{
-        // Пробуем tempUrl сначала (быстро, если blob ещё сохраняется в IDB)
-        if(m.media._tempUrl){
-          img.src=m.media._tempUrl;
-          img.style.minHeight='';img.style.background='';
-          img.addEventListener('click',e=>{e.stopPropagation();openLightbox(m.media._tempUrl);},{once:true});
-          return;
-        }
-        const buf=await loadBlob(blobId);
-        if(!buf){img.style.opacity='0.3';return;}
-        const blob=new Blob([buf],{type:mimeType});
-        const url=URL.createObjectURL(blob);
-        img.src=url;
-        img.style.minHeight='';img.style.background='';
-        img.addEventListener('click',e=>{e.stopPropagation();openLightbox(url);},{once:true});
+      img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+      img.style.background = 'rgba(255,255,255,.07)';
+      img.style.width  = '180px';
+      img.style.height = '140px';
+      const blobId = m.media.blobId, mimeType = m.media.type||'image/jpeg';
+      const loadImg = async () => {
+        const src = m.media._tempUrl || await (async()=>{
+          const buf = await loadBlob(blobId);
+          if(!buf){ img.style.opacity='0.3'; return null; }
+          return URL.createObjectURL(new Blob([buf],{type:mimeType}));
+        })();
+        if(src){ img.style.background=''; _setImgSrc(src); }
       };
       if('IntersectionObserver' in window){
-        const io=new IntersectionObserver(entries=>{if(entries[0].isIntersecting){io.disconnect();loadImg();}},{threshold:0.1,rootMargin:'300px'});
+        const io = new IntersectionObserver(en=>{if(en[0].isIntersecting){io.disconnect();loadImg();}},{threshold:0.1,rootMargin:'300px'});
         io.observe(img);
-      } else {loadImg();}
+      } else { loadImg(); }
     }
-    md.appendChild(img);
-    if(m.caption){const cap=document.createElement('div');cap.className='media-caption bubble-text';cap.innerHTML=formatText(m.caption);md.appendChild(cap);}
-    bubble.appendChild(md);bubble.appendChild(mkMeta(m,isSent));
+
+    imgWrap.appendChild(img);
+
+    // Мета-overlay поверх фото (время + галочки) — только без подписи
+    if(!hasCaption){
+      const overlay = document.createElement('div');
+      overlay.className = 'media-meta-overlay';
+      const tEl = document.createElement('span');
+      tEl.className = 'msg-time-inline';
+      tEl.textContent = new Date(m.time).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});
+      overlay.appendChild(tEl);
+      if(isSent){
+        const tk = document.createElement('span');
+        tk.className = 'msg-ticks' + (m.delivered ? ' double' : ' single');
+        tk.textContent = m.delivered ? '✔✔' : '✔';
+        overlay.appendChild(tk);
+      }
+      imgWrap.appendChild(overlay);
+    }
+
+    outerWrap.appendChild(imgWrap);
+
+    // Подпись — отдельная строка снизу
+    if(hasCaption){
+      const cap = document.createElement('div');
+      cap.className = 'media-caption-row bubble-text';
+      cap.innerHTML = formatText(m.caption);
+      // Мета в конце подписи (обычный float right)
+      cap.appendChild(mkMeta(m,isSent));
+      outerWrap.appendChild(cap);
+    }
+
+    // Bubble без padding для медиа
+    bubble.style.padding = '0';
+    bubble.style.overflow = 'hidden';
+    bubble.appendChild(outerWrap);
+    // Если без подписи — мета уже в overlay, не добавляем снизу
+    if(hasCaption){
+      /* мета уже внутри cap */ void 0;
+    }
 
   }else if(m.file?.data||m.file?.blobId){
     if(m.file.type.startsWith('audio/')){
-      // Аудио: плеер IS the bubble
+      // Аудио: плеер без пузыря — сам плеер IS the message
       bubble.style.cssText='padding:0;background:transparent;border:none;box-shadow:none;overflow:visible;';
       bubble.appendChild(buildAudioPlayer(m.file, isSent, mkMeta(m, isSent)));
       if(m.text){
@@ -3183,27 +4334,32 @@ function buildRow(m){
         tn.innerHTML=formatText(m.text);
         bubble.appendChild(tn);
       }
-    }else{
-      // Видео и другие файлы
-      bubble.appendChild(buildFileCardStatic(m.file));
-      if(m.file.type.startsWith('video/')){
-        const video=document.createElement('video');video.controls=true;video.style.cssText='max-width:100%;border-radius:12px;margin-top:4px';
-        if(m.file.data){
-          video.src=m.file.data;
-        } else if(m.file._tempUrl){
-          video.src=m.file._tempUrl;
-        } else if(m.file.blobId){
-          // Lazy load видео из blobs
-          const loadVid=async()=>{
-            if(m.file._tempUrl){video.src=m.file._tempUrl;return;}
-            const url=await _blobToObjectURL(m.file.blobId,m.file.type);if(url)video.src=url;
-          };
-          if('IntersectionObserver' in window){const io=new IntersectionObserver(en=>{if(en[0].isIntersecting){io.disconnect();loadVid();}},{threshold:0.1});io.observe(video);}else{loadVid();}
-        }
-        bubble.appendChild(video);
+    }else if(m.file.type.startsWith('video/')){
+      // Видео — кастомный плеер Telegram-стиль без пузыря
+      bubble.style.padding  = '0';
+      bubble.style.overflow = 'hidden';
+      bubble.style.background = 'transparent';
+      bubble.style.border = 'none';
+      const vidPlayer = buildVideoPlayer(m.file, isSent, m);
+      bubble.appendChild(vidPlayer);
+      if(m.text){
+        const tn=document.createElement('span');
+        tn.className='bubble-text';
+        tn.style.cssText='display:block;margin-top:4px;padding:4px 8px;background:rgba(255,255,255,.05);border-radius:12px;font-size:13px';
+        tn.innerHTML=formatText(m.text);
+        bubble.appendChild(tn);
       }
-      if(m.text){const tn=document.createElement('span');tn.className='bubble-text';tn.innerHTML=formatText(m.text);bubble.appendChild(tn);}
-      bubble.appendChild(mkMeta(m,isSent));
+    } else {
+      // Прочие файлы — TG-плитка без пузыря
+      bubble.style.cssText='padding:0;background:transparent;border:none;box-shadow:none;overflow:visible;';
+      bubble.appendChild(buildFileCardStatic(m.file, m, isSent));
+      if(m.text){
+        const tn=document.createElement('span');
+        tn.className='bubble-text';
+        tn.style.cssText='display:block;margin-top:4px;padding:6px 8px;background:rgba(255,255,255,.05);border-radius:12px;font-size:13px';
+        tn.innerHTML=formatText(m.text);
+        bubble.appendChild(tn);
+      }
     }
 
   }else if(m.sticker){
@@ -3221,14 +4377,20 @@ function buildRow(m){
 
   row.appendChild(bubble);
   reRenderReactions(row,m.reactions||{},m.id);
-  row.addEventListener('click',e=>{if(selectionMode){e.stopPropagation();toggleSelectMessage(m.id,row);}});
+  outer.addEventListener('click',e=>{if(selectionMode){e.stopPropagation();toggleSelectMessage(m.id,outer);}});
   bubble.addEventListener('contextmenu',e=>{e.preventDefault();if(!selectionMode)showCtx(m,bubble,e.clientX,e.clientY);});
   let pt=null;
-  bubble.addEventListener('touchstart',e=>{if(selectionMode||e.touches.length>1)return;const tgt=e.target;if(tgt.closest('button,video,audio,.file-icon-download,.upload-overlay'))return;pt=setTimeout(()=>{pt=null;showCtx(m,bubble,e.touches[0].clientX,e.touches[0].clientY);},500);},{passive:true});
+  bubble.addEventListener('touchstart',e=>{
+    if(selectionMode||e.touches.length>1)return;
+    const tgt=e.target;
+    // Для vid-bubble разрешаем long-press (но не instant click)
+    if(tgt.closest('button,audio,.file-icon-download,.upload-overlay'))return;
+    pt=setTimeout(()=>{pt=null;showCtx(m,bubble,e.touches[0].clientX,e.touches[0].clientY);},500);
+  },{passive:true});
   bubble.addEventListener('touchend',()=>{clearTimeout(pt);pt=null;});
   bubble.addEventListener('touchmove',()=>{clearTimeout(pt);pt=null;});
   row.querySelectorAll('.spoiler').forEach(el=>el.addEventListener('click',e=>{e.stopPropagation();el.classList.toggle('revealed');}));
-  return row;
+  return outer;
 }
 
 
@@ -3391,10 +4553,47 @@ function buildRow(m){
 
 // ── SELECTION ──
 let selectionMode=false,selectedMessages=new Set();
-function toggleSelectMessage(msgId,rowEl){const c=rowEl.querySelector('.msg-check');if(selectedMessages.has(msgId)){selectedMessages.delete(msgId);c.classList.remove('checked');}else{selectedMessages.add(msgId);c.classList.add('checked');}updateSelectionBar();}
+function toggleSelectMessage(msgId,outerEl){
+  const c=outerEl.querySelector('.msg-check');
+  if(selectedMessages.has(msgId)){
+    selectedMessages.delete(msgId);
+    if(c)c.classList.remove('checked');
+    outerEl.classList.remove('row-selected');
+  }else{
+    selectedMessages.add(msgId);
+    if(c)c.classList.add('checked');
+    outerEl.classList.add('row-selected');
+  }
+  updateSelectionBar();
+}
 function updateSelectionBar(){const count=selectedMessages.size;$('selectionCount').textContent=count+' выбрано';$('selectionBar').classList.toggle('visible',count>0);if(count===0)exitSelectionMode();}
-function enterSelectionMode(initialMsgId){selectionMode=true;selectedMessages.clear();if(initialMsgId)selectedMessages.add(initialMsgId);document.querySelectorAll('.msg-row').forEach(row=>{const mid=row.dataset.msgid;row.querySelector('.msg-check').classList.toggle('checked',selectedMessages.has(mid));});$('messagesArea').classList.add('selection-mode');updateSelectionBar();}
-function exitSelectionMode(){selectionMode=false;selectedMessages.clear();document.querySelectorAll('.msg-row').forEach(row=>row.querySelector('.msg-check')?.classList.remove('checked'));$('messagesArea').classList.remove('selection-mode');$('selectionBar').classList.remove('visible');}
+function enterSelectionMode(initialMsgId){
+  selectionMode=true;
+  selectedMessages.clear();
+  if(initialMsgId)selectedMessages.add(initialMsgId);
+  document.querySelectorAll('.msg-row-outer').forEach(outer=>{
+    const row=outer.querySelector('.msg-row');
+    if(!row)return;
+    const mid=row.dataset.msgid;
+    const isSelected=selectedMessages.has(mid);
+    const c=outer.querySelector('.msg-check');
+    if(c)c.classList.toggle('checked',isSelected);
+    outer.classList.toggle('row-selected',isSelected);
+  });
+  $('messagesArea').classList.add('selection-mode');
+  updateSelectionBar();
+}
+function exitSelectionMode(){
+  selectionMode=false;
+  selectedMessages.clear();
+  document.querySelectorAll('.msg-row-outer').forEach(outer=>{
+    outer.querySelector('.msg-check')?.classList.remove('checked');
+    outer.classList.remove('row-selected');
+  });
+  const area=$('messagesArea');
+  area.classList.remove('selection-mode');
+  $('selectionBar').classList.remove('visible');
+}
 async function deleteSelectedMessages(){if(!selectedMessages.size)return;if(!confirm(`Удалить ${selectedMessages.size} сообщ.?`))return;const msgs=await loadMsgs(activePid);
   // Удаляем blobs выбранных сообщений
   for(const m of msgs){
@@ -3404,7 +4603,7 @@ async function deleteSelectedMessages(){if(!selectedMessages.size)return;if(!con
       if(m.file?.blobId)deleteBlob(m.file.blobId);
     }
   }
-  const newMsgs=msgs.filter(m=>!selectedMessages.has(m.id));await saveMsgs(activePid,newMsgs);for(const id of selectedMessages){const row=document.querySelector(`.msg-row[data-msgid="${id}"]`);if(row)row.remove();if(activePid!==MY_ID){const key=keyCache[activePid];if(key){const enc=await encData(ENC.encode(JSON.stringify({type:'delete',msgId:id,ts:Date.now()})),key);wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:payloadToB64(enc)});}}}const last=newMsgs[newMsgs.length-1];await updateChat(activePid,{lastMsg:last?.text||(last?.voice?'🎙 Голосовое':last?.media?'📷 Фото':last?.file?`📁 ${last.file.name}`:''),lastMsgTime:last?.time?new Date(last.time).getTime():null});exitSelectionMode();toast('Сообщения удалены');}
+  const newMsgs=msgs.filter(m=>!selectedMessages.has(m.id));await saveMsgs(activePid,newMsgs);for(const id of selectedMessages){const row=document.querySelector(`.msg-row[data-msgid="${id}"]`);if(row)(row.closest('.msg-row-outer')||row).remove();if(activePid!==MY_ID){const key=keyCache[activePid];if(key){const enc=await encData(ENC.encode(JSON.stringify({type:'delete',msgId:id,ts:Date.now()})),key);wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:payloadToB64(enc)});}}}const last=newMsgs[newMsgs.length-1];await updateChat(activePid,{lastMsg:last?.text||(last?.voice?'🎙 Голосовое':last?.media?'📷 Фото':last?.file?`📁 ${last.file.name}`:''),lastMsgTime:last?.time?new Date(last.time).getTime():null});exitSelectionMode();toast('Сообщения удалены');}
 window.deleteSelectedMessages=deleteSelectedMessages;window.exitSelectionMode=exitSelectionMode;
 
 // ── HISTORY ──
@@ -3466,33 +4665,37 @@ async function loadChatHistory(pid,reset=false){
     area.scrollTop=area.scrollHeight;
     initFloatingDate();
   }else{
-    if(renderedCount<total){
-      const newMsgs=msgs.slice(renderedCount);
-      const wasBot=area.scrollHeight-area.scrollTop-area.clientHeight<80;
+    // Инкрементальная загрузка: добавляем только те сообщения которых нет в DOM
+    const area=$('messagesArea');
+    const wasBot=area.scrollHeight-area.scrollTop-area.clientHeight<80;
+    // Собираем набор уже отрисованных ID — надёжнее чем slice по индексу
+    const renderedIds=new Set([...area.querySelectorAll('.msg-row[data-msgid],.sys-msg[data-msgid]')].map(r=>r.dataset.msgid));
+    const newMsgs=msgs.filter(m=>!renderedIds.has(m.id));
+    if(newMsgs.length){
       const frag=document.createDocumentFragment();
-      let prevTs=renderedCount>0?new Date(msgs[renderedCount-1].time).getTime():null;
+      // Для определения разделителя дат берём timestamp последнего сепаратора
+      const prevSeps=area.querySelectorAll('.date-separator');
+      const lastSep=prevSeps.length?prevSeps[prevSeps.length-1]:null;
+      let prevTs=lastSep?parseInt(lastSep.dataset.dateTs):null;
       for(const m of newMsgs){
-        if(!area.querySelector(`.msg-row[data-msgid="${m.id}"]`)){
-          const ts=new Date(m.time).getTime();
-          if(prevTs===null||!isSameDay(prevTs,ts)){
-            const sep=buildDateSeparator(ts);
-            frag.appendChild(sep);
-            observeDateSeparator(sep);
-          }
-          frag.appendChild(buildRow(m));
-          prevTs=ts;
-          // В power-save обрезаем старые DOM-узлы если их слишком много
-          if(PS){
-            const rows=area.querySelectorAll('.msg-row');
-            if(rows.length > DOM_LIMIT + 20){
-              // Удаляем первые 20 строк вместе с ближайшим date-сепаратором
-              let removed=0;
-              while(removed<20 && area.firstChild){
-                const el=area.firstChild;
-                if(el.classList?.contains('ps-history-hint')){el.remove();continue;}
-                area.removeChild(el);
-                removed++;
-              }
+        const ts=new Date(m.time).getTime();
+        if(prevTs===null||!isSameDay(prevTs,ts)){
+          const sep=buildDateSeparator(ts);
+          frag.appendChild(sep);
+          observeDateSeparator(sep);
+        }
+        frag.appendChild(buildRow(m));
+        prevTs=ts;
+        // В power-save обрезаем старые DOM-узлы если их слишком много
+        if(PS){
+          const rows=area.querySelectorAll('.msg-row');
+          if(rows.length > DOM_LIMIT + 20){
+            let removed=0;
+            while(removed<20 && area.firstChild){
+              const el=area.firstChild;
+              if(el.classList?.contains('ps-history-hint')){el.remove();continue;}
+              area.removeChild(el);
+              removed++;
             }
           }
         }
@@ -3508,16 +4711,17 @@ function appendOrReloadMsg(pid,m){
   if(activePid!==pid)return;
   const area=$('messagesArea');
   const ec=area.querySelector('.empty-chat');if(ec)ec.remove();
+  // ── Дедупликация DOM: если строка уже есть — заменяем, не добавляем новую ──
+  const existingRow=area.querySelector(`.msg-row[data-msgid="${m.id}"],.sys-msg[data-msgid="${m.id}"]`);
+  if(existingRow){
+    existingRow.replaceWith(buildRow(m));
+    return;
+  }
   const wasBot=area.scrollHeight-area.scrollTop-area.clientHeight<80;
   // Проверяем нужен ли разделитель дат
-  const allRows=area.querySelectorAll('.msg-row[data-msgid]');
+  const allRows=area.querySelectorAll('.msg-row[data-msgid],.sys-msg[data-msgid]');
   const lastRow=allRows.length?allRows[allRows.length-1]:null;
   if(lastRow){
-    const lastMsgId=lastRow.dataset.msgid;
-    // Нужно найти время последнего сообщения — берём из data-time атрибута если есть
-    // или ищем по DOM (время в msg-time-inline)
-    const lastTimeEl=lastRow.querySelector('.msg-time-inline');
-    // Для надёжности используем время нового сообщения и предыдущего
     const prevSep=area.querySelectorAll('.date-separator');
     const lastSep=prevSep.length?prevSep[prevSep.length-1]:null;
     const lastSepTs=lastSep?parseInt(lastSep.dataset.dateTs):null;
@@ -3529,6 +4733,8 @@ function appendOrReloadMsg(pid,m){
     }
   }
   area.appendChild(buildRow(m));
+  // Синхронизируем renderedCount чтобы loadChatHistory(false) не дублировал
+  renderedCount=area.querySelectorAll('.msg-row[data-msgid],.sys-msg[data-msgid]').length;
   if(wasBot)area.scrollTop=area.scrollHeight;
   else{const badge=$('scrollBadge');if(badge){badge.textContent=(parseInt(badge.textContent)||0)+1;$('scrollDownBtn').classList.add('has-badge');}}
   updateScrollBtn();
@@ -3661,26 +4867,33 @@ function showCtx(m,anchor,tx,ty){
     add('📌','Закрепить',()=>{closeAll();pinMessage(m);});
   }
   if(m.voice){
-    add('💾','Скачать',async()=>{
+    add('💾','Сохранить в файлы',async()=>{
       closeAll();
-      if(m.voice.data){downloadFile(m.voice.data,'voice.webm');}
-      else if(m.voice.blobId){
-        const url=await _blobToObjectURL(m.voice.blobId,'audio/webm');
-        if(url){const a=document.createElement('a');a.href=url;a.download='voice.webm';document.body.appendChild(a);a.click();document.body.removeChild(a);toast('Скачивание голосового');}
-        else toast('Голосовое недоступно','err');
-      }
+      const fname='voice_'+Date.now()+'.webm';
+      if(m.voice.data){await saveToFiles(m.voice.data,'audio/webm',fname,false);}
+      else if(m.voice.blobId){await saveToFiles(m.voice.blobId,'audio/webm',fname,true);}
+      else toast('Голосовое недоступно','err');
     });
   }
-  if(m.media)add('💾','Сохранить фото',()=>{closeAll();downloadFile(m.media.data,'image.jpg');});
-  if(m.file?.data||m.file?.blobId){
-    add('💾',m.file.type?.startsWith('audio/')?'Скачать аудио':'Скачать файл',async()=>{
+  if(m.media){
+    const isVid=m.media.type&&m.media.type.startsWith('video/');
+    const ext=m.media.type?(m.media.type.split('/')[1]||'jpg'):'jpg';
+    const fname=(isVid?'video_':'photo_')+Date.now()+'.'+ext;
+    add('💾',isVid?'Сохранить видео':'Сохранить в галерею',async()=>{
       closeAll();
-      if(m.file.data){downloadFile(m.file.data,m.file.name);}
-      else if(m.file.blobId){
-        const url=await _blobToObjectURL(m.file.blobId,m.file.type);
-        if(url){const a=document.createElement('a');a.href=url;a.download=m.file.name;document.body.appendChild(a);a.click();document.body.removeChild(a);toast('Скачивание '+m.file.name);}
-        else toast('Файл недоступен','err');
-      }
+      if(m.media.data){await saveToGallery(m.media.data,m.media.type||'image/jpeg',fname,false);}
+      else if(m.media.blobId){await saveToGallery(m.media.blobId,m.media.type||'image/jpeg',fname,true);}
+      else toast('Медиа недоступно','err');
+    });
+  }
+  if(m.file?.data||m.file?.blobId){
+    const isAudio=m.file.type?.startsWith('audio/');
+    const label=isAudio?'Сохранить аудио':'Сохранить в файлы';
+    add('💾',label,async()=>{
+      closeAll();
+      if(m.file.data){await saveToFiles(m.file.data,m.file.type,m.file.name,false);}
+      else if(m.file.blobId){await saveToFiles(m.file.blobId,m.file.type,m.file.name,true);}
+      else toast('Файл недоступен','err');
     });
   }
   if(m.text)add('📋','Копировать',()=>{closeAll();copyToClipboard(m.text).then(()=>toast('Скопировано ✓'));});
@@ -3743,6 +4956,8 @@ async function broadcastLastSeen(){
 window.leaveChat=async()=>{
   await broadcastLastSeen().catch(()=>{});
   activePid='';stopPeerActivity();_stopConnDots();cancelEdit();cancelReply();resetMsgSearch();exitSelectionMode();closeAll();clearMediaPreview();if(isRecording)cancelRecording();_stopPreviewAudio();$('voicePreviewBar').classList.remove('active');
+  // Закрываем видеоплеер если открыт
+  if(typeof closeVideoLightbox==='function') window.closeVideoLightbox();
   // Мгновенно скрываем панель стикеров (position:fixed — висит поверх всех экранов)
   const sp=$('stickerPanel');
   if(sp){sp.classList.remove('open','frozen');document.removeEventListener('click',_stickerOutsideClick);}
@@ -4062,6 +5277,7 @@ async function sendVoiceMessage(dataURL,duration,waveform){
 
 // ── VOICE PLAYBACK ──
 let currentAudio=null;
+let currentVoiceReset=null; // функция сброса волны текущего голосового плеера
 
 // ══════════════════════════════════════════════════════
 // ══════════════════════════════════════════════════════
@@ -4140,9 +5356,12 @@ function buildAudioPlayer(file, isSent, metaEl){
     if(!audio) return;
     const dur = getEffDur();
     const cur = audio.currentTime || 0;
-    const pct = dur > 0 ? Math.min(cur / dur, 1) * 100 : 0;
-    fill.style.width  = pct + '%';
-    thumb.style.left  = pct + '%';
+    const pct = dur > 0 ? Math.min(cur / dur, 1) : 0;
+    const W   = seekWrap.offsetWidth || 0;
+    const R   = 6.5; // радиус шарика (13px / 2)
+    const thumbLeft = pct * (W - R * 2); // от 0 до (W - 13)
+    fill.style.width = (thumbLeft + R) + 'px'; // до центра шарика
+    thumb.style.left = thumbLeft + 'px';
     timer.textContent = `${fmtT(cur)} / ${fmtT(dur)}`;
     if(isPlaying) rafId = requestAnimationFrame(updateUI);
   }
@@ -4158,8 +5377,8 @@ function buildAudioPlayer(file, isSent, metaEl){
       btn.innerHTML = '▶';
       btn.classList.remove('playing');
       cancelAnimationFrame(rafId);
-      fill.style.width = '0%';
-      thumb.style.left = '0%';
+      fill.style.width = '0px';
+      thumb.style.left = '0px';
       timer.textContent = `0:00 / ${fmtT(getEffDur())}`;
     };
     audio.onpause = () => {
@@ -4203,12 +5422,16 @@ function buildAudioPlayer(file, isSent, metaEl){
   function applySeek(clientX){
     initAudio();
     const r   = seekWrap.getBoundingClientRect();
-    const pct = Math.max(0, Math.min((clientX - r.left) / r.width, 1));
+    const R   = 6.5; // радиус шарика
+    const W   = r.width;
+    // Кликаем по треку — pct считаем относительно зоны движения шарика
+    const pct = Math.max(0, Math.min((clientX - r.left - R) / (W - R * 2), 1));
     const dur = getEffDur();
     if(dur > 0){
       audio.currentTime  = pct * dur;
-      fill.style.width   = (pct * 100) + '%';
-      thumb.style.left   = (pct * 100) + '%';
+      const thumbLeft    = pct * (W - R * 2);
+      fill.style.width   = (thumbLeft + R) + 'px';
+      thumb.style.left   = thumbLeft + 'px';
       timer.textContent  = `${fmtT(audio.currentTime)} / ${fmtT(dur)}`;
     }
   }
@@ -4228,6 +5451,260 @@ function buildAudioPlayer(file, isSent, metaEl){
   }
   // else: initAudio вызовется при первом клике на Play
   return wrap;
+}
+
+
+// ══════════════════════════════════════════════════════
+// КАСТОМНЫЙ ВИДЕОПЛЕЕР (Telegram-стиль)
+// Превью в чате — динамический размер как у фото.
+// Тап → открывается fullscreen lightbox с прогресс-баром.
+// ══════════════════════════════════════════════════════
+(function initVideoLightbox(){
+  const lb      = $('vidLightbox');
+  const video   = $('vidLbVideo');
+  const fill    = $('vidLbFill');
+  const thumb   = $('vidLbThumb');
+  const timer   = $('vidLbTimer');
+  const seekWrap= $('vidLbSeekWrap');
+  const closeBtn= $('vidLbClose');
+  const tapIcon = $('vidLbTapIcon');
+  if(!lb||!video) return;
+
+  let rafId = null;
+  let seekDrag = false;
+
+  function fmtT(s){
+    s = Math.max(0, Math.floor(s||0));
+    return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
+  }
+  function getEffDur(){
+    const d = video.duration;
+    return (d && isFinite(d) && d > 0) ? d : 0;
+  }
+  function updateSeek(){
+    const dur = getEffDur();
+    const cur = video.currentTime || 0;
+    const pct = dur > 0 ? Math.min(cur/dur,1)*100 : 0;
+    fill.style.width  = pct + '%';
+    thumb.style.left  = pct + '%';
+    timer.textContent = `${fmtT(cur)} / ${fmtT(dur)}`;
+    if(!video.paused && !video.ended) rafId = requestAnimationFrame(updateSeek);
+  }
+  function startRaf(){ cancelAnimationFrame(rafId); rafId = requestAnimationFrame(updateSeek); }
+  function stopRaf() { cancelAnimationFrame(rafId); }
+
+  function applySeek(clientX){
+    const r = seekWrap.getBoundingClientRect();
+    const pct = Math.max(0, Math.min((clientX - r.left) / r.width, 1));
+    const dur = getEffDur();
+    if(dur > 0){
+      video.currentTime = pct * dur;
+      fill.style.width  = (pct*100)+'%';
+      thumb.style.left  = (pct*100)+'%';
+      timer.textContent = `${fmtT(video.currentTime)} / ${fmtT(dur)}`;
+    }
+  }
+
+  // Seek events
+  seekWrap.addEventListener('click', e=>{e.stopPropagation(); applySeek(e.clientX);});
+  seekWrap.addEventListener('touchstart', e=>{seekDrag=true; applySeek(e.touches[0].clientX);},{passive:true});
+  seekWrap.addEventListener('touchmove',  e=>{if(seekDrag)applySeek(e.touches[0].clientX);},{passive:true});
+  seekWrap.addEventListener('touchend',   ()=>{seekDrag=false;});
+
+  // Тап по видео — пауза/воспроизведение
+  let tapIconTimer = null;
+  video.addEventListener('click', e=>{
+    e.stopPropagation();
+    if(video.paused || video.ended){ video.play(); }
+    else { video.pause(); }
+  });
+  video.addEventListener('play',  ()=>{ tapIcon.textContent='▶'; showTapIcon(); startRaf(); });
+  video.addEventListener('pause', ()=>{ tapIcon.textContent='⏸'; showTapIcon(); stopRaf(); });
+  video.addEventListener('ended', ()=>{
+    stopRaf();
+    fill.style.width='0%'; thumb.style.left='0%';
+    timer.textContent=`0:00 / ${fmtT(getEffDur())}`;
+    tapIcon.textContent='▶'; showTapIcon();
+  });
+  video.addEventListener('loadedmetadata',()=>{
+    timer.textContent=`0:00 / ${fmtT(getEffDur())}`;
+  });
+  video.addEventListener('timeupdate',()=>{
+    if(!rafId) updateSeek();
+  });
+
+  function showTapIcon(){
+    clearTimeout(tapIconTimer);
+    tapIcon.classList.add('show');
+    tapIconTimer = setTimeout(()=>tapIcon.classList.remove('show'), 700);
+  }
+
+  // Закрытие
+  closeBtn.addEventListener('click', e=>{e.stopPropagation(); window.closeVideoLightbox();});
+  lb.addEventListener('click', e=>{if(e.target===lb) window.closeVideoLightbox();});
+  document.addEventListener('keydown', e=>{ if(e.key==='Escape' && lb.classList.contains('open')) window.closeVideoLightbox(); });
+
+  window.openVideoLightbox = (src) => {
+    video.src = src;
+    video.currentTime = 0;
+    fill.style.width='0%'; thumb.style.left='0%';
+    timer.textContent='0:00 / 0:00';
+    lb.classList.add('open');
+    // Автовоспроизведение с небольшой задержкой после открытия
+    setTimeout(()=>{ video.play().catch(()=>{}); }, 120);
+  };
+
+  window.closeVideoLightbox = () => {
+    video.pause();
+    stopRaf();
+    lb.classList.remove('open');
+    setTimeout(()=>{ video.src=''; fill.style.width='0%'; thumb.style.left='0%'; }, 300);
+  };
+})();
+
+
+function buildVideoPlayer(file, isSent, m){
+  // ── Внешняя обёртка (как media-bubble у фото) ──
+  const outerWrap = document.createElement('div');
+  outerWrap.className = 'vid-bubble';
+
+  const MAX_W = Math.min(260, window.innerWidth * 0.72);
+  const MAX_H = 320;
+  const MIN_W = 120;
+
+  // Функция которая устанавливает размер обёртки
+  function applySizeFromVideo(vw, vh){
+    if(!vw||!vh) return;
+    const ratio = vw/vh;
+    let w, h;
+    if(ratio >= 1){
+      w = Math.min(vw, MAX_W);
+      h = w / ratio;
+      if(h > MAX_H){ h = MAX_H; w = h * ratio; }
+    } else {
+      h = Math.min(vh, MAX_H);
+      w = h * ratio;
+      if(w > MAX_W){ w = MAX_W; h = w / ratio; }
+      if(w < MIN_W){ w = MIN_W; h = w / ratio; }
+    }
+    w = Math.round(w); h = Math.round(h);
+    outerWrap.style.width  = w + 'px';
+    outerWrap.style.height = h + 'px';
+    thumb.style.width  = w + 'px';
+    thumb.style.height = h + 'px';
+  }
+
+  // Скрытый video-тег только для получения размеров и постера
+  const hiddenVid = document.createElement('video');
+  hiddenVid.preload = 'metadata';
+  hiddenVid.style.cssText = 'position:absolute;width:0;height:0;opacity:0;pointer-events:none';
+  hiddenVid.muted = true;
+
+  // Превью-изображение (canvas-постер из первого кадра)
+  const thumb = document.createElement('canvas');
+  thumb.className = 'vid-bubble-thumb';
+  thumb.style.cssText = `width:${MIN_W}px;height:${Math.round(MIN_W*9/16)}px;display:block;background:#111;border-radius:0`;
+
+  // Кнопка Play поверх превью
+  const playOverlay = document.createElement('div');
+  playOverlay.className = 'vid-play-overlay';
+  const playBtn = document.createElement('div');
+  playBtn.className = 'vid-play-btn';
+  playOverlay.appendChild(playBtn);
+
+  // Значок длительности (левый верхний угол)
+  const durBadge = document.createElement('div');
+  durBadge.className = 'vid-dur-badge';
+  durBadge.textContent = '0:00';
+
+  // Мета-overlay (время+галочки, правый нижний угол)
+  const metaOverlay = document.createElement('div');
+  metaOverlay.className = 'vid-meta-overlay';
+  const tEl = document.createElement('span');
+  tEl.className = 'msg-time-inline';
+  tEl.textContent = new Date(m.time).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});
+  metaOverlay.appendChild(tEl);
+  if(isSent){
+    const tk = document.createElement('span');
+    tk.className = 'msg-ticks' + (m.delivered?' double':' single');
+    tk.textContent = m.delivered ? '✔✔' : '✔';
+    metaOverlay.appendChild(tk);
+  }
+
+  outerWrap.appendChild(hiddenVid);
+  outerWrap.appendChild(thumb);
+  outerWrap.appendChild(playOverlay);
+  outerWrap.appendChild(durBadge);
+  outerWrap.appendChild(metaOverlay);
+
+  // Начальные размеры до загрузки
+  outerWrap.style.width  = MIN_W + 'px';
+  outerWrap.style.height = Math.round(MIN_W*9/16) + 'px';
+
+  // Функция получения постера из первого кадра
+  function captureFrame(videoEl){
+    try{
+      const vw = videoEl.videoWidth, vh = videoEl.videoHeight;
+      if(!vw||!vh) return;
+      applySizeFromVideo(vw, vh);
+      thumb.width  = parseInt(outerWrap.style.width);
+      thumb.height = parseInt(outerWrap.style.height);
+      const ctx = thumb.getContext('2d');
+      ctx.drawImage(videoEl, 0, 0, thumb.width, thumb.height);
+    }catch(e){}
+  }
+
+  // Src загрузка
+  let videoSrc = null;
+  const _initWithSrc = (src) => {
+    videoSrc = src;
+    hiddenVid.src = src;
+    hiddenVid.currentTime = 0.001; // тригерит первый кадр
+    hiddenVid.addEventListener('seeked', function onSeeked(){
+      hiddenVid.removeEventListener('seeked', onSeeked);
+      captureFrame(hiddenVid);
+      const dur = hiddenVid.duration;
+      if(dur && isFinite(dur)){
+        const s = Math.floor(dur);
+        durBadge.textContent = `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
+      }
+    },{once:true});
+    hiddenVid.addEventListener('loadedmetadata', function onMeta(){
+      hiddenVid.removeEventListener('loadedmetadata', onMeta);
+      const vw=hiddenVid.videoWidth, vh=hiddenVid.videoHeight;
+      if(vw&&vh) applySizeFromVideo(vw, vh);
+      const dur = hiddenVid.duration;
+      if(dur && isFinite(dur)){
+        const s = Math.floor(dur);
+        durBadge.textContent = `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
+      }
+    });
+  };
+
+  if(file.data){
+    _initWithSrc(file.data);
+  } else if(file._tempUrl){
+    _initWithSrc(file._tempUrl);
+  } else if(file.blobId){
+    const load = async () => {
+      if(file._tempUrl){ _initWithSrc(file._tempUrl); return; }
+      const url = await _blobToObjectURL(file.blobId, file.type||'video/mp4');
+      if(url) _initWithSrc(url);
+    };
+    if('IntersectionObserver' in window){
+      const io = new IntersectionObserver(en=>{if(en[0].isIntersecting){io.disconnect();load();}},{threshold:0.1});
+      io.observe(outerWrap);
+    } else { load(); }
+  }
+
+  // Тап по превью — открываем fullscreen плеер
+  outerWrap.addEventListener('click', e=>{
+    e.stopPropagation();
+    if(!videoSrc) return;
+    window.openVideoLightbox(videoSrc);
+  });
+
+  return outerWrap;
 }
 
 
@@ -4272,6 +5749,15 @@ function buildVoiceBubble(m,isSent){
     });
   }
 
+  // Полный сброс волны + таймера — используется при переключении на другой плеер
+  function resetWave(){
+    if(rafId){cancelAnimationFrame(rafId);rafId=null;}
+    isPlaying=false;
+    btn.innerHTML='▶';btn.classList.remove('playing');
+    timerEl.textContent=fmtDur(totalSec);
+    updateProgress(0);
+  }
+
   function getEffectiveDuration(){
     // Приоритет: сохранённая длительность записи (всегда точная),
     // затем audio.duration если он уже известен и конечен
@@ -4291,6 +5777,11 @@ function buildVoiceBubble(m,isSent){
   }
 
   function doPlay(){
+    // Сбрасываем волну предыдущего голосового плеера (если он отличается от нас)
+    if(currentVoiceReset && currentVoiceReset !== resetWave){
+      currentVoiceReset();
+    }
+    currentVoiceReset=resetWave;
     if(currentAudio&&currentAudio!==audio&&!currentAudio.paused)currentAudio.pause();
     if(!audio){
       // Обратная совместимость: data URL или blobId
@@ -4303,7 +5794,9 @@ function buildVoiceBubble(m,isSent){
           if(rafId){cancelAnimationFrame(rafId);rafId=null;}
           btn.innerHTML='▶';btn.classList.remove('playing');
           timerEl.textContent=fmtDur(totalSec);
-          updateProgress(1);
+          // Сбрасываем волну — сообщение уже прослушано, заливка исчезает
+          updateProgress(0);
+          if(currentVoiceReset===resetWave) currentVoiceReset=null;
         };
         audio.onpause=()=>{
           isPlaying=false;
@@ -5532,6 +7025,424 @@ const STICKER_NAMES={
   '🔷':['синий ромб','информация'],
   '🔸':['маленький оранжевый ромб'],
   '🔹':['маленький синий ромб'],
+  '⏭️':['следующий','перемотка вперёд','далее'],
+  '⏮️':['предыдущий','перемотка назад','назад'],
+  '◀️':['воспроизвести назад','влево'],
+  '☘️':['клевер','трилистник','удача'],
+  '☢️':['радиация','опасность','радиоактивность'],
+  '☣️':['биологическая опасность','биохазард'],
+  '♟️':['шахматы','пешка','стратегия'],
+  '♻️':['переработка','рециклинг','экология'],
+  '⚒️':['молот и кирка','инструменты','работа'],
+  '⚠️':['внимание','предупреждение','осторожно'],
+  '⛈️':['гроза','шторм','молния дождь'],
+  '⛎':['змееносец','зодиак'],
+  '⛏️':['кирка','майнинг','инструмент'],
+  '⛓️':['цепь','оковы','цепи'],
+  '⛩️':['тори','храм','япония'],
+  '⛰️':['гора','вершина','подъём'],
+  '⛳':['флаг на поле','гольф','лунка'],
+  '⛸️':['конёк','фигурное катание','каток'],
+  '⛽':['заправка','бензин','топливо'],
+  '❤️‍🔥':['горящее сердце','страсть','любовь огонь'],
+  '❤️‍🩹':['сердце с бинтом','выздоровление','исцеление'],
+  '➕':['плюс','сложение','добавить'],
+  '➖':['минус','вычитание','убрать'],
+  '➗':['деление','разделить'],
+  '🇦🇪':['оаэ','флаг оаэ','эмираты'],
+  '🇦🇷':['аргентина','флаг аргентины'],
+  '🇦🇹':['австрия','флаг австрии'],
+  '🇧🇩':['бангладеш','флаг бангладеш'],
+  '🇧🇪':['бельгия','флаг бельгии'],
+  '🇨🇭':['швейцария','флаг швейцарии'],
+  '🇨🇱':['чили','флаг чили'],
+  '🇨🇴':['колумбия','флаг колумбии'],
+  '🇩🇰':['дания','флаг дании'],
+  '🇪🇬':['египет','флаг египта'],
+  '🇫🇮':['финляндия','флаг финляндии'],
+  '🇬🇷':['греция','флаг греции'],
+  '🇮🇩':['индонезия','флаг индонезии'],
+  '🇮🇱':['израиль','флаг израиля'],
+  '🇮🇶':['ирак','флаг ирака'],
+  '🇮🇷':['иран','флаг ирана'],
+  '🇰🇪':['кения','флаг кении'],
+  '🇲🇽':['мексика','флаг мексики'],
+  '🇲🇾':['малайзия','флаг малайзии'],
+  '🇳🇬':['нигерия','флаг нигерии'],
+  '🇳🇱':['нидерланды','флаг нидерландов','голландия'],
+  '🇳🇴':['норвегия','флаг норвегии'],
+  '🇳🇿':['новая зеландия','флаг новой зеландии'],
+  '🇵🇪':['перу','флаг перу'],
+  '🇵🇭':['филиппины','флаг филиппин'],
+  '🇵🇰':['пакистан','флаг пакистана'],
+  '🇵🇱':['польша','флаг польши'],
+  '🇵🇹':['португалия','флаг португалии'],
+  '🇸🇦':['саудовская аравия','флаг саудовской аравии'],
+  '🇸🇪':['швеция','флаг швеции'],
+  '🇸🇬':['сингапур','флаг сингапура'],
+  '🇹🇭':['таиланд','флаг таиланда'],
+  '🇹🇷':['турция','флаг турции'],
+  '🇻🇳':['вьетнам','флаг вьетнама'],
+  '🇿🇦':['юар','флаг юар','южная африка'],
+  '🌠':['падающая звезда','метеор','желание'],
+  '🌤️':['солнце за облаком','переменная облачность','погода'],
+  '🌧️':['дождь','осадки','дождливо'],
+  '🌨️':['снегопад','снег идёт','зима'],
+  '🌩️':['молния','гроза','туча'],
+  '🌪️':['торнадо','смерч','ураган'],
+  '🌫️':['туман','мгла','непогода'],
+  '🌬️':['ветер','дует','порыв ветра'],
+  '🌵':['кактус','пустыня','колючка'],
+  '🍈':['дыня','мелон','фрукт'],
+  '🍉':['арбуз','фрукт','лето'],
+  '🍌':['банан','фрукт'],
+  '🍎':['яблоко','красное яблоко','фрукт'],
+  '🍏':['зелёное яблоко','фрукт'],
+  '🍐':['груша','фрукт'],
+  '🍖':['мясо на кости','еда','мясо'],
+  '🍗':['куриная ножка','еда','курица'],
+  '🍘':['рисовый крекер','снэк','еда'],
+  '🍙':['онигири','рис','суши'],
+  '🍚':['рис','вареный рис','еда'],
+  '🍛':['карри','рис карри','еда'],
+  '🍞':['хлеб','булка','еда'],
+  '🍠':['печёный батат','еда'],
+  '🍡':['данго','десерт','сладость'],
+  '🍢':['одэн','шашлычки','еда'],
+  '🍥':['нарутомаки','рыбный пирог','суши'],
+  '🍻':['кружки пива','тост','пиво'],
+  '🍾':['шампанское','бутылка','праздник'],
+  '🍿':['попкорн','кино','снэк'],
+  '🎅':['санта','дед мороз','новый год'],
+  '🎖️':['военная медаль','награда','орден'],
+  '🎗️':['ленточка','напоминание','солидарность'],
+  '🎙️':['микрофон на стойке','запись','подкаст'],
+  '🎚️':['регулятор уровня','звук','микшер'],
+  '🎛️':['регуляторы','микшер','настройки звука'],
+  '🎞️':['кинопленка','фильм','кадры'],
+  '🎟️':['билет','входной билет'],
+  '🎿':['лыжи','зимний спорт','горные лыжи'],
+  '🏃':['бежит','бег','спорт'],
+  '🏄':['серфер','сёрфинг','волна'],
+  '🏇':['скачки','верховая езда','жокей'],
+  '🏊':['пловец','плавание','спорт'],
+  '🏋️':['тяжёлая атлетика','штанга','тренировка'],
+  '🏌️':['гольфист','гольф','спорт'],
+  '🏍️':['мотоцикл','байк','мото'],
+  '🏎️':['гоночная машина','гонки','автоспорт'],
+  '🏑':['хоккей на траве','клюшка'],
+  '🏒':['хоккей','клюшка шайба'],
+  '🏔️':['снежная гора','вершина','альпы'],
+  '🏕️':['палатка','кемпинг','лагерь'],
+  '🏖️':['пляж','зонтик','отдых'],
+  '🏙️':['городской пейзаж','город','небоскрёбы'],
+  '🏛️':['колонны','музей','архитектура'],
+  '🏜️':['пустыня','песок','бархан'],
+  '🏝️':['необитаемый остров','остров','тропики'],
+  '🏞️':['национальный парк','природа','панорама'],
+  '🏟️':['стадион','арена','спорт'],
+  '🏳️':['белый флаг','капитуляция','сдаюсь'],
+  '🏳️‍⚧️':['трансгендерный флаг'],
+  '🏳️‍🌈':['радужный флаг','прайд'],
+  '🏴‍☠️':['пиратский флаг','пираты'],
+  '🏷️':['бирка','ярлык','тег'],
+  '🐎':['лошадь','конь','скачки'],
+  '🐣':['вылупляющийся птенец','новорождённый'],
+  '🐤':['жёлтый птенец','цыплёнок'],
+  '🐥':['птенец спереди','цыплёнок'],
+  '🐪':['верблюд','пустыня'],
+  '🐫':['верблюд двугорбый','пустыня'],
+  '🐽':['свиной нос','хрюшка'],
+  '👁️':['глаз','зрение','смотрит'],
+  '👄':['губы','рот','поцелуй'],
+  '👣':['следы','шаги','отпечатки'],
+  '👨':['мужчина','парень'],
+  '👩':['женщина','девушка'],
+  '👮':['полицейский','коп'],
+  '👯':['близняшки в ушках','танец'],
+  '👰':['невеста','свадьба'],
+  '👲':['человек в шапке','азия'],
+  '👳':['человек в тюрбане'],
+  '👴':['пожилой мужчина','дедушка'],
+  '👵':['пожилая женщина','бабушка'],
+  '👷':['строитель','рабочий'],
+  '👼':['ангелочек','младенец ангел'],
+  '💁':['информация','помощь','стойка информации'],
+  '💃':['танцовщица','танец','фламенко'],
+  '💆':['массаж','спа','расслабление'],
+  '💇':['стрижка','парикмахер'],
+  '💹':['график роста','финансы','рост'],
+  '💽':['мини-диск','хранилище данных'],
+  '📇':['картотека','карточки'],
+  '📞':['телефонная трубка','звонок'],
+  '📟':['пейджер','бипер'],
+  '📠':['факс','факсимиле'],
+  '📰':['газета','новости'],
+  '📼':['видеокассета','vhs','ретро'],
+  '📽️':['кинопроектор','кино','фильм'],
+  '🔖':['закладка','тег'],
+  '🔫':['пистолет','оружие','водяной пистолет'],
+  '🔺':['красный треугольник вверх','стрелка вверх'],
+  '🔻':['красный треугольник вниз','стрелка вниз'],
+  '🕉️':['ом','аум','индуизм'],
+  '🕯️':['свеча','свет','памятная свеча'],
+  '🕴️':['человек в костюме левитирует','деловой'],
+  '🕷️':['паук','насекомое','страшно'],
+  '🕹️':['джойстик','игры','контроллер'],
+  '🕺':['танцующий мужчина','диско'],
+  '🖊️':['ручка','шариковая ручка'],
+  '🖋️':['перо','чернила','письмо'],
+  '🖐️':['рука раскрытая','пять пальцев'],
+  '🖼️':['картина','рамка','искусство'],
+  '🗂️':['картотека','папки','организация'],
+  '🗃️':['ящик с карточками','архив'],
+  '🗄️':['картотечный шкаф','архив'],
+  '🗓️':['календарь спираль','план'],
+  '🗞️':['свёрнутая газета','новости'],
+  '🗡️':['кинжал','нож','оружие'],
+  '🗣️':['говорящая голова','речь','диалог'],
+  '🗺️':['карта мира','путешествие','навигация'],
+  '😵‍💫':['кружится голова','дезориентация'],
+  '😶‍🌫️':['голова в облаке','туман в мыслях'],
+  '😾':['злой кот','недовольный кот'],
+  '😿':['плачущий кот','грусть кот'],
+  '🙃':['перевёрнутое лицо','ирония','сарказм'],
+  '🙅':['нет','запрет жест','отказ'],
+  '🙆':['да','окей жест','согласие'],
+  '🙇':['поклон','извинение','уважение'],
+  '🙋':['поднятая рука','вопрос','я'],
+  '🙍':['недовольство','хмурится'],
+  '🙎':['обиженный','недовольная мина'],
+  '🚃':['вагон','поезд'],
+  '🚄':['скоростной поезд','хайспид'],
+  '🚅':['пуля поезд','синкансэн'],
+  '🚈':['лёгкое метро','рельсы'],
+  '🚉':['станция','вокзал'],
+  '🚊':['трамвай','рельсовый транспорт'],
+  '🚋':['трамвайный вагон','транспорт'],
+  '🚍':['автобус приближается','транспорт'],
+  '🚏':['автобусная остановка','транспорт'],
+  '🚐':['маршрутка','микроавтобус'],
+  '🚚':['грузовик доставка','транспорт'],
+  '🚛':['фура','грузовик'],
+  '🚝':['монорельс','транспорт'],
+  '🚞':['горный поезд','транспорт'],
+  '🚥':['светофор горизонтальный'],
+  '🚦':['светофор','сигнал'],
+  '🚯':['не мусорить','запрет мусор'],
+  '🚱':['непитьевая вода','запрет'],
+  '🚳':['велосипед запрещён','знак'],
+  '🚴':['велосипедист','спорт'],
+  '🚶':['пешеход','прогулка'],
+  '🚷':['пешеходам запрещено','знак'],
+  '🚸':['дети на дороге','осторожно дети'],
+  '🛋️':['диван и лампа','мебель','уют'],
+  '🛏️':['кровать','сон','мебель'],
+  '🛠️':['инструменты','ремонт','настройка'],
+  '🛡️':['щит','защита'],
+  '🛥️':['моторная яхта','лодка'],
+  '🛰️':['спутник','космос'],
+  '🛹':['скейтборд','спорт'],
+  '🛼':['роликовый конёк','спорт'],
+  '🤦':['facepalm','рукалицо','разочарование'],
+  '🤮':['рвота','тошнит','фу'],
+  '🤰':['беременная','живот'],
+  '🤱':['кормление грудью','мама'],
+  '🤵':['жених','смокинг'],
+  '🤶':['миссис клаус','новый год'],
+  '🤷':['не знаю','пожимает плечами','без понятия'],
+  '🤸':['сальто','гимнастика'],
+  '🤺':['фехтование','спорт'],
+  '🤼':['борьба','спорт'],
+  '🤽':['водное поло','спорт'],
+  '🤾':['гандбол','спорт'],
+  '🥀':['увядший цветок','грусть'],
+  '🥅':['ворота','спорт'],
+  '🥍':['лакросс','спорт'],
+  '🥏':['летающий диск','фрисби'],
+  '🥐':['круассан','завтрак'],
+  '🥖':['багет','хлеб'],
+  '🥛':['стакан молока','молоко'],
+  '🥜':['арахис','орех'],
+  '🥝':['киви','фрукт'],
+  '🥟':['вареник','пельмень','еда'],
+  '🥣':['миска','каша','еда'],
+  '🥨':['крендель','снэк'],
+  '🥩':['стейк','мясо'],
+  '🥪':['сэндвич','бутерброд'],
+  '🥮':['лунный пряник','десерт'],
+  '🥯':['бейгл','завтрак'],
+  '🥳':['party face','праздник','вечеринка'],
+  '🥴':['пьяное лицо','кружится','тошнит'],
+  '🥷':['ниндзя','шпион'],
+  '🦣':['мамонт','доисторическое'],
+  '🦤':['додо','птица'],
+  '🦧':['орангутан','обезьяна'],
+  '🦪':['устрица','морепродукты'],
+  '🦬':['бизон','животное'],
+  '🧀':['сыр','еда'],
+  '🧈':['масло','еда'],
+  '🧍':['стоящий человек','стоит'],
+  '🧎':['человек на коленях','молитва'],
+  '🧏':['человек с нарушением слуха','жест'],
+  '🧑‍⚖️':['судья','юстиция'],
+  '🧑‍✈️':['пилот','авиация'],
+  '🧑‍🌾':['фермер','сельское хозяйство'],
+  '🧑‍🔧':['механик','ремонт'],
+  '🧑‍🚒':['пожарный','спасатель'],
+  '🧑‍🦯':['человек с белой палочкой','незрячий'],
+  '🧑‍🦰':['рыжие волосы','человек'],
+  '🧑‍🦱':['кудрявые волосы','человек'],
+  '🧑‍🦲':['лысый','человек без волос'],
+  '🧑‍🦳':['седые волосы','человек'],
+  '🧑‍🦼':['человек в электроколяске'],
+  '🧑‍🦽':['человек в инвалидной коляске'],
+  '🧓':['пожилой человек','старость'],
+  '🧕':['женщина в хиджабе'],
+  '🧖':['человек в сауне','спа'],
+  '🧗':['скалолазание','спорт'],
+  '🧘':['медитация','йога','спокойствие'],
+  '🧞':['джинн','волшебство'],
+  '🧟':['зомби','хэллоуин'],
+  '🧾':['чек','квитанция'],
+  '🩵':['голубое сердце','симпатия'],
+  '🩶':['серое сердце','нейтральность'],
+  '🩷':['розовое сердце','нежность'],
+  '🪀':['йо-йо','игрушка'],
+  '🪅':['пиньята','праздник'],
+  '🪓':['топор','инструмент'],
+  '🪔':['масляная лампа','свет','дия'],
+  '🪕':['банджо','музыка'],
+  '🪗':['аккордеон','музыка'],
+  '🪘':['барабан','музыка'],
+  '🪛':['отвёртка','инструмент'],
+  '🪜':['лестница','инструмент'],
+  '🪞':['зеркало','отражение'],
+  '🪨':['камень','скала'],
+  '🪬':['амулет хамса','защита','оберег'],
+  '🪰':['муха','насекомое'],
+  '🪲':['жук','насекомое'],
+  '🪴':['растение в горшке','комнатное растение'],
+  '🪵':['бревно','дерево'],
+  '🪶':['перо','лёгкость'],
+  '🪽':['крыло','крылья','полёт'],
+  '🫓':['лепёшка','хлеб','пита'],
+  '🫦':['кусает губу','губы'],
+  '🫰':['щелчок пальцами','снэп'],
+  '🫱':['рука вправо','жест'],
+  '🫲':['рука влево','жест'],
+  '🫳':['ладонь вниз','жест'],
+  '🫴':['ладонь вверх','держит','жест'],
+  '©️':['копирайт','авторское право'],
+  '®️':['зарегистрированный товарный знак'],
+  '™️':['товарный знак','тм'],
+  '⏱️':['секундомер','время'],
+  '⏲️':['таймер','часы','будильник'],
+  '♿':['инвалидное кресло','доступность'],
+  '⚛️':['атом','наука','физика'],
+  '⚜️':['флёр-де-лис','лилия','герб'],
+  '⛹️':['игра с мячом','баскетбол'],
+  '〽️':['знак часть','японский символ'],
+  '㊗️':['поздравление','иероглиф'],
+  '㊙️':['секрет','тайна','иероглиф'],
+  '🅰️':['группа крови а','буква а'],
+  '🅱️':['группа крови б','буква б'],
+  '🅾️':['группа крови о','буква о'],
+  '🅿️':['парковка','буква п'],
+  '🆎':['группа крови аб'],
+  '🇧🇾':['беларусь','флаг беларуси','белоруссия'],
+  '🈁':['здесь','японский знак'],
+  '🈂️':['услуга','японский знак'],
+  '🈲':['запрещено','японский знак'],
+  '🈳':['свободно','вакансия','японский знак'],
+  '🈴':['проходной балл','японский знак'],
+  '🈸':['заявка','японский знак'],
+  '🈺':['открыто','бизнес','японский знак'],
+  '🍅':['помидор','томат','овощ'],
+  '🍆':['баклажан','овощ'],
+  '🍊':['мандарин','апельсин','цитрус'],
+  '🍋':['лимон','цитрус'],
+  '🏄‍♀️':['сёрфингистка','волна'],
+  '🏄‍♂️':['серфер','волна'],
+  '🏊‍♀️':['пловчиха','плавание'],
+  '🏊‍♂️':['пловец','плавание'],
+  '🏵️':['розетка','медаль','цветок'],
+  '🐀':['крыса','грызун'],
+  '🐁':['мышь','грызун'],
+  '🐕‍🦺':['собака-помощник','служебная собака'],
+  '💆‍♀️':['массаж женщина','спа'],
+  '💆‍♂️':['массаж мужчина','спа'],
+  '💇‍♀️':['стрижка женщина','парикмахер'],
+  '💇‍♂️':['стрижка мужчина','парикмахер'],
+  '💠':['ромб с точкой','узор'],
+  '💮':['белый цветок','отлично','оценка'],
+  '📳':['виброрежим','вибро'],
+  '📴':['телефон выключен','без сигнала'],
+  '📶':['сигнал','антенна','связь'],
+  '🔅':['тусклая яркость','низкая яркость'],
+  '🔆':['яркость','высокая яркость','солнце'],
+  '🔏':['замок с пером','подпись','приватность'],
+  '🔰':['японский начинающий','новичок'],
+  '🔱':['трезубец','оружие нептуна'],
+  '🕎':['ханукия','менора','иудаизм'],
+  '🕰️':['настенные часы','время'],
+  '🖇️':['скрепки','канцелярия'],
+  '🙅‍♀️':['нет женщина','запрет'],
+  '🙅‍♂️':['нет мужчина','запрет'],
+  '🙆‍♀️':['да женщина','окей'],
+  '🙆‍♂️':['да мужчина','окей'],
+  '🙇‍♀️':['поклон женщина','извинение'],
+  '🙇‍♂️':['поклон мужчина','извинение'],
+  '🙋‍♀️':['рука вверх женщина','вопрос'],
+  '🙋‍♂️':['рука вверх мужчина','вопрос'],
+  '🚣':['весло','лодка'],
+  '🚣‍♀️':['гребля женщина','лодка'],
+  '🚣‍♂️':['гребля мужчина','лодка'],
+  '🚮':['урна','выбросить мусор'],
+  '🚰':['питьевая вода','кран'],
+  '🚴‍♀️':['велосипедистка','спорт'],
+  '🚴‍♂️':['велосипедист','спорт'],
+  '🚶‍♀️':['пешеход женщина','прогулка'],
+  '🚶‍♂️':['пешеход мужчина','прогулка'],
+  '🚹':['мужской туалет','знак мужчина'],
+  '🚺':['женский туалет','знак женщина'],
+  '🚻':['туалет','уборная'],
+  '🚼':['детская комната','знак малыш'],
+  '🚾':['туалет wc'],
+  '🛂':['паспортный контроль'],
+  '🛃':['таможня'],
+  '🛄':['выдача багажа'],
+  '🛅':['камера хранения багажа'],
+  '🛎️':['колокольчик','звонок','отель'],
+  '🛐':['место молитвы','религия'],
+  '🛗':['лифт','элеватор'],
+  '🛜':['wi-fi','вайфай','интернет'],
+  '🛞':['колесо','шина'],
+  '🛟':['спасательный круг','безопасность'],
+  '🤦‍♀️':['facepalm женщина','разочарование'],
+  '🤦‍♂️':['facepalm мужчина','разочарование'],
+  '🤷‍♀️':['не знаю женщина','пожимает плечами'],
+  '🤷‍♂️':['не знаю мужчина','пожимает плечами'],
+  '🥃':['виски','стакан','напиток'],
+  '🥒':['огурец','овощ'],
+  '🥬':['листовая капуста','салат','овощ'],
+  '🧄':['чеснок','овощ'],
+  '🧎‍♀️':['на коленях женщина','молитва'],
+  '🧘‍♀️':['йога женщина','медитация'],
+  '🧘‍♂️':['йога мужчина','медитация'],
+  '🧮':['счёты','счёт','математика'],
+  '🧯':['огнетушитель','пожар'],
+  '🧱':['кирпич','стройка'],
+  '🩸':['кровь','капля крови'],
+  '🩼':['костыль','травма'],
+  '🪂':['парашют','прыжок'],
+  '🪇':['маракасы','музыка'],
+  '🪙':['монета','деньги'],
+  '🪡':['игла','шитьё'],
+  '🪢':['узел','верёвка'],
+  '🪧':['плакат','табличка','протест'],
+  '🪪':['id-карта','документ'],
+  '🫛':['стручок горошка','овощ'],
 };
 
 // Все паки стикеров
@@ -5546,91 +7457,115 @@ const STICKER_PACKS=[
     id:'smileys',
     icon:'😀',
     name:'Смайлики',
-    stickers:['😀','😃','😄','😁','😆','😅','🤣','😂','🙂','😊','😇','🥰','😍','🤩','😘','😗','😚','😙','🥲','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔','🤐','😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤧','🥵','🥶','🥴','😵','🤯','🥳','🥸','🧐','🤓','🤩','😶‍🌫️','🫨']
+    stickers:['😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','😊','😇','🥰','😍','🤩','😘','😗','😚','😙','🥲','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🫢','🫣','🤫','🤔','🫡','🤐','🤨','😐','😑','😶','😶‍🌫️','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴','😵','😵‍💫','🤯','🥳','🥸','😎','🤓','🧐']
   },
   {
     id:'faces',
     icon:'😢',
     name:'Эмоции',
-    stickers:['😎','🥸','🤓','🧐','😕','😟','🙁','☹️','😮','😯','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','🤬','😈','👿','💀','☠️','💩','🤡','👹','👺','👻','👽','👾','🤖','😺','😸','😹','😻','😼','😽','🙀','🫠','🫡','🥹','🤨','🫥','😵','🫣','🫢','🫤','🫨']
+    stickers:['😕','🫤','😟','🙁','☹️','😮','😯','😲','😳','🥺','🥹','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','🤬','😈','👿','💀','☠️','💩','🤡','👹','👺','👻','👽','👾','🤖','🎃','😺','😸','😹','😻','😼','😽','🙀','😿','😾','🫠','🫥','🫨']
   },
   {
     id:'gestures',
     icon:'👋',
     name:'Жесты',
-    stickers:['👋','🤚','🖐','✋','🖖','👌','🤌','🤏','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','👍','👎','✊','👊','🤛','🤜','👏','🙌','🫶','👐','🤲','🤝','🙏','✍️','💅','🤳','💪','🦾','🦵','🦶','👂','👃','👀','👅','👁','🫀','🫁','🦷','🦴','🧠','🦻','🫵','🫸','🫷']
-  },
-  {
-    id:'animals',
-    icon:'🐶',
-    name:'Животные',
-    stickers:['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🙈','🙉','🙊','🐔','🐧','🐦','🦆','🦅','🦉','🦇','🐺','🐗','🐴','🦄','🐝','🪲','🐛','🦋','🐌','🐞','🐜','🦟','🦗','🦂','🐢','🐍','🦎','🦖','🦕','🐙','🦑','🦐','🦞','🦀','🐡','🐠','🐟','🐬','🐳','🐋','🦈','🐊','🦦','🦥','🦘','🦏','🦛','🐘','🦒','🦓','🦬','🐃','🐂','🐄','🐎','🐖','🐏','🐑','🦙','🐐','🦌','🐕','🐩','🦮','🐈','🪶','🦤','🦚','🦜','🦢','🪽','🐓','🦃','🦩']
-  },
-  {
-    id:'nature',
-    icon:'🌊',
-    name:'Природа',
-    stickers:['🌊','💧','💦','🌧','⛈','🌩','🌨','❄️','🌬','💨','🌪','🌈','☀️','🌤','⛅','☁️','🌙','🌛','🌜','🌝','🌚','🌞','⭐','🌟','💫','✨','🌸','🌺','🌻','🌹','🌷','💐','🍀','🌿','🌱','🌲','🌳','🌴','🍁','🍂','🍃','🌾','🍄','🌰','🏔','🗻','🌋','🏕','🏖','🏜','🏝','🏞','🌍','🌎','🌏','🌌','🪐','☄️','🌑','🌕','🌊','🪸','🪨','🪵','🌵','🎋','🎍','☘️','🪴']
-  },
-  {
-    id:'food',
-    icon:'🍕',
-    name:'Еда',
-    stickers:['🍕','🍔','🍟','🌭','🌮','🌯','🥙','🧆','🥚','🍳','🥘','🍲','🥣','🥗','🍿','🧈','🥫','🍱','🍣','🍤','🍥','🥮','🍡','🧁','🍰','🎂','🍮','🍭','🍬','🍫','🍩','🍪','🌰','🥜','🍯','🧋','🍺','🥂','🍷','🍸','🍹','🧃','🥤','🧊','🍼','☕','🫖','🍵','🧉','🍶','🥐','🥖','🫓','🥨','🧀','🥞','🧇','🥓','🌽','🫑','🥦','🥕','🧅','🥑','🍇','🍓','🫐','🍒','🍑','🥭','🍍','🥥','🌶️','🫙','🍜','🍝','🫔','🍛','🍚','🍙','🍘','🍠','🥟','🦪','🧆','🫕']
-  },
-  {
-    id:'travel',
-    icon:'✈️',
-    name:'Транспорт',
-    stickers:['✈️','🚀','🛸','🚁','🛶','⛵','🚤','🛥','🚢','🚂','🚃','🚄','🚅','🚆','🚇','🚈','🚉','🚊','🚝','🚞','🚋','🚌','🚍','🏎','🚐','🚑','🚒','🚓','🚕','🚗','🚙','🛻','🚚','🚜','🛵','🏍','🚲','🛴','🛹','🛼','🚏','⛽','🚦','🚥','🗺','🧭','🏔','🗻','🌋','🏕','🏖','🏜','🏝','🏞','🏟','🏛','🗼','🗽','🏰','🌉','🌃','🌆','🌅','🏙','🌇','🌁','⛩','🕌','⛪','🏯','🏰','🗿','🛕','🕍']
-  },
-  {
-    id:'activities',
-    icon:'⚽',
-    name:'Спорт',
-    stickers:['⚽','🏀','🏈','⚾','🥎','🏐','🏉','🥏','🎾','🪃','🏸','🏒','🥅','⛳','🎿','🛹','🎣','🤿','🥊','🥋','🎽','⛸','🏋️','🤼','🤸','🏊','🚴','🏇','🤺','🤾','🤽','🏄','🧘','🤾','🏌️','🏄','🧗','🤸','🏋️','🤼','🏆','🥇','🥈','🥉','🏅','🎖','🎗','🎫','🎟','🎪','🤹','🎭','🎨','🖼','🎬','🎤','🎧','🎼','🎵','🎶','🎷','🥁','🎸','🎹','🎻','🎺','🪗','🪘','🪕']
-  },
-  {
-    id:'objects',
-    icon:'💎',
-    name:'Предметы',
-    stickers:['💎','💍','👑','🏆','🎁','🎈','🎉','🎊','🎀','🔮','🪄','🧿','🧸','🪆','🎲','♟','🎯','🎳','🎮','🕹','🎰','🧩','🪀','🪁','🧵','🧶','💡','🔦','🕯','🪔','🧲','💻','🖥','🖨','⌨️','🖱','📱','☎️','📺','📷','📸','📹','🎥','📽','🔭','🔬','📡','🛰','🔑','🗝','🔒','🔓','🔨','🪓','⛏','🔧','🔩','⚙️','🛠','🪛','🪚','🔫','🪃','🛡','⚔️','🪤','🪣','🧰','🪜','🧲','🪝']
-  },
-  {
-    id:'symbols',
-    icon:'❤️',
-    name:'Символы',
-    stickers:['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟','❤️‍🔥','❤️‍🩹','🩷','🩵','🩶','☮️','⚡','🔥','💧','🌊','💨','🌈','⭐','🌟','💫','✨','♾️','✅','❌','💯','🔴','🟠','🟡','🟢','🔵','🟣','⚫','⚪','🔶','🔷','🔸','🔹','▶️','⏸️','⏹️','⏺️','🔁','🔂','🔀','⏩','⏪','🆕','🆓','🆒','🆗','🆙','🆚']
-  },
-  {
-    id:'memes',
-    icon:'🗿',
-    name:'Мемы',
-    stickers:['🗿','💅','🤌','😤','🥴','🤡','💀','👁','🧌','🫠','🤯','🥹','🫡','🤨','🫥','😵','🥸','🙃','😬','🤪','😜','😝','🤑','👻','💩','🤖','👽','🫣','🫢','🫤','🫨','🥲','🤭','🤫','😒','🙄','😏','🫵','🫸','🫷','🤙','🤘','🤞','✌️','🤟','🖖','🗣','👤','👥','🫂','💢','🎭','🤹','🃏','🎰','🦹','🦸','🧙','🧛','🧟','🧞','😈','👿','🤺','🥷']
+    stickers:['👋','🤚','🖐️','✋','🖖','🫱','🫲','🫳','🫴','👌','🤌','🤏','✌️','🤞','🫰','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','👍','👎','✊','👊','🤛','🤜','👏','🙌','🫶','👐','🤲','🤝','🙏','✍️','💅','🤳','💪','🦾','🦵','🦶','👂','🦻','👃','🧠','🫀','🫁','🦷','🦴','👀','👁️','👅','👄','🫦','🫵','🫸','🫷']
   },
   {
     id:'people',
     icon:'🧑',
     name:'Люди',
-    stickers:['🧑','👶','🧒','👦','👧','🧑‍💻','🧑‍🎨','🧑‍🍳','🧑‍🔬','🧑‍🚀','🧑‍⚕️','🧑‍🏫','🧑‍🎤','🧑‍🏭','🕵️','💂','🧙','🧚','🧛','🧜','🧝','🦸','🦹','🤴','👸','🫅','🧑‍🦯','🧑‍🦼','🧑‍🦽','👮','🧑‍🚒','🧑‍✈️','🧑‍🌾','🧑‍🔧','🧑‍🏫','👷','🎅','🤶','🧓','👴','👵','🙅','🙆','💁','🙋','🧏','🙇','🤦','🤷','💆','💇','🛀','🧖','🕺','💃','🚶','🧍','🧎','🏃']
+    stickers:['🧑','👶','🧒','👦','👧','🧑‍🦱','🧑‍🦰','🧑‍🦳','🧑‍🦲','👨','👩','🧓','👴','👵','🙍','🙎','🙅','🙆','💁','🙋','🧏','🙇','🤦','🤷','👮','🕵️','💂','🥷','👷','🤴','👸','👳','👲','🧕','🤵','👰','🤰','🤱','👼','🎅','🤶','🦸','🦹','🧙','🧚','🧛','🧜','🧝','🧞','🧟','💆','💇','🚶','🧍','🧎','🏃','💃','🕺','🕴️','👯','🧖','🧘','👥','👤','🫂','🗣️','👣','🧑‍💻','🧑‍🎨','🧑‍🍳','🧑‍🔬','🧑‍🚀','🧑‍⚕️','🧑‍🏫','🧑‍🎤','🧑‍🏭','🧑‍✈️','🧑‍🌾','🧑‍🔧','🧑‍🚒','🧑‍⚖️','🧑‍🦯','🧑‍🦼','🧑‍🦽','🫅','🧎‍♀️','🚣','⛹️','🏊‍♂️','🏊‍♀️','🚣‍♂️','🚣‍♀️','🏄‍♂️','🏄‍♀️','🚴‍♂️','🚴‍♀️','🚶‍♂️','🚶‍♀️','🧘‍♂️','🧘‍♀️','💆‍♂️','💆‍♀️','💇‍♂️','💇‍♀️','🙇‍♂️','🙇‍♀️','🙅‍♂️','🙅‍♀️','🙆‍♂️','🙆‍♀️','🙋‍♂️','🙋‍♀️','🤦‍♂️','🤦‍♀️','🤷‍♂️','🤷‍♀️']
   },
   {
-    id:'flags',
-    icon:'🏳️',
-    name:'Флаги',
-    stickers:['🇷🇺','🇺🇸','🇬🇧','🇩🇪','🇫🇷','🇯🇵','🇨🇳','🇰🇷','🇮🇹','🇪🇸','🇧🇷','🇦🇺','🇨🇦','🇮🇳','🇺🇦','🇵🇱','🇳🇱','🇸🇪','🇳🇴','🇩🇰','🇫🇮','🇨🇭','🇦🇹','🇧🇪','🇵🇹','🇬🇷','🇹🇷','🇮🇱','🇸🇦','🇦🇪','🇲🇽','🇦🇷','🇨🇱','🇨🇴','🇵🇪','🇹🇭','🇻🇳','🇵🇭','🇮🇩','🇲🇾','🇸🇬','🇳🇿','🇿🇦','🇪🇬','🇰🇪','🇳🇬','🇵🇰','🇧🇩','🇮🇷','🇮🇶','🏴‍☠️','🏳️','🏴','🚩','🏁','🏳️‍🌈','🏳️‍⚧️']
+    id:'animals',
+    icon:'🐶',
+    name:'Животные',
+    stickers:['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐽','🐸','🐵','🙈','🙉','🙊','🐔','🐧','🐦','🐤','🐣','🐥','🦆','🦅','🦉','🦇','🐺','🐗','🐴','🦄','🐝','🪲','🐛','🦋','🐌','🐞','🐜','🪰','🦟','🦗','🕷️','🦂','🐢','🐍','🦎','🦖','🦕','🐙','🦑','🦐','🦞','🦀','🐡','🐠','🐟','🐬','🐳','🐋','🦈','🐊','🐅','🐆','🦓','🦍','🦧','🦣','🐘','🦛','🦏','🐪','🐫','🦒','🦘','🦬','🐃','🐂','🐄','🐎','🐖','🐏','🐑','🦙','🐐','🦌','🐕','🦮','🐩','🐈','🐈‍⬛','🐓','🦃','🦤','🦚','🦜','🦢','🦩','🕊️','🐇','🦝','🦨','🦡','🦫','🦦','🦥','🐿️','🦔','🐾','🪶','🪽','🐀','🐁','🩼','🐕‍🦺']
   },
   {
-    id:'zodiac',
-    icon:'⭐',
-    name:'Зодиак',
-    stickers:['♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓','⛎','🔯','✡️','🕉','☪️','✝️','☮️','☯️','🌙','⭐','🌟','💫','✨','🌠','🌌','🪐','🌙','☀️','🌑','🌒','🌓','🌔','🌕','🌖','🌗','🌘','🌛','🌜','🌝','🌚','🌞','☄️','🌈','⚡','🔮','🪄','🧿','📿','🔭','🛸','🚀']
+    id:'nature',
+    icon:'🌊',
+    name:'Природа',
+    stickers:['🌊','💧','💦','🌧️','⛈️','🌩️','🌨️','❄️','🌬️','💨','🌪️','🌈','☀️','🌤️','⛅','☁️','🌫️','🌸','🌺','🌻','🌹','🥀','🌷','💐','🍀','🌿','☘️','🌱','🌲','🌳','🌴','🍁','🍂','🍃','🌾','🌵','🎋','🎍','🪴','🍄','🌰','🪨','🪵','🏔️','⛰️','🗻','🌋','🏕️','🏖️','🏜️','🏝️','🏞️','🪸','🏵️','💮']
+  },
+  {
+    id:'space',
+    icon:'🌌',
+    name:'Космос',
+    stickers:['🌍','🌎','🌏','🌌','🪐','☄️','🌑','🌒','🌓','🌔','🌕','🌖','🌗','🌘','🌙','🌛','🌜','🌝','🌚','🌞','⭐','🌟','💫','✨','🌠','🚀','🛸','🔭','🔅','🔆']
+  },
+  {
+    id:'food',
+    icon:'🍕',
+    name:'Еда',
+    stickers:['🍕','🍔','🍟','🌭','🌮','🌯','🥙','🧆','🥚','🍳','🥘','🍲','🥣','🥗','🍿','🧈','🥫','🍱','🍣','🍤','🍥','🥮','🍡','🧁','🍰','🎂','🍮','🍭','🍬','🍫','🍩','🍪','🥜','🍯','🥐','🥖','🫓','🥨','🧀','🥞','🧇','🥓','🌽','🫑','🥦','🥕','🧅','🥑','🍇','🍓','🫐','🍒','🍑','🥭','🍍','🥥','🍌','🍎','🍏','🍐','🍈','🍉','🥝','🌶️','🫙','🍜','🍝','🫔','🍛','🍚','🍙','🍘','🍠','🥟','🦪','🍢','🥩','🍖','🍗','🥪','🥯','🍞','🫕','🍆','🥬','🫛','🍅','🥒','🧄','🍋','🍊']
+  },
+  {
+    id:'drinks',
+    icon:'🧋',
+    name:'Напитки',
+    stickers:['🧋','🍺','🍻','🥂','🍷','🍸','🍹','🧃','🥤','🧊','🍼','☕','🫖','🍵','🧉','🍶','🥛','🍾','🥃']
+  },
+  {
+    id:'travel',
+    icon:'✈️',
+    name:'Транспорт',
+    stickers:['✈️','🛩️','🚁','🛶','⛵','🚤','🛥️','🚢','🚂','🚃','🚄','🚅','🚆','🚇','🚈','🚉','🚊','🚝','🚞','🚋','🚌','🚍','🏎️','🚐','🚑','🚒','🚓','🚕','🚗','🚙','🛻','🚚','🚛','🚜','🛵','🏍️','🚲','🛴','🛹','🛼','🚏','⛽','🚦','🚥','🗺️','🧭','⛩️','🕌','⛪','🏯','🗿','🛕','🕍','🏟️','🏛️','🗼','🗽','🏰','🌉','🌃','🌆','🌅','🏙️','🌇','🌁','🏠','🏡','🏢','🏥','🏦','🏨','🏪','🏫','🏬','🎠','🎡','🎢','🛞','🛟','🈁','🈂️','📶','📳','📴','🛂','🛃','🛄','🛅','🚮','🚰','🛗','🚹','🚺','🚻','🚼','🚾','🛜','♿']
+  },
+  {
+    id:'activities',
+    icon:'⚽',
+    name:'Спорт',
+    stickers:['⚽','🏀','🏈','⚾','🥎','🏐','🏉','🥏','🎾','🪃','🏸','🏒','🏑','🥍','🥅','⛳','🪁','🎿','⛸️','🎣','🤿','🥊','🥋','🎽','🏋️','🤼','🤸','🏊','🚴','🏇','🤺','🤾','🤽','🏄','🧗','🏌️','🤹','🎯','🎳','🎮','🕹️','🎰','🧩','🪀','🎲','♟️','🃏','🀄','🎴','🏹','🪂']
+  },
+  {
+    id:'music',
+    icon:'🎸',
+    name:'Музыка',
+    stickers:['🎭','🎨','🖼️','🎬','🎤','🎧','🎼','🎵','🎶','🎷','🥁','🎸','🎹','🎻','🎺','🪗','🪘','🪕','🎙️','🎚️','🎛️','🎞️','🪇']
+  },
+  {
+    id:'objects',
+    icon:'💎',
+    name:'Предметы',
+    stickers:['💎','💍','👑','🔮','🪄','🧿','🧸','🪆','📿','🪬','🔑','🗝️','🔒','🔓','✂️','🖊️','🖋️','✏️','📝','📌','📍','🔗','📎','📁','📂','🗂️','🗃️','🗄️','📅','📆','🗓️','📇','📃','📄','📜','📚','📖','🔖','🏷️','📰','🗞️','💰','💴','💵','💶','💷','💸','💳','🧾','💹','💱','💲','🏧','🏆','🥇','🥈','🥉','🏅','🎖️','🎗️','🎫','🎟️','🎪','🎁','🎈','🎉','🎊','🎀','🎄','🎆','🎇','🧨','🎐','🎑','🪅','🎏','🪙','🧯','🕰️','⏱️','⏲️','🧮','🛎️','🔏','🪡','🪢','⚜️','💊','🩸','🩹','🩺','🩻']
   },
   {
     id:'tech',
     icon:'💻',
     name:'Технологии',
-    stickers:['💻','🖥️','🖱️','⌨️','🖨️','📱','📲','☎️','📞','📟','📠','📺','📻','🎙️','🎚️','🎛️','🔋','🪫','🔌','💡','🔦','🕯️','💾','📀','💿','📼','📷','📸','📹','🎥','📽️','🎞️','📡','🛰️','🔭','🔬','🧬','🧪','🧫','🧲','🪄','🖲️','🗜️','💽','🖊️','✏️','📝','📌','📍','🔐','🔑','🗝️','🔒','🔓','🛡️','⚙️','🔧','🔩','🪛','🪚','🔨','🪓','⛏️','🛠️']
+    stickers:['💻','🖥️','🖨️','⌨️','🖱️','🖲️','💽','💾','📀','💿','📼','📷','📸','📹','🎥','📽️','📡','🛰️','📱','📲','☎️','📞','📟','📠','📺','📻','🔋','🪫','🔌','💡','🔦','🕯️','🪔','🧲','🧪','🧬','🧫','🖇️','🪪']
+  },
+  {
+    id:'tools',
+    icon:'🔧',
+    name:'Инструменты',
+    stickers:['🔨','🪓','⛏️','⚒️','🛠️','🪛','🔧','🔩','⚙️','🪚','⛓️','🪝','🧰','🪜','🔫','🛡️','🗡️','⚔️','🪤','🪣','🧽','🧴','🧼','🪥','🧹','🧺','🧻','🚪','🪟','🪑','🛋️','🛏️','🪞','🪠','🛁','🚿','🚽','🗜️','🧱','🪒']
+  },
+  {
+    id:'symbols',
+    icon:'❤️',
+    name:'Символы',
+    stickers:['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟','❤️‍🔥','❤️‍🩹','🩷','🩵','🩶','💯','✅','❌','❎','✔️','➕','➖','➗','♾️','🔴','🟠','🟡','🟢','🔵','🟣','⚫','⚪','🟤','🔶','🔷','🔸','🔹','🔺','🔻','▶️','◀️','⏸️','⏹️','⏺️','⏭️','⏮️','⏩','⏪','⏫','⏬','🔁','🔂','🔀','🆕','🆓','🆒','🆗','🆙','🆚','🈵','🈶','🉐','🉑','🆘','🚫','⛔','🚷','🚯','🚳','🚱','🔇','🔈','🔉','🔊','🔔','🔕','🔞','♻️','⚠️','☢️','☣️','⏰','⏳','⌛','🚸','🔥','💢','🔐','🔰','💠','🔱','〽️','㊗️','㊙️','🈴','🈲','🈳','🈸','🈺','🅰️','🅱️','🅾️','🅿️','🆎','©️','®️','™️','🛐','⚛️','🕎','🪧']
+  },
+  {
+    id:'flags',
+    icon:'🏳️',
+    name:'Флаги',
+    stickers:['🏳️','🏴','🚩','🏁','🏳️‍🌈','🏳️‍⚧️','🏴‍☠️','🇷🇺','🇺🇸','🇬🇧','🇩🇪','🇫🇷','🇯🇵','🇨🇳','🇰🇷','🇮🇹','🇪🇸','🇧🇷','🇦🇺','🇨🇦','🇮🇳','🇺🇦','🇵🇱','🇳🇱','🇸🇪','🇳🇴','🇩🇰','🇫🇮','🇨🇭','🇦🇹','🇧🇪','🇵🇹','🇬🇷','🇹🇷','🇮🇱','🇸🇦','🇦🇪','🇲🇽','🇦🇷','🇨🇱','🇨🇴','🇵🇪','🇹🇭','🇻🇳','🇵🇭','🇮🇩','🇲🇾','🇸🇬','🇳🇿','🇿🇦','🇪🇬','🇰🇪','🇳🇬','🇵🇰','🇧🇩','🇮🇷','🇮🇶','🇧🇾']
+  },
+  {
+    id:'zodiac',
+    icon:'⭐',
+    name:'Зодиак',
+    stickers:['♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓','⛎','🔯','✡️','🕉️','☪️','✝️','☮️','☯️']
+  },
+  {
+    id:'memes',
+    icon:'🗿',
+    name:'Мемы',
+    stickers:['🗿','💅','🤌','😤','🥴','🤡','💀','👁️','🧌','🫠','🤯','🥹','🫡','🤨','🫥','😵','🥸','🙃','😬','🤪','😜','😝','🤑','👻','💩','🤖','👽','🫣','🫢','🫤','🫨','🥲','🤭','🤫','😒','🙄','😏','🫵','🫸','🫷','🤙','🤘','🤞','✌️','🤟','🖖','🐸','🦄','🦹','🦸','🧙','🧛','🤺','🤹','🎭','🎰','🃏','🥷','🔥','💢','🐍']
   }
 ];
 
@@ -5879,8 +7814,9 @@ async function sendSticker(emoji){
   const msgId=uid();
   const now=new Date().toISOString();
   const emojiName=STICKER_NAMES[emoji]?STICKER_NAMES[emoji][0]:'стикер';
-  const envelope={type:'sticker',id:msgId,sticker:emoji,ts:Date.now()};
-  const localMsg={id:msgId,sticker:emoji,type:'sent',time:now,reactions:{},edited:false,replyTo:null,delivered:false,forwarded:false};
+  const envelope={type:'sticker',id:msgId,sticker:emoji,ts:Date.now(),replyTo:replyTo||null};
+  const localMsg={id:msgId,sticker:emoji,type:'sent',time:now,reactions:{},edited:false,replyTo:replyTo||null,delivered:false,forwarded:false};
+  cancelReply();
   await upsertMsg(activePid,localMsg);
   await updateChat(activePid,{lastMsg:`${emoji} Стикер`,lastMsgTime:Date.now()});
   appendOrReloadMsg(activePid,localMsg);
@@ -5916,6 +7852,30 @@ async function sendSticker(emoji){
   <div class="sticker-pack-name" id="stickerPackName"></div>
   <div class="sticker-grid-wrap" id="stickerGridWrap">
     <div class="sticker-grid" id="stickerGrid"></div>
+  </div>
+</div>
+<!-- AUTODELETE SHEET -->
+<div class="autodel-sheet" id="autoDelSheet">
+  <div class="autodel-backdrop" onclick="closeAutoDelSheet()"></div>
+  <div class="autodel-panel">
+    <div class="autodel-drag"></div>
+    <div class="autodel-title" id="autoDelTitle">⏱ АВТОУДАЛЕНИЕ СООБЩЕНИЙ</div>
+    <div class="autodel-options" id="autoDelOptions"></div>
+  </div>
+</div>
+<!-- AUTODELETE CUSTOM PICKER SHEET (Telegram-стиль "Автоудаление через...") -->
+<div class="autodel-sheet" id="autoDelCustomSheet">
+  <div class="autodel-backdrop" onclick="closeAutoDelCustomSheet()"></div>
+  <div class="autodel-panel">
+    <div class="autodel-drag"></div>
+    <div class="autodel-custom-title">Автоудаление через...</div>
+    <div class="autodel-picker-wrap">
+      <div class="autodel-picker-highlight"></div>
+      <div class="autodel-picker-scroll" id="autoDelPickerScroll"></div>
+    </div>
+    <div class="autodel-custom-btn-wrap">
+      <button class="autodel-custom-btn" id="autoDelCustomBtn">Включить удаление по таймеру</button>
+    </div>
   </div>
 </div>
 </body>
