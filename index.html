@@ -1188,7 +1188,6 @@
   </div>
 </div>
 
-
 <script>
 (function(){
 'use strict';
@@ -1224,34 +1223,115 @@ function getFileIcon(mt){mt=mt||'';if(mt.startsWith('video/'))return'🎬';if(mt
 function formatSize(bytes){if(bytes<1024)return bytes+' B';if(bytes<1048576)return(bytes/1024).toFixed(1)+' KB';if(bytes<1073741824)return(bytes/1048576).toFixed(1)+' MB';return(bytes/1073741824).toFixed(2)+' GB';}
 function downloadFile(dataUrl,fileName){const a=document.createElement('a');a.href=dataUrl;a.download=fileName;document.body.appendChild(a);a.click();document.body.removeChild(a);}
 
+// ── Определяем среду выполнения ──
+function _isMedianApp(){
+  // Median.co инжектирует объект median или gonative в window
+  return !!(window.median||window.gonative||navigator.userAgent.includes('gonative')||navigator.userAgent.includes('median'));
+}
+
+// ── Конвертация blob/arrayBuffer → base64 data URL ──
+async function _toDataUrl(dataUrlOrBlobId,mimeType,isBlob){
+  if(isBlob){
+    const buf=await loadBlob(dataUrlOrBlobId);
+    if(!buf) return null;
+    const b64=arrayBufferToBase64(buf);
+    return 'data:'+(mimeType||'application/octet-stream')+';base64,'+b64;
+  }
+  // уже data: URL или blob: URL
+  if(dataUrlOrBlobId.startsWith('data:')) return dataUrlOrBlobId;
+  // blob: URL → читаем через fetch → data URL
+  try{
+    const res=await fetch(dataUrlOrBlobId);
+    const ab=await res.arrayBuffer();
+    const b64=arrayBufferToBase64(ab);
+    return 'data:'+(mimeType||'application/octet-stream')+';base64,'+b64;
+  }catch(e){ return null; }
+}
+
+// ── Median.co: скачать файл через нативный bridge ──
+// saveTo: 'gallery' | 'files'
+function _medianDownload(dataUrl,fileName,saveTo){
+  return new Promise(resolve=>{
+    try{
+      // Median JS Bridge: median.share.downloadFile
+      // Документация: https://median.co/docs/js-bridge#share
+      const params={
+        url: dataUrl,
+        filename: fileName,
+        // saveTo: 'gallery' сохраняет фото/видео в галерею Android/iOS
+        // saveTo: 'downloads' сохраняет в папку Downloads
+        saveTo: saveTo==='gallery'?'gallery':'downloads',
+        open: false
+      };
+      if(window.median&&window.median.share&&window.median.share.downloadFile){
+        window.median.share.downloadFile(params);
+        resolve(true);
+      } else if(window.gonative&&window.gonative.share&&window.gonative.share.downloadFile){
+        // gonative — старое название Median.co
+        window.gonative.share.downloadFile(params);
+        resolve(true);
+      } else {
+        resolve(false);
+      }
+    }catch(e){
+      console.warn('median download error',e);
+      resolve(false);
+    }
+  });
+}
+
 // ── Сохранить медиа (фото/видео) в галерею ──
 async function saveToGallery(dataUrlOrBlobId,mimeType,fileName,isBlob){
   try{
+    const isVideo=mimeType&&mimeType.startsWith('video/');
+    const ext=isVideo?(fileName?.split('.').pop()||'mp4'):(fileName?.split('.').pop()||'jpg');
+    const name=fileName||('kchat_'+(isVideo?'video':'photo')+'_'+Date.now()+'.'+ext);
+
+    // ── Путь 1: Median.co Android/iOS приложение ──
+    if(_isMedianApp()){
+      const dataUrl=await _toDataUrl(dataUrlOrBlobId,mimeType,isBlob);
+      if(!dataUrl){toast('Файл недоступен','err');return;}
+      const ok=await _medianDownload(dataUrl,name,'gallery');
+      if(ok){toast(isVideo?'Видео сохранено в галерею 📹':'Фото сохранено в галерею 🖼️');return;}
+      // Если bridge недоступен — fallback ниже
+    }
+
+    // ── Путь 2: Получаем blob для браузерных методов ──
     let blob;
     if(isBlob){
       const buf=await loadBlob(dataUrlOrBlobId);
       if(!buf){toast('Файл недоступен','err');return;}
       blob=new Blob([buf],{type:mimeType||'image/jpeg'});
     }else{
-      // dataUrl → Blob
-      const res=await fetch(dataUrlOrBlobId);
-      blob=await res.blob();
-    }
-    const isVideo=mimeType&&mimeType.startsWith('video/');
-    const ext=isVideo?(fileName?.split('.').pop()||'mp4'):(fileName?.split('.').pop()||'jpg');
-    const name=fileName||('kchat_'+(isVideo?'video':'photo')+'_'+Date.now()+'.'+ext);
-    // Пробуем Web Share API (работает в мобильных браузерах — Safari iOS, Chrome Android)
-    if(navigator.canShare&&navigator.canShare({files:[new File([blob],name,{type:blob.type})]})){
       try{
-        await navigator.share({files:[new File([blob],name,{type:blob.type})],title:name});
+        const res=await fetch(dataUrlOrBlobId);
+        blob=await res.blob();
+      }catch(e){
+        // data: URL — парсим вручную
+        if(dataUrlOrBlobId.startsWith('data:')){
+          const arr=dataUrlOrBlobId.split(',');
+          const mt=arr[0].split(':')[1].split(';')[0];
+          const bstr=atob(arr[1]);
+          const u8=new Uint8Array(bstr.length);
+          for(let i=0;i<bstr.length;i++) u8[i]=bstr.charCodeAt(i);
+          blob=new Blob([u8],{type:mt});
+        }else{toast('Ошибка загрузки файла','err');return;}
+      }
+    }
+
+    // ── Путь 3: Web Share API (мобильные браузеры Safari iOS, Chrome Android) ──
+    const shareFile=new File([blob],name,{type:blob.type});
+    if(navigator.canShare&&navigator.canShare({files:[shareFile]})){
+      try{
+        await navigator.share({files:[shareFile],title:name});
         toast(isVideo?'Видео сохранено 📹':'Изображение сохранено 🖼️');
         return;
       }catch(e){
-        if(e.name==='AbortError')return; // пользователь отменил
-        // fallback ниже
+        if(e.name==='AbortError')return;
       }
     }
-    // Fallback: скачивание через <a> (Android Chrome сохраняет в Downloads)
+
+    // ── Путь 4: Классический <a download> (Android Chrome → Downloads) ──
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');a.href=url;a.download=name;
     document.body.appendChild(a);a.click();document.body.removeChild(a);
@@ -1263,20 +1343,43 @@ async function saveToGallery(dataUrlOrBlobId,mimeType,fileName,isBlob){
   }
 }
 
-// ── Сохранить файл в Downloads ──
+// ── Сохранить файл/голосовое в Downloads ──
 async function saveToFiles(dataUrlOrBlobId,mimeType,fileName,isBlob){
   try{
+    const name=fileName||('kchat_file_'+Date.now());
+
+    // ── Путь 1: Median.co Android/iOS приложение ──
+    if(_isMedianApp()){
+      const dataUrl=await _toDataUrl(dataUrlOrBlobId,mimeType,isBlob);
+      if(!dataUrl){toast('Файл недоступен','err');return;}
+      const ok=await _medianDownload(dataUrl,name,'files');
+      if(ok){toast('Файл сохранён в загрузки 💾');return;}
+      // Если bridge недоступен — fallback ниже
+    }
+
+    // ── Путь 2: Получаем blob ──
     let blob;
     if(isBlob){
       const buf=await loadBlob(dataUrlOrBlobId);
       if(!buf){toast('Файл недоступен','err');return;}
       blob=new Blob([buf],{type:mimeType||'application/octet-stream'});
     }else{
-      const res=await fetch(dataUrlOrBlobId);
-      blob=await res.blob();
+      try{
+        const res=await fetch(dataUrlOrBlobId);
+        blob=await res.blob();
+      }catch(e){
+        if(dataUrlOrBlobId.startsWith('data:')){
+          const arr=dataUrlOrBlobId.split(',');
+          const mt=arr[0].split(':')[1].split(';')[0];
+          const bstr=atob(arr[1]);
+          const u8=new Uint8Array(bstr.length);
+          for(let i=0;i<bstr.length;i++) u8[i]=bstr.charCodeAt(i);
+          blob=new Blob([u8],{type:mt});
+        }else{toast('Ошибка загрузки файла','err');return;}
+      }
     }
-    const name=fileName||('kchat_file_'+Date.now());
-    // Пробуем File System Access API (Chrome Desktop, Android Chrome 86+)
+
+    // ── Путь 3: File System Access API (Chrome Desktop) ──
     if(window.showSaveFilePicker){
       try{
         const ext=name.split('.').pop()||'bin';
@@ -1288,10 +1391,10 @@ async function saveToFiles(dataUrlOrBlobId,mimeType,fileName,isBlob){
         return;
       }catch(e){
         if(e.name==='AbortError')return;
-        // fallback ниже
       }
     }
-    // Fallback: <a download>
+
+    // ── Путь 4: Классический <a download> ──
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');a.href=url;a.download=name;
     document.body.appendChild(a);a.click();document.body.removeChild(a);
