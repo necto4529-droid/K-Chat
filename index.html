@@ -56,9 +56,9 @@
     .screen.hidden{pointer-events:none;opacity:0}
     #scr-home{transform:translateX(0);opacity:1}
     #scr-home.hidden{transform:translateX(-100%)}
-    #scr-contacts,#scr-chat{transform:translateX(100%);opacity:0}
-    #scr-contacts.active,#scr-chat.active{transform:translateX(0);opacity:1}
-    #scr-contacts.hidden,#scr-chat.hidden{transform:translateX(100%);opacity:0}
+    #scr-contacts,#scr-chat,#scr-share{transform:translateX(100%);opacity:0}
+    #scr-contacts.active,#scr-chat.active,#scr-share.active{transform:translateX(0);opacity:1}
+    #scr-contacts.hidden,#scr-chat.hidden,#scr-share.hidden{transform:translateX(100%);opacity:0}
     .top-bar{display:flex;align-items:center;gap:12px;padding:14px 16px;padding-top:calc(14px + var(--safe-t));background:rgba(7,7,15,.88);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);flex-shrink:0;z-index:20}
     .back-btn{width:36px;height:36px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;transition:background .2s,transform .15s cubic-bezier(.34,1.56,.64,1);flex-shrink:0}
     .back-btn:hover{background:rgba(255,255,255,.09)}
@@ -143,6 +143,30 @@
     .contact-info{flex:1;min-width:0;cursor:pointer}
     .contact-name{font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .contact-id{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+    /* ══════════════════════════════════════════════════════
+       ЭКРАН "ОТПРАВИТЬ" (Share Into App, Telegram-стиль)
+    ══════════════════════════════════════════════════════ */
+    #scr-share{background:var(--bg)}
+    .share-preview{margin:12px 16px;padding:12px 14px;background:var(--panel);border:1px solid var(--border);border-radius:var(--r);display:flex;gap:12px;align-items:flex-start}
+    .share-preview-icon{width:38px;height:38px;border-radius:10px;background:var(--g-12);border:1px solid var(--g-25);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+    .share-preview-body{flex:1;min-width:0}
+    .share-preview-title{font-size:13.5px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .share-preview-sub{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--g);margin-top:3px;word-break:break-all;line-height:1.4;max-height:3.6em;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
+    .share-list-label{font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);padding:4px 20px 8px}
+    .share-target-item{display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;transition:background .2s,transform .15s cubic-bezier(.34,1.56,.64,1)}
+    .share-target-item:active{transform:scale(.985)}
+    .share-target-item.selected{background:var(--g-08)}
+    .share-target-check{width:24px;height:24px;border-radius:50%;border:2px solid rgba(255,255,255,.18);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:13px;color:#06060e;transition:background .18s,border-color .18s}
+    .share-target-check::after{content:'✓';opacity:0;transform:scale(.001);transition:transform .18s cubic-bezier(.34,1.56,.64,1),opacity .12s}
+    .share-target-item.selected .share-target-check{background:var(--g);border-color:var(--g)}
+    .share-target-item.selected .share-target-check::after{opacity:1;transform:scale(1)}
+    .share-send-fab{position:fixed;right:18px;bottom:calc(22px + var(--safe-b));width:58px;height:58px;border-radius:50%;background:linear-gradient(135deg,var(--g),var(--b));display:flex;align-items:center;justify-content:center;font-size:24px;color:#06060e;box-shadow:0 6px 24px var(--g-40);cursor:pointer;z-index:60;transform:scale(0) translateY(40px);opacity:0;transition:transform .32s cubic-bezier(.34,1.56,.64,1),opacity .22s ease}
+    .share-send-fab.visible{transform:scale(1) translateY(0);opacity:1}
+    .share-send-fab:active{transform:scale(.9)}
+    body.power-save .share-send-fab{transition:opacity .12s ease!important;transform:none!important}
+    body.power-save .share-send-fab.visible{transform:none!important}
+    body.power-save .share-target-check::after{transition:none!important}
+    body.power-save .share-target-item:active{transform:none!important}
     .contact-actions{display:flex;gap:6px;flex-shrink:0}
     .contact-del-btn{width:32px;height:32px;border-radius:8px;background:rgba(255,79,106,.08);border:1px solid rgba(255,79,106,.15);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px;transition:background .2s}
     .contact-del-btn:hover{background:rgba(255,79,106,.18)}
@@ -1066,6 +1090,18 @@
     <input class="input" id="contactsSearch" placeholder="🔍 Поиск..." style="background:rgba(0,0,0,.35);font-size:13px" autocomplete="off">
   </div>
   <div class="contacts-list" id="contactsList"></div>
+</div>
+
+<!-- SHARE INTO APP (Telegram-стиль "Отправить") -->
+<div class="screen" id="scr-share">
+  <div class="top-bar">
+    <div class="back-btn" onclick="closeShareScreen()">←</div>
+    <div class="bar-title">Отправить</div>
+  </div>
+  <div class="share-preview" id="sharePreview"></div>
+  <div class="share-list-label">Выберите чат</div>
+  <div class="contacts-list" id="shareTargetList" style="padding-top:0"></div>
+  <div class="share-send-fab" id="shareSendFab" onclick="confirmShareSend()">➤</div>
 </div>
 
 <!-- CHAT -->
@@ -3455,6 +3491,117 @@ let currentScreen='scr-home';
 function goScreen(id){document.querySelectorAll('.screen').forEach(s=>{s.classList.remove('active');s.classList.add('hidden');});$(id).classList.remove('hidden');$(id).classList.add('active');currentScreen=id;}
 window.goHome=()=>{closeFab();goScreen('scr-home');renderChatList();};
 window.showContacts=()=>{renderContacts();goScreen('scr-contacts');};
+
+// ══════════════════════════════════════════════════════════════════
+// ── SHARE INTO APP (Median.co "Поделиться в приложении") ──
+// Median вызывает window.median_share_to_app(data) когда пользователь
+// выбирает K-Chat в системном меню "Поделиться" другого приложения.
+// data = { url, subject, text } — пришедшая ссылка/текст.
+// Мы показываем экран выбора чата (как в Telegram "Отправить"),
+// пользователь выбирает один чат, жмёт ➤ — и текст/ссылка
+// отправляется как обычное сообщение в выбранный чат.
+// ══════════════════════════════════════════════════════════════════
+let _shareSelectedPid=null;
+let _sharePayloadText='';
+
+window.median_share_to_app=function(data){
+  try{
+    data=data||{};
+    const url=(data.url||'').trim();
+    const subject=(data.subject||data.title||'').trim();
+    const text=(data.text||'').trim();
+    // Собираем итоговый текст для отправки: заголовок/текст + ссылка
+    const parts=[];
+    if(subject&&subject!==url)parts.push(subject);
+    if(text&&text!==url&&text!==subject)parts.push(text);
+    if(url)parts.push(url);
+    _sharePayloadText=parts.join('\n')||url||text||subject||'';
+    if(!_sharePayloadText){toast('Нет данных для отправки','err');return;}
+    openShareScreen();
+  }catch(e){console.error('median_share_to_app error',e);}
+};
+
+function openShareScreen(){
+  _shareSelectedPid=null;
+  // Превью того, чем делимся
+  const pv=$('sharePreview');
+  const isLink=/^https?:\/\//i.test(_sharePayloadText.split('\n').pop()||'');
+  pv.innerHTML=`
+    <div class="share-preview-icon">${isLink?'🔗':'📝'}</div>
+    <div class="share-preview-body">
+      <div class="share-preview-title">${isLink?'Ссылка':'Текст'} для отправки</div>
+      <div class="share-preview-sub">${esc(_sharePayloadText)}</div>
+    </div>`;
+  renderShareTargets('');
+  $('shareSendFab').classList.remove('visible');
+  goScreen('scr-share');
+}
+
+function renderShareTargets(query){
+  const q=(query||'').toLowerCase();
+  let chats=[];
+  try{chats=lsGet('bc_chats',[]);}catch(e){}
+  let contacts=loadContacts();
+  // Объединяем существующие чаты и контакты без чатов, плюс "Избранное"
+  const seen=new Set();
+  const targets=[];
+  // Избранное (заметки самому себе) — всегда первым
+  targets.push({peerId:MY_ID,peerName:'⭐ Избранное',avatar:'⭐'});
+  seen.add(MY_ID);
+  chats.forEach(c=>{if(!seen.has(c.peerId)){targets.push(c);seen.add(c.peerId);}});
+  contacts.forEach(c=>{if(!seen.has(c.id)){targets.push({peerId:c.id,peerName:c.name,avatar:c.avatar||'👤'});seen.add(c.id);}});
+  const filtered=q?targets.filter(t=>(t.peerName||'').toLowerCase().includes(q)||t.peerId.toLowerCase().includes(q)):targets;
+  const list=$('shareTargetList');
+  if(!filtered.length){
+    list.innerHTML=`<div class="empty-state"><div class="empty-state-icon">👤</div><div class="empty-state-text">Нет чатов для отправки.<br>Сначала добавьте контакт.</div></div>`;
+    return;
+  }
+  list.innerHTML=filtered.map(t=>{
+    const sel=t.peerId===_shareSelectedPid;
+    return `<div class="share-target-item${sel?' selected':''}" data-pid="${esc(t.peerId)}" onclick="selectShareTarget('${esc(t.peerId)}')">
+      <div class="contact-avatar">${t.avatar||'👤'}</div>
+      <div class="contact-info" style="cursor:default">
+        <div class="contact-name">${esc(t.peerName||t.peerId)}</div>
+        <div class="contact-id">${esc(t.peerId)}</div>
+      </div>
+      <div class="share-target-check"></div>
+    </div>`;
+  }).join('');
+}
+
+window.selectShareTarget=function(pid){
+  _shareSelectedPid=(_shareSelectedPid===pid)?null:pid;
+  $('shareTargetList').querySelectorAll('.share-target-item').forEach(el=>{
+    el.classList.toggle('selected',el.dataset.pid===_shareSelectedPid);
+  });
+  $('shareSendFab').classList.toggle('visible',!!_shareSelectedPid);
+};
+
+window.confirmShareSend=async function(){
+  if(!_shareSelectedPid||!_sharePayloadText)return;
+  const pid=_shareSelectedPid;
+  const fab=$('shareSendFab');
+  fab.style.pointerEvents='none';
+  try{
+    const ct=loadContacts().find(c=>c.id===pid);
+    await getOrCreateChat(pid,ct?.name,ct?.avatar);
+    closeShareScreen();
+    goHome();
+    setTimeout(async()=>{
+      await openChatById(pid);
+      activePid=pid;
+      try{await sendSingleMsg(_sharePayloadText);}catch(e){toast('Не удалось отправить','err');}
+      _sharePayloadText='';
+    },150);
+  }finally{
+    fab.style.pointerEvents='';
+  }
+};
+
+window.closeShareScreen=function(){
+  _shareSelectedPid=null;_sharePayloadText='';
+  goHome();
+};
 
 let activePid='',renderedCount=0;
 window.openChatById=async function(pid){
