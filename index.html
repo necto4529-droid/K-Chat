@@ -805,6 +805,37 @@
     .settings-dcbtn-yes:hover{opacity:.85}
     .settings-dcbtn-yes:active{transform:scale(.96)}
     /* Версия */
+    /* ── БИОМЕТРИЧЕСКИЙ ЭКРАН БЛОКИРОВКИ ── */
+    #bioLockScreen{
+      position:fixed;inset:0;z-index:99999;
+      background:var(--bg,#08080e);
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      gap:0;
+      opacity:0;
+      transition:opacity .3s;
+      pointer-events:none;
+    }
+    #bioLockScreen.visible{opacity:1;pointer-events:all;}
+    .bio-lock-logo{font-size:52px;margin-bottom:24px;filter:drop-shadow(0 0 18px rgba(0,255,136,.3));}
+    .bio-lock-title{font-size:22px;font-weight:800;color:rgba(255,255,255,.92);letter-spacing:-.4px;margin-bottom:6px;font-family:'Syne',sans-serif;}
+    .bio-lock-sub{font-size:13px;color:rgba(255,255,255,.38);margin-bottom:48px;text-align:center;padding:0 32px;}
+    .bio-lock-icon{
+      width:72px;height:72px;
+      background:rgba(255,255,255,.07);
+      border:2px solid rgba(255,255,255,.12);
+      border-radius:50%;
+      display:flex;align-items:center;justify-content:center;
+      font-size:30px;
+      cursor:pointer;
+      transition:background .15s,transform .12s,border-color .2s;
+      box-shadow:0 4px 24px rgba(0,0,0,.4);
+    }
+    .bio-lock-icon:hover{background:rgba(255,255,255,.12);transform:scale(1.05);}
+    .bio-lock-icon:active{transform:scale(.96);}
+    .bio-lock-icon.pulse{animation:bioPulse .6s ease;}
+    @keyframes bioPulse{0%{transform:scale(1)}40%{transform:scale(1.15)}100%{transform:scale(1)}}
+    .bio-lock-hint{font-size:12px;color:rgba(255,255,255,.3);margin-top:18px;text-align:center;}
+    .bio-lock-err{font-size:13px;color:#ff6b6b;margin-top:12px;min-height:20px;text-align:center;}
     .settings-version{display:flex;align-items:center;justify-content:center;gap:6px;padding:12px 0 4px}
     .settings-version span{font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(255,255,255,.2)}
     .settings-version-dot{width:3px;height:3px;border-radius:50%;background:rgba(255,255,255,.15)}
@@ -1197,60 +1228,6 @@
 (function(){
 'use strict';
 
-// ══════════════════════════════════════════════════════
-// ── НАТИВНАЯ ВИБРАЦИЯ (Median.co + Web fallback) ──
-// ══════════════════════════════════════════════════════
-const _isMedian = !!(window.median || window.gonative);
-
-function haptic(type='impact_light'){
-  try{
-    if(_isMedian && window.median?.shared?.haptics){
-      // Median.co нативный haptics API
-      switch(type){
-        case 'impact_light':
-          median.shared.haptics.impact({style:'light'}); break;
-        case 'impact_medium':
-          median.shared.haptics.impact({style:'medium'}); break;
-        case 'impact_heavy':
-          median.shared.haptics.impact({style:'heavy'}); break;
-        case 'impact_soft':
-          median.shared.haptics.impact({style:'soft'}); break;
-        case 'impact_rigid':
-          median.shared.haptics.impact({style:'rigid'}); break;
-        case 'success':
-          median.shared.haptics.notification({type:'success'}); break;
-        case 'warning':
-          median.shared.haptics.notification({type:'warning'}); break;
-        case 'error':
-          median.shared.haptics.notification({type:'error'}); break;
-        case 'selection':
-          median.shared.haptics.selection(); break;
-        default:
-          median.shared.haptics.impact({style:'light'});
-      }
-      return;
-    }
-    // GonativeJS / старые версии Median
-    if(_isMedian && window.gonative?.haptics){
-      gonative.haptics.impact({style:'light'});
-      return;
-    }
-    // Web fallback (Android Chrome, браузер)
-    if(navigator.vibrate){
-      switch(type){
-        case 'impact_heavy':  navigator.vibrate(40); break;
-        case 'impact_medium': navigator.vibrate(20); break;
-        case 'success':       navigator.vibrate([10,30,10]); break;
-        case 'warning':       navigator.vibrate([20,20,20]); break;
-        case 'error':         navigator.vibrate([30,20,30]); break;
-        case 'selection':     navigator.vibrate(8); break;
-        default:              navigator.vibrate(10);
-      }
-    }
-  }catch(e){/* тихо игнорируем */}
-}
-// ── КОНЕЦ ВИБРАЦИИ ──
-
 const SIGNAL_URL='wss://signal-server-aipd.onrender.com';
 const A2_MEM=65536,A2_TIME=3,A2_PAR=1;
 const QUICK_EMOJIS=['❤️','👍','😂','🔥','👏','😮','😢','➕'];
@@ -1335,57 +1312,28 @@ function callMedianScheme(path,params){
 // Унифицированное скачивание внутри Median-приложения.
 // type: 'image' → median.share.downloadImage (сохраняет в галерею)
 // type: 'file'  → median.share.downloadFile (сохраняет в Файлы/Downloads)
-//
-// ВАЖНО: для изображений используем data: URI (маленький размер, надёжно).
-// Для файлов СНАЧАЛА пробуем blob: URL (без ограничения размера),
-// и только если не работает — data: URI (только до 10MB).
 async function medianDownload(blob,fileName,type){
-  const bridge=await waitForMedianBridge(2000);
-
-  if(type==='image'){
-    // Для изображений data: URI работает надёжно (обычно < 5MB)
-    const dataUri=await toDataURI(blob);
-    if(bridge&&bridge.share){
-      try{
-        if(typeof bridge.share.downloadImage==='function'){
-          await bridge.share.downloadImage({url:dataUri});
-          return true;
-        }
-        if(typeof bridge.share.downloadFile==='function'){
-          await bridge.share.downloadFile({url:dataUri,filename:fileName,open:false});
-          return true;
-        }
-      }catch(e){
-        console.warn('median.share.downloadImage failed, trying scheme',e);
+  const dataUri=await toDataURI(blob);
+  const bridge=await waitForMedianBridge();
+  if(bridge&&bridge.share){
+    try{
+      if(type==='image'&&typeof bridge.share.downloadImage==='function'){
+        await bridge.share.downloadImage({url:dataUri});
+        return true;
       }
+      if(typeof bridge.share.downloadFile==='function'){
+        await bridge.share.downloadFile({url:dataUri,filename:fileName,open:false});
+        return true;
+      }
+    }catch(e){
+      console.warn('median.share bridge call failed, falling back to scheme',e);
     }
+  }
+  // Фоллбэк: вызов через median:// протокол (работает без window.median)
+  if(type==='image'){
     return callMedianScheme('nativebridge/share/downloadImage',{url:dataUri});
   }
-
-  // Для файлов: blob: URL — без ограничения размера
-  const blobUrl=URL.createObjectURL(blob);
-  try{
-    if(bridge&&bridge.share&&typeof bridge.share.downloadFile==='function'){
-      await bridge.share.downloadFile({url:blobUrl,filename:fileName,open:false});
-      setTimeout(()=>URL.revokeObjectURL(blobUrl),5000);
-      return true;
-    }
-    // Схема median:// — только для небольших файлов (data: URI)
-    if(blob.size<10*1024*1024){
-      const dataUri=await toDataURI(blob);
-      URL.revokeObjectURL(blobUrl);
-      return callMedianScheme('nativebridge/share/downloadFile',{url:dataUri,filename:fileName,open:false});
-    }
-    // Для больших файлов — открываем blob: URL в новой вкладке
-    // Median показывает нативный диалог сохранения
-    window.open(blobUrl,'_blank');
-    setTimeout(()=>URL.revokeObjectURL(blobUrl),30000);
-    return true;
-  }catch(e){
-    console.warn('medianDownload file error:',e);
-    URL.revokeObjectURL(blobUrl);
-    return false;
-  }
+  return callMedianScheme('nativebridge/share/downloadFile',{url:dataUri,filename:fileName,open:false});
 }
 
 // ── Сохранить медиа (фото/видео) в галерею ──
@@ -1414,10 +1362,10 @@ async function saveToGallery(dataUrlOrBlobId,mimeType,fileName,isBlob){
           // "Downloads Folder" файл сохранится в Загрузки и появится в галерее
           // после индексации медиа-сканером.
           const ok=await medianDownload(blob,name,'file');
-          if(ok){haptic('success');toast('Видео сохранено 📹');return;}
+          if(ok){toast('Видео сохранено 📹');return;}
         }else{
           const ok=await medianDownload(blob,name,'image');
-          if(ok){haptic('success');toast('Изображение сохранено 🖼️');return;}
+          if(ok){toast('Изображение сохранено 🖼️');return;}
         }
       }catch(e){
         console.error('Median save error',e);
@@ -1429,7 +1377,7 @@ async function saveToGallery(dataUrlOrBlobId,mimeType,fileName,isBlob){
     if(navigator.canShare&&navigator.canShare({files:[new File([blob],name,{type:blob.type})]})){
       try{
         await navigator.share({files:[new File([blob],name,{type:blob.type})],title:name});
-        haptic('success');toast(isVideo?'Видео сохранено 📹':'Изображение сохранено 🖼️');
+        toast(isVideo?'Видео сохранено 📹':'Изображение сохранено 🖼️');
         return;
       }catch(e){
         if(e.name==='AbortError')return; // пользователь отменил
@@ -1441,14 +1389,14 @@ async function saveToGallery(dataUrlOrBlobId,mimeType,fileName,isBlob){
     const a=document.createElement('a');a.href=url;a.download=name;
     document.body.appendChild(a);a.click();document.body.removeChild(a);
     setTimeout(()=>URL.revokeObjectURL(url),5000);
-    haptic('success');toast(isVideo?'Видео сохранено 📹':'Изображение сохранено 🖼️');
+    toast(isVideo?'Видео сохранено 📹':'Изображение сохранено 🖼️');
   }catch(e){
     console.error('saveToGallery error',e);
     toast('Ошибка сохранения','err');
   }
 }
 
-// ── Сохранить файл в Downloads / Файлы ──
+// ── Сохранить файл в Downloads ──
 async function saveToFiles(dataUrlOrBlobId,mimeType,fileName,isBlob){
   try{
     let blob;
@@ -1464,104 +1412,39 @@ async function saveToFiles(dataUrlOrBlobId,mimeType,fileName,isBlob){
 
     // ── Внутри приложения Median.co (Android/iOS) ──
     if(IS_MEDIAN){
-      // Метод 1: median.share.downloadFile через blob: URL
-      // Median 6+ поддерживает blob: URL напрямую в downloadFile
-      const blobUrl=URL.createObjectURL(blob);
-      const bridge=await waitForMedianBridge(2000);
-      if(bridge&&typeof bridge.share?.downloadFile==='function'){
-        try{
-          await bridge.share.downloadFile({url:blobUrl,filename:name,open:false});
-          setTimeout(()=>URL.revokeObjectURL(blobUrl),5000);
-          haptic('success');toast('Файл сохранён 💾');
-          return;
-        }catch(e){
-          console.warn('median.share.downloadFile (blob url) failed:',e);
-        }
-      }
-      // Метод 2: median:// через data: URI (для небольших файлов < 10MB)
-      if(blob.size < 10*1024*1024){
-        try{
-          const dataUri=await toDataURI(blob);
-          const ok=callMedianScheme('nativebridge/share/downloadFile',{url:dataUri,filename:name,open:false});
-          if(ok){
-            setTimeout(()=>URL.revokeObjectURL(blobUrl),1000);
-            haptic('success');toast('Файл сохранён 💾');
-            return;
-          }
-        }catch(e){
-          console.warn('median scheme downloadFile failed:',e);
-        }
-      }
-      // Метод 3: Web Share API с файлом (Android Chrome, Median WebView)
-      if(navigator.canShare&&navigator.canShare({files:[new File([blob],name,{type:blob.type||'application/octet-stream'})]})){
-        try{
-          await navigator.share({
-            files:[new File([blob],name,{type:blob.type||'application/octet-stream'})],
-            title:name
-          });
-          URL.revokeObjectURL(blobUrl);
-          haptic('success');toast('Файл сохранён 💾');
-          return;
-        }catch(e){
-          if(e.name==='AbortError'){URL.revokeObjectURL(blobUrl);return;}
-          console.warn('Web Share API failed:',e);
-        }
-      }
-      // Метод 4: Открываем blob: URL — Median показывает нативный диалог
-      // "Открыть с помощью..." / "Сохранить"
       try{
-        window.open(blobUrl,'_blank');
-        // Даём время открыться перед revoke
-        setTimeout(()=>URL.revokeObjectURL(blobUrl),30000);
-        haptic('success');toast('Файл сохранён 💾');
-        return;
+        const ok=await medianDownload(blob,name,'file');
+        if(ok){toast('Файл сохранён 💾');return;}
       }catch(e){
-        console.warn('window.open blob failed:',e);
-        URL.revokeObjectURL(blobUrl);
+        console.error('Median save error',e);
+        // падаем дальше на универсальные фоллбэки
       }
     }
 
-    // ── Браузер ──
-    // Метод 1: File System Access API (Chrome Desktop)
+    // Пробуем File System Access API (Chrome Desktop, Android Chrome 86+)
     if(window.showSaveFilePicker){
       try{
-        const ext=(name.includes('.')?name.split('.').pop():null)||'bin';
-        const fh=await window.showSaveFilePicker({
-          suggestedName:name,
-          types:[{description:'Файл',accept:{[blob.type||'application/octet-stream']:['.'+(ext)]}}]
-        });
+        const ext=name.split('.').pop()||'bin';
+        const fh=await window.showSaveFilePicker({suggestedName:name,types:[{description:'File',accept:{[blob.type||'application/octet-stream']:['.'+(ext)]}}]});
         const writable=await fh.createWritable();
         await writable.write(blob);
         await writable.close();
-        haptic('success');toast('Файл сохранён 💾');
+        toast('Файл сохранён 💾');
         return;
       }catch(e){
         if(e.name==='AbortError')return;
+        // fallback ниже
       }
     }
-    // Метод 2: Web Share с файлом (мобильный Chrome)
-    if(navigator.canShare&&navigator.canShare({files:[new File([blob],name,{type:blob.type})]})){
-      try{
-        await navigator.share({files:[new File([blob],name,{type:blob.type})],title:name});
-        haptic('success');toast('Файл сохранён 💾');
-        return;
-      }catch(e){
-        if(e.name==='AbortError')return;
-      }
-    }
-    // Метод 3: <a download> — стандартный браузерный способ
+    // Fallback: <a download>
     const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=url;
-    a.download=name;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    const a=document.createElement('a');a.href=url;a.download=name;
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
     setTimeout(()=>URL.revokeObjectURL(url),5000);
-    haptic('success');toast('Файл сохранён 💾');
+    toast('Файл сохранён 💾');
   }catch(e){
     console.error('saveToFiles error',e);
-    haptic('error');toast('Ошибка сохранения','err');
+    toast('Ошибка сохранения','err');
   }
 }
 
@@ -1840,7 +1723,7 @@ function _flushPendingAcks(pid){
   }
 }
 
-function ensureWS(){if(ws&&(ws.readyState===WebSocket.OPEN||ws.readyState===WebSocket.CONNECTING))return;if(ws)try{ws.close();}catch(e){}ws=new WebSocket(SIGNAL_URL);ws.onopen=()=>{haptic('success');wsUp=true;wsRetry=0;ws.send(JSON.stringify({type:'register',peerId:MY_ID}));updateSendBtn();if(activePid)wsSend({type:'query-presence',target:activePid});if(pingInterval)clearInterval(pingInterval);pingInterval=setInterval(()=>{if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'ping'}));},30000);};ws.onmessage=async e=>{let d;try{d=JSON.parse(e.data);}catch{return;}await onWS(d);};ws.onclose=()=>{wsUp=false;updateSendBtn();if(activePid&&currentScreen==='scr-chat'){_stopConnDots();_startConnDots('Переподключение');}if(pingInterval){clearInterval(pingInterval);pingInterval=null;}setTimeout(ensureWS,WS_DELAYS[Math.min(wsRetry++,WS_DELAYS.length-1)]);};ws.onerror=()=>{wsUp=false;updateSendBtn();};}
+function ensureWS(){if(ws&&(ws.readyState===WebSocket.OPEN||ws.readyState===WebSocket.CONNECTING))return;if(ws)try{ws.close();}catch(e){}ws=new WebSocket(SIGNAL_URL);ws.onopen=()=>{wsUp=true;wsRetry=0;ws.send(JSON.stringify({type:'register',peerId:MY_ID}));updateSendBtn();if(activePid)wsSend({type:'query-presence',target:activePid});if(pingInterval)clearInterval(pingInterval);pingInterval=setInterval(()=>{if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'ping'}));},30000);};ws.onmessage=async e=>{let d;try{d=JSON.parse(e.data);}catch{return;}await onWS(d);};ws.onclose=()=>{wsUp=false;updateSendBtn();if(activePid&&currentScreen==='scr-chat'){_stopConnDots();_startConnDots('Переподключение');}if(pingInterval){clearInterval(pingInterval);pingInterval=null;}setTimeout(ensureWS,WS_DELAYS[Math.min(wsRetry++,WS_DELAYS.length-1)]);};ws.onerror=()=>{wsUp=false;updateSendBtn();};}
 function wsSend(obj){if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(obj));}
 
 // ── UPLOAD PROGRESS UI ──
@@ -2113,7 +1996,7 @@ async function assembleFile(fileId){
       if(existingRow)(existingRow.closest('.msg-row-outer')||existingRow).replaceWith(buildRow(renderMsg));
       else appendOrReloadMsg(ft.senderId,renderMsg);
     }
-    wsSend({type:'ack-file',fileId});haptic('success');toast(`${ft.name} загружен ✓`);
+    wsSend({type:'ack-file',fileId});toast(`${ft.name} загружен ✓`);
     // Уведомляем отправителя что файл получен → он увидит ✔✔
     // Используем зашифрованный envelope через send-msg (тот же путь что реакции/редактирование)
     const _fdKey = await getKey(ft.senderId).catch(()=>null);
@@ -2342,7 +2225,7 @@ async function handleEnvelope(from,env){
     }else{
       const chat=(await loadChats()).find(ch=>ch.peerId===from);
       await updateChat(from,{unread:(chat?.unread||0)+1,marked:false});
-      haptic('impact_soft');toast('🗿 '+(chat?.peerName||from)+': Стикер');
+      toast('🗿 '+(chat?.peerName||from)+': Стикер');
     }
     return;
   }
@@ -2404,7 +2287,7 @@ async function handleEnvelope(from,env){
       appendOrReloadMsg(from,m);
       // Сбрасываем статус активности при получении реального сообщения
       if(from===activePid){stopPeerActivity();updateBar();}
-    }else{const chat=(await loadChats()).find(c=>c.peerId===from);await updateChat(from,{unread:(chat?.unread||0)+1,marked:false});haptic('impact_soft');toast(`💬 ${chat?.peerName||from}: ${lastPreview}`);}
+    }else{const chat=(await loadChats()).find(c=>c.peerId===from);await updateChat(from,{unread:(chat?.unread||0)+1,marked:false});toast(`💬 ${chat?.peerName||from}: ${lastPreview}`);}
   }else if(env.type==='file-ref'){
     if(from===activePid&&currentScreen==='scr-chat'){stopPeerActivity();updateBar();}
     await handleFileRef(from,env);
@@ -2869,6 +2752,15 @@ function openSettingsModal(){
               </div>
               <div class="settings-tog-sw" id="energySaveSw"><div class="settings-tog-knob"></div></div>
             </div>
+            <div style="height:1px;background:rgba(255,255,255,.06);margin:0 2px"></div>
+            <div class="settings-tog-row" id="bioLockRow">
+              <span class="settings-tog-icon">☝️</span>
+              <div class="settings-tog-info">
+                <div class="settings-tog-title">Блокировка по биометрии</div>
+                <div class="settings-tog-desc" id="bioLockDesc">Разблокировка по отпечатку пальца / лицу</div>
+              </div>
+              <div class="settings-tog-sw" id="bioLockSw"><div class="settings-tog-knob"></div></div>
+            </div>
           </div>
         </div>
 
@@ -3011,6 +2903,71 @@ function openSettingsModal(){
       toast(nowOn ? '⚡ Энергосбережение включено' : '✨ Анимации восстановлены');
     };
   }
+
+  // ── Toggle "☝️ Биометрия" ──
+  (async () => {
+    const bioSw  = document.getElementById('bioLockSw');
+    const bioRow = document.getElementById('bioLockRow');
+    const bioDesc = document.getElementById('bioLockDesc');
+    if(!bioSw || !bioRow) return;
+
+    // Проверяем доступность биометрии через Median API
+    const isMedian = typeof median !== 'undefined' && median?.auth?.status;
+    let bioAvailable = false;
+    if(isMedian){
+      try{
+        const status = await median.auth.status({minimumAndroidBiometric:'weak'});
+        bioAvailable = !!(status && status.hasTouchId);
+      }catch(e){ bioAvailable = false; }
+    }
+
+    if(!bioAvailable){
+      // Биометрия недоступна — скрываем строку
+      bioRow.style.display = 'none';
+      return;
+    }
+
+    const bioEnabled = lsGet('bc_bio_lock', false);
+    bioSw.classList.toggle('on', bioEnabled);
+    if(bioDesc) bioDesc.textContent = bioEnabled ? 'Включена — приложение блокируется при сворачивании' : 'Разблокировка по отпечатку пальца / лицу';
+
+    bioRow.onclick = async () => {
+      const bioSw2 = document.getElementById('bioLockSw');
+      if(!bioSw2) return;
+      const nowOn = !bioSw2.classList.contains('on');
+
+      if(nowOn){
+        // Включаем — сначала пробуем сохранить секрет
+        try{
+          const saveRes = await median.auth.save({
+            secret: 'kchat_bio_unlock',
+            minimumAndroidBiometric: 'weak'
+          });
+          if(saveRes && saveRes.success){
+            bioSw2.classList.add('on');
+            lsSet('bc_bio_lock', true);
+            const d2 = document.getElementById('bioLockDesc');
+            if(d2) d2.textContent = 'Включена — приложение блокируется при сворачивании';
+            toast('☝️ Биометрия включена');
+          } else {
+            toast('Не удалось сохранить биометрию','err');
+          }
+        }catch(e){
+          toast('Ошибка биометрии','err');
+        }
+      } else {
+        // Выключаем — удаляем секрет
+        try{
+          await median.auth.delete({});
+        }catch(e){}
+        bioSw2.classList.remove('on');
+        lsSet('bc_bio_lock', false);
+        const d2 = document.getElementById('bioLockDesc');
+        if(d2) d2.textContent = 'Разблокировка по отпечатку пальца / лицу';
+        toast('Биометрия отключена');
+      }
+    };
+  })();
 
   // Danger zone — открываем отдельный sheet-диалог
   // Шаг 1: открываем inline аккордеон
@@ -3233,7 +3190,7 @@ async function importAllData(e){
 const hl=(str,q)=>{if(!q)return str;const re=new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})`,'gi');return str.replace(re,'<span class="search-highlight">$1</span>');};
 
 // ── Закрепить / Открепить чат ──
-async function pinChat(pid){haptic('impact_light');
+async function pinChat(pid){
   const chats=await loadChats();
   const c=chats.find(x=>x.peerId===pid);
   if(c){
@@ -3245,7 +3202,7 @@ async function pinChat(pid){haptic('impact_light');
   renderChatList();
   toast('Чат закреплён 📌');
 }
-async function unpinChat(pid){haptic('impact_light');
+async function unpinChat(pid){
   const chats=await loadChats();
   const c=chats.find(x=>x.peerId===pid);
   if(c){c.pinned=false;c.pinOrder=0;await saveChats(chats);}
@@ -3431,7 +3388,6 @@ async function renderChatList(){
         _lpFired=true;
         item.classList.add('ctx-pressed');
         setTimeout(()=>item.classList.remove('ctx-pressed'),300);
-        haptic('impact_medium');
         const t=e.touches[0];
         showChatCtx(c.peerId,t.clientX,t.clientY);
       },500);
@@ -3596,14 +3552,14 @@ async function sendSingleMsg(text,fileInfo=null){
   return sendFileToServer(fileInfo,text);
 }
 
-async function sendMsg(){haptic('impact_light');
+async function sendMsg(){
   if(processingFiles)return;
   const inp=$('messageInput'),text=inp.value.trim();
   if(pendingFiles.length>0){sendQueue=pendingFiles.slice();pendingFiles=[];clearMediaPreview();inp.value='';inp.style.height='';cancelReply();processSendQueue(text);return;}
   if(!text)return;if(editId){await commitEdit(text);return;}
   await sendSingleMsg(text);inp.value='';inp.style.height='';cancelReply();
 }
-async function processSendQueue(caption){if(queueInProgress)return;queueInProgress=true;setInputsDisabled(true);const total=sendQueue.length;for(let i=0;i<total;i++){const fi=sendQueue[i];try{await sendSingleMsg(caption,fi);}catch(e){haptic('error');toast(`Ошибка отправки ${fi.name}`,'err');}}sendQueue=[];queueInProgress=false;setInputsDisabled(false);hideProgressToast();}
+async function processSendQueue(caption){if(queueInProgress)return;queueInProgress=true;setInputsDisabled(true);const total=sendQueue.length;for(let i=0;i<total;i++){const fi=sendQueue[i];try{await sendSingleMsg(caption,fi);}catch(e){toast(`Ошибка отправки ${fi.name}`,'err');}}sendQueue=[];queueInProgress=false;setInputsDisabled(false);hideProgressToast();}
 
 $('sendBtn').addEventListener('click',()=>sendMsg().catch(console.warn));
 $('messageInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg().catch(console.warn);}});
@@ -3626,7 +3582,7 @@ function handleTyping(isTyping){
 }
 
 // ── REACTIONS ──
-async function toggleReaction(msgId,emoji){haptic('selection');const msgs=await loadMsgs(activePid);const m=msgs.find(m=>m.id===msgId);if(!m)return;if(!m.reactions)m.reactions={};const cur=Object.keys(m.reactions).filter(k=>m.reactions[k].includes(MY_ID)).length;if(cur>=MAX_REACTIONS_PER_MSG&&!m.reactions[emoji]?.includes(MY_ID)){toast(`Нельзя поставить больше ${MAX_REACTIONS_PER_MSG} реакций`,'warn');return;}if(!m.reactions[emoji])m.reactions[emoji]=[];const idx=m.reactions[emoji].indexOf(MY_ID);if(idx===-1)m.reactions[emoji].push(MY_ID);else m.reactions[emoji].splice(idx,1);if(!m.reactions[emoji].length)delete m.reactions[emoji];await saveMsgs(activePid,msgs);reRenderReactions(document.querySelector(`.msg-row[data-msgid="${msgId}"]`),m.reactions,msgId);if(activePid===MY_ID)return;const key=keyCache[activePid];if(!key)return;const enc=await encData(ENC.encode(JSON.stringify({type:'reaction',msgId,emoji,ts:Date.now()})),key);wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:payloadToB64(enc)});}
+async function toggleReaction(msgId,emoji){const msgs=await loadMsgs(activePid);const m=msgs.find(m=>m.id===msgId);if(!m)return;if(!m.reactions)m.reactions={};const cur=Object.keys(m.reactions).filter(k=>m.reactions[k].includes(MY_ID)).length;if(cur>=MAX_REACTIONS_PER_MSG&&!m.reactions[emoji]?.includes(MY_ID)){toast(`Нельзя поставить больше ${MAX_REACTIONS_PER_MSG} реакций`,'warn');return;}if(!m.reactions[emoji])m.reactions[emoji]=[];const idx=m.reactions[emoji].indexOf(MY_ID);if(idx===-1)m.reactions[emoji].push(MY_ID);else m.reactions[emoji].splice(idx,1);if(!m.reactions[emoji].length)delete m.reactions[emoji];await saveMsgs(activePid,msgs);reRenderReactions(document.querySelector(`.msg-row[data-msgid="${msgId}"]`),m.reactions,msgId);if(activePid===MY_ID)return;const key=keyCache[activePid];if(!key)return;const enc=await encData(ENC.encode(JSON.stringify({type:'reaction',msgId,emoji,ts:Date.now()})),key);wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:payloadToB64(enc)});}
 async function handleInReaction(from,msgId,emoji){await withChatLock(from,async()=>{const msgs=await loadMsgs(from);const m=msgs.find(m=>m.id===msgId);if(!m)return;if(!m.reactions)m.reactions={};if(!m.reactions[emoji])m.reactions[emoji]=[];const idx=m.reactions[emoji].indexOf(from);if(idx===-1)m.reactions[emoji].push(from);else m.reactions[emoji].splice(idx,1);if(!m.reactions[emoji].length)delete m.reactions[emoji];await saveMsgs(from,msgs);});if(activePid===from){const msgs=await loadMsgs(from);const m=msgs.find(m=>m.id===msgId);if(m)reRenderReactions(document.querySelector(`.msg-row[data-msgid="${msgId}"]`),m.reactions,msgId);}}
 function reRenderReactions(row,reactions,msgId){if(!row)return;const os=row.querySelector('.reactions-strip');if(os)os.remove();if(!reactions||!Object.keys(reactions).some(k=>reactions[k].length>0))return;const strip=document.createElement('div');strip.className='reactions-strip';Object.entries(reactions).filter(([,v])=>v.length>0).forEach(([em,users])=>{const chip=document.createElement('div');chip.className='reaction-chip'+(users.includes(MY_ID)?' mine':'');chip.innerHTML=`${em}<span class="rc-count">${users.length}</span>`;chip.onclick=e=>{e.stopPropagation();toggleReaction(msgId,em);};strip.appendChild(chip);});row.appendChild(strip);}
 
@@ -4668,7 +4624,7 @@ function buildRow(m){
 
   row.appendChild(bubble);
   reRenderReactions(row,m.reactions||{},m.id);
-  outer.addEventListener('click',e=>{if(selectionMode){e.stopPropagation();haptic('selection');toggleSelectMessage(m.id,outer);}});
+  outer.addEventListener('click',e=>{if(selectionMode){e.stopPropagation();toggleSelectMessage(m.id,outer);}});
   bubble.addEventListener('contextmenu',e=>{e.preventDefault();if(!selectionMode)showCtx(m,bubble,e.clientX,e.clientY);});
   let pt=null;
   bubble.addEventListener('touchstart',e=>{
@@ -4676,7 +4632,7 @@ function buildRow(m){
     const tgt=e.target;
     // Для vid-bubble разрешаем long-press (но не instant click)
     if(tgt.closest('button,audio,.file-icon-download,.upload-overlay'))return;
-    pt=setTimeout(()=>{pt=null;haptic('impact_medium');showCtx(m,bubble,e.touches[0].clientX,e.touches[0].clientY);},500);
+    pt=setTimeout(()=>{pt=null;showCtx(m,bubble,e.touches[0].clientX,e.touches[0].clientY);},500);
   },{passive:true});
   bubble.addEventListener('touchend',()=>{clearTimeout(pt);pt=null;});
   bubble.addEventListener('touchmove',()=>{clearTimeout(pt);pt=null;});
@@ -4859,7 +4815,6 @@ function toggleSelectMessage(msgId,outerEl){
 }
 function updateSelectionBar(){const count=selectedMessages.size;$('selectionCount').textContent=count+' выбрано';$('selectionBar').classList.toggle('visible',count>0);if(count===0)exitSelectionMode();}
 function enterSelectionMode(initialMsgId){
-  haptic('impact_heavy');
   selectionMode=true;
   selectedMessages.clear();
   if(initialMsgId)selectedMessages.add(initialMsgId);
@@ -4886,7 +4841,7 @@ function exitSelectionMode(){
   area.classList.remove('selection-mode');
   $('selectionBar').classList.remove('visible');
 }
-async function deleteSelectedMessages(){haptic('warning');if(!selectedMessages.size)return;if(!confirm(`Удалить ${selectedMessages.size} сообщ.?`))return;const msgs=await loadMsgs(activePid);
+async function deleteSelectedMessages(){if(!selectedMessages.size)return;if(!confirm(`Удалить ${selectedMessages.size} сообщ.?`))return;const msgs=await loadMsgs(activePid);
   // Удаляем blobs выбранных сообщений
   for(const m of msgs){
     if(selectedMessages.has(m.id)){
@@ -5188,7 +5143,7 @@ function showCtx(m,anchor,tx,ty){
       else toast('Файл недоступен','err');
     });
   }
-  if(m.text)add('📋','Копировать',()=>{closeAll();haptic('selection');copyToClipboard(m.text).then(()=>toast('Скопировано ✓'));});
+  if(m.text)add('📋','Копировать',()=>{closeAll();copyToClipboard(m.text).then(()=>toast('Скопировано ✓'));});
   add('✅','Выбрать',()=>{closeAll();enterSelectionMode(m.id);});
   add('⭐','В Избранное',()=>{closeAll();forwardToFavorites(m.id);});
   if(m.type==='sent'&&!m.media&&!m.voice&&!m.file&&!m.fileAvailable)add('✏️','Редактировать',()=>{closeAll();startEdit(m.id);});
@@ -5414,7 +5369,7 @@ function initRecWaveform(){const w=$('recWaveformLive');w.innerHTML='';for(let i
 function animateRecWaveform(){if(!isRecording)return;const bars=$('recWaveformLive').children;if(analyser){const data=new Uint8Array(analyser.frequencyBinCount);analyser.getByteFrequencyData(data);const step=Math.floor(data.length/REC_WAVE_BARS);for(let i=0;i<REC_WAVE_BARS;i++){const h=Math.max(3,Math.round((data[i*step]/255)*20));if(bars[i])bars[i].style.height=h+'px';}}else{for(let i=0;i<bars.length;i++)bars[i].style.height=Math.max(3,Math.round(Math.random()*18))+'px';}recAnimFrame=requestAnimationFrame(animateRecWaveform);}
 function updateRecTimer(){const el=Date.now()-recStartTime;const s=Math.floor(el/1000);$('recTimer').textContent=fmtDur(s);const pct=(el/(MAX_VOICE_SEC*1000))*100;const bar=$('recLimitBar');bar.style.width=Math.min(pct,100)+'%';bar.className='rec-limit-bar'+(pct>80?' crit':pct>55?' warn':'');if(el>=MAX_VOICE_SEC*1000)stopRecordingForPreview();}
 
-window.toggleRecording=async function(){haptic('impact_medium');
+window.toggleRecording=async function(){
   if(processingFiles)return;if(isRecording){stopRecordingForPreview();return;}
   try{
     const stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,sampleRate:24000,echoCancellation:true,noiseSuppression:true}});micStream=stream;
@@ -5434,9 +5389,9 @@ window.toggleRecording=async function(){haptic('impact_medium');
   }catch(e){if(e.name==='NotAllowedError')toast('Нет доступа к микрофону','err');else toast('Ошибка микрофона','err');}
 };
 
-window.cancelRecording=function(){if(!isRecording)return;haptic('warning');clearInterval(_recActivityHb);_recActivityHb=null;_stopRecordingInternal();audioChunks=[];_sendActivityStop(activePid);toast('Запись отменена');};
+window.cancelRecording=function(){if(!isRecording)return;clearInterval(_recActivityHb);_recActivityHb=null;_stopRecordingInternal();audioChunks=[];_sendActivityStop(activePid);toast('Запись отменена');};
 
-window.stopRecordingForPreview=async function(){haptic('impact_light');
+window.stopRecordingForPreview=async function(){
   if(!isRecording)return;const capturedStart=recStartTime;
   clearInterval(_recActivityHb);_recActivityHb=null;
   const chunks=await _stopRecordingInternal();if(!chunks?.length){toast('Пустая запись','warn');return;}
@@ -5564,7 +5519,7 @@ async function sendVoiceMessage(dataURL,duration,waveform){
     const m={id:msgId,text:'',type:'sent',time:new Date(ts).toISOString(),reactions:{},edited:false,replyTo:replyTo||null,delivered:false,forwarded:false,voice:{waveform:env.voice.waveform,blobId:msgId+'_voice',data:dataURL},voiceDuration:duration,voiceListened:false};
     await upsertMsg(activePid,m);await updateChat(activePid,{lastMsg:'🎙 Голосовое',lastMsgTime:ts});appendOrReloadMsg(activePid,m);cancelReply();
     _sendActivityStop(activePid); // сбрасываем статус у получателя
-  }catch(e){haptic('error');toast('Ошибка отправки голосового','err');}
+  }catch(e){toast('Ошибка отправки голосового','err');}
 }
 
 // ── VOICE PLAYBACK ──
@@ -6473,7 +6428,7 @@ async function migrateLocalStorageMessages(){
 let stickerActivePack=1; // 0 = recent, 1 = smileys
 let stickerSearchQuery='';
 
-function openStickerPanel(){haptic('impact_light');
+function openStickerPanel(){
   if(!activePid||isContactBlocked(activePid))return;
   // Блокируем открытие если сейчас идёт навигация к сообщению
   if(window._stickerNavLock)return;
@@ -6632,7 +6587,6 @@ function renderStickerGrid(packIdx,query){
     }
     cell.onclick=(e)=>{
       e.stopPropagation();
-      haptic('impact_light');
       cell.classList.add('sending');
       setTimeout(()=>cell.classList.remove('sending'),360);
       sendSticker(emoji);
@@ -6641,7 +6595,7 @@ function renderStickerGrid(packIdx,query){
   });
 }
 
-async function sendSticker(emoji){haptic('impact_light');
+async function sendSticker(emoji){
   if(!activePid||!wsUp){toast('Нет соединения','err');return;}
   if(isContactBlocked(activePid))return;
   // Панель НЕ закрываем — пользователь может отправить ещё стикеры
@@ -6662,9 +6616,99 @@ async function sendSticker(emoji){haptic('impact_light');
   try{
     const enc=await encData(ENC.encode(JSON.stringify(envelope)),key);
     wsSend({type:'send-msg',target:activePid,msgId,payload:payloadToB64(enc)});
-  }catch(e){haptic('error');toast('Ошибка отправки стикера','err');}
+  }catch(e){toast('Ошибка отправки стикера','err');}
 }
 // ── КОНЕЦ СТИКЕРОВ ──
+
+
+// ══════════════════════════════════════════════════════
+// ── БИОМЕТРИЧЕСКАЯ БЛОКИРОВКА (Median.co API) ──
+// ══════════════════════════════════════════════════════
+
+let _bioLocked = false;
+let _bioUnlocked = false;
+let _bioCheckTimeout = null;
+
+function bioLock(){
+  if(_bioLocked) return;
+  _bioLocked = true;
+  _bioUnlocked = false;
+  const scr = document.getElementById('bioLockScreen');
+  if(!scr) return;
+  scr.classList.add('visible');
+  clearTimeout(_bioCheckTimeout);
+  _bioCheckTimeout = setTimeout(()=> bioPrompt(), 350);
+}
+
+function bioUnlock(){
+  _bioLocked = false;
+  _bioUnlocked = true;
+  const scr = document.getElementById('bioLockScreen');
+  if(!scr) return;
+  scr.classList.remove('visible');
+  const errEl = document.getElementById('bioLockErr');
+  if(errEl) errEl.textContent = '';
+}
+
+async function bioPrompt(){
+  const isMedian = typeof median !== 'undefined' && median && median.auth && median.auth.get;
+  if(!isMedian){ bioUnlock(); return; }
+  const btn = document.getElementById('bioLockBtn');
+  const errEl = document.getElementById('bioLockErr');
+  if(btn) btn.classList.add('pulse');
+  if(errEl) errEl.textContent = '';
+  try{
+    const result = await median.auth.get({
+      prompt: 'Войти в K-Chat',
+      minimumAndroidBiometric: 'weak',
+      callbackOnCancel: 1
+    });
+    if(btn) btn.classList.remove('pulse');
+    if(result && result.success && result.secret === 'kchat_bio_unlock'){
+      bioUnlock();
+    } else {
+      let errMsg = 'Ошибка. Нажмите ☝️ для повтора.';
+      if(result && result.error === 'userCanceled') errMsg = 'Отменено. Нажмите ☝️ для повтора.';
+      else if(result && result.error === 'authenticationFailed') errMsg = 'Не распознано. Попробуйте ещё раз.';
+      if(errEl) errEl.textContent = errMsg;
+    }
+  }catch(e){
+    if(btn) btn.classList.remove('pulse');
+    if(errEl) errEl.textContent = 'Ошибка. Нажмите ☝️ для повтора.';
+  }
+}
+window.bioPrompt = bioPrompt;
+
+async function bioInit(){
+  const bioEnabled = lsGet('bc_bio_lock', false);
+  if(!bioEnabled) return;
+  const isMedian = typeof median !== 'undefined' && median && median.auth && median.auth.status;
+  if(!isMedian) return;
+  try{
+    const status = await median.auth.status({minimumAndroidBiometric:'weak'});
+    if(status && status.hasTouchId && status.hasSecret){
+      bioLock();
+    }
+  }catch(e){}
+}
+
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState === 'hidden'){
+    if(lsGet('bc_bio_lock', false)) _bioUnlocked = false;
+  } else if(document.visibilityState === 'visible'){
+    if(lsGet('bc_bio_lock', false) && !_bioUnlocked && !_bioLocked){
+      bioLock();
+    }
+  }
+});
+
+window.gonative_app_resumed = function(){
+  if(lsGet('bc_bio_lock', false) && !_bioUnlocked){
+    bioLock();
+  }
+};
+
+bioInit();
 
 })();
 </script>
@@ -6716,5 +6760,14 @@ async function sendSticker(emoji){haptic('impact_light');
     </div>
   </div>
 </div>
+  <!-- ── БИОМЕТРИЧЕСКИЙ ЭКРАН БЛОКИРОВКИ ── -->
+  <div id="bioLockScreen">
+    <div class="bio-lock-logo">🔐</div>
+    <div class="bio-lock-title">K-Chat</div>
+    <div class="bio-lock-sub">Подтвердите личность для входа</div>
+    <div class="bio-lock-icon" id="bioLockBtn" onclick="bioPrompt()">☝️</div>
+    <div class="bio-lock-hint" id="bioLockHint">Нажмите для входа по биометрии</div>
+    <div class="bio-lock-err" id="bioLockErr"></div>
+  </div>
 </body>
 </html>
