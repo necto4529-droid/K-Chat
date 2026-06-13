@@ -1307,7 +1307,12 @@ const uid=()=>'m_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
 const fmtDur=s=>`${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
 
 // ── TOAST ──
-function toast(msg,tp=''){const el=$('toast');el.textContent=msg;el.className='toast show'+(tp?' '+tp:'');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('show'),2800);}
+function toast(msg,tp=''){const el=$('toast');el.textContent=msg;el.className='toast show'+(tp?' '+tp:'');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('show'),2800);
+  // Тактильная обратная связь по типу уведомления
+  if(tp==='err')_vib('notificationError');
+  else if(tp==='warn')_vib('notificationWarning');
+  else _vib('tick');
+}
 function showProcessingToast(msg){const el=$('toast');el.textContent=msg;el.className='toast processing show';clearTimeout(el._t);}
 function showQueueToast(msg){const el=$('toast');el.textContent=msg;el.className='toast queue-progress show';clearTimeout(el._t);}
 function hideProgressToast(){const el=$('toast');el.classList.remove('show','processing','queue-progress');}
@@ -1522,6 +1527,42 @@ async function copyToClipboard(text){try{if(navigator.clipboard?.writeText){awai
 // ── STORAGE ──
 const lsGet=(k,fb)=>{try{return JSON.parse(localStorage.getItem(k)||'null')??fb;}catch{return fb;}};
 const lsSet=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
+
+// ══════════════════════════════════════════════════════════════
+// ХАПТИКА / ВИБРАЦИЯ ──────────────────────────────────────────────
+// Внутри Median.co-приложения используем нативный Haptics Plugin:
+//   median.haptics.trigger({ style })
+// style: impactLight | impactMedium | impactHeavy |
+//        notificationSuccess | notificationWarning | notificationError |
+//        tick | click | double_click  (последние три — Android-only)
+// Если бридж ещё не инжектирован — пробуем median:// схему (как и для
+// share/download). В обычном браузере/PWA — Web Vibration API.
+// Управляется тогглом "📳 Вибрация" в настройках (bc_haptics_enabled).
+// ══════════════════════════════════════════════════════════════
+const VIB_FALLBACK_MS={
+  impactLight:8, impactMedium:18, impactHeavy:32,
+  notificationSuccess:[12,45,12], notificationWarning:[18,70,18], notificationError:[25,70,25,70,25],
+  tick:5, click:12, double_click:[10,40,10],
+};
+function _vib(style='impactLight'){
+  if(!lsGet('bc_haptics_enabled',true))return;
+  try{
+    if(window.median&&window.median.haptics&&typeof window.median.haptics.trigger==='function'){
+      window.median.haptics.trigger({style});
+      return;
+    }
+    if(IS_MEDIAN){
+      // Бридж может быть ещё не готов сразу после старта — пробуем через
+      // median:// схему (тот же механизм что и для share/download)
+      callMedianScheme('nativebridge/haptics/trigger',{style});
+      return;
+    }
+  }catch(e){}
+  // Веб/PWA fallback — Vibration API (Android Chrome; iOS Safari её не поддерживает)
+  if(navigator.vibrate){
+    try{navigator.vibrate(VIB_FALLBACK_MS[style]||10);}catch(e){}
+  }
+}
 const DB_NAME='KChatMessages',STORE_NAME='messages';
 let db=null;
 let _dbOpenPromise=null;
@@ -2739,6 +2780,14 @@ function loadSavedTheme(){
 // ══════════════════════════════════════════════════════
 // ── КАСТОМНЫЙ CONFIRM ──
 // ══════════════════════════════════════════════════════
+// Склонение слова "сообщение" по числительному (1 сообщение / 2 сообщения / 5 сообщений)
+function _pluralMsgWord(n){
+  const mod10=n%10, mod100=n%100;
+  if(mod10===1 && mod100!==11) return 'сообщение';
+  if(mod10>=2 && mod10<=4 && (mod100<12||mod100>14)) return 'сообщения';
+  return 'сообщений';
+}
+
 function showConfirm({icon='⚠️', title, text, yesLabel='Да', noLabel='Отмена', onYes}){
   const overlay = $('confirmOverlay');
   $('confirmIcon').textContent = icon;
@@ -2749,9 +2798,10 @@ function showConfirm({icon='⚠️', title, text, yesLabel='Да', noLabel='От
 
   const close = () => overlay.classList.remove('open');
 
-  $('confirmYesBtn').onclick = () => { close(); onYes(); };
-  $('confirmNoBtn').onclick = close;
-  overlay.onclick = e => { if(e.target===overlay) close(); };
+  _vib('notificationWarning'); // тактильный отклик — диалог подтверждения (обычно деструктивное действие)
+  $('confirmYesBtn').onclick = () => { _vib('impactMedium'); close(); onYes(); };
+  $('confirmNoBtn').onclick = () => { _vib('tick'); close(); };
+  overlay.onclick = e => { if(e.target===overlay){_vib('tick');close();} };
 
   overlay.classList.add('open');
 }
@@ -2815,6 +2865,15 @@ function openSettingsModal(){
                 <div class="settings-tog-desc">Отключает тяжёлые анимации — экономит батарею</div>
               </div>
               <div class="settings-tog-sw" id="energySaveSw"><div class="settings-tog-knob"></div></div>
+            </div>
+            <div style="height:1px;background:rgba(255,255,255,.06);margin:0 2px"></div>
+            <div class="settings-tog-row" id="hapticsRow">
+              <span class="settings-tog-icon">📳</span>
+              <div class="settings-tog-info">
+                <div class="settings-tog-title">Вибрация</div>
+                <div class="settings-tog-desc">Тактильный отклик на действия: запись, отправка, кнопки</div>
+              </div>
+              <div class="settings-tog-sw" id="hapticsSw"><div class="settings-tog-knob"></div></div>
             </div>
             <div style="height:1px;background:rgba(255,255,255,.06);margin:0 2px"></div>
             <div class="settings-tog-row" id="bioLockRow" style="display:none">
@@ -2947,6 +3006,7 @@ function openSettingsModal(){
       if(!sw2) return;
       const nowOn = sw2.classList.toggle('on');
       lsSet('bc_last_seen_enabled', nowOn);
+      _vib('tick');
       if(!nowOn) broadcastLastSeenOff().catch(()=>{});
       toast(nowOn ? '🕐 Время захода включено' : 'Время захода скрыто');
     };
@@ -2965,6 +3025,25 @@ function openSettingsModal(){
       lsSet('bc_energy_save', nowOn);
       applyEnergySave(nowOn);
       toast(nowOn ? '⚡ Энергосбережение включено' : '✨ Анимации восстановлены');
+    };
+  }
+
+  // Toggle "📳 Вибрация"
+  const hapSaved = lsGet('bc_haptics_enabled', true);
+  const hapSw  = document.getElementById('hapticsSw');
+  const hapRow = document.getElementById('hapticsRow');
+  if(hapSw) hapSw.classList.toggle('on', hapSaved);
+  if(hapRow){
+    hapRow.onclick = () => {
+      const hapSw2 = document.getElementById('hapticsSw');
+      if(!hapSw2) return;
+      const nowOn = hapSw2.classList.toggle('on');
+      lsSet('bc_haptics_enabled', nowOn);
+      // Сразу даём почувствовать включение/выключение —
+      // если включаем, временно форсируем вибрацию для демонстрации
+      if(nowOn){_vib('impactMedium');}
+      else if(navigator.vibrate){try{navigator.vibrate(20);}catch(e){}}
+      toast(nowOn ? '📳 Вибрация включена' : '🔇 Вибрация выключена');
     };
   }
 
@@ -3822,8 +3901,9 @@ async function sendSingleMsg(text,fileInfo=null){
 async function sendMsg(){
   if(processingFiles)return;
   const inp=$('messageInput'),text=inp.value.trim();
-  if(pendingFiles.length>0){sendQueue=pendingFiles.slice();pendingFiles=[];clearMediaPreview();inp.value='';inp.style.height='';cancelReply();processSendQueue(text);return;}
-  if(!text)return;if(editId){await commitEdit(text);return;}
+  if(pendingFiles.length>0){_vib('impactLight');sendQueue=pendingFiles.slice();pendingFiles=[];clearMediaPreview();inp.value='';inp.style.height='';cancelReply();processSendQueue(text);return;}
+  if(!text)return;if(editId){_vib('impactLight');await commitEdit(text);return;}
+  _vib('impactLight'); // тактильный отклик — сообщение отправлено
   await sendSingleMsg(text);inp.value='';inp.style.height='';cancelReply();
 }
 async function processSendQueue(caption){if(queueInProgress)return;queueInProgress=true;setInputsDisabled(true);const total=sendQueue.length;for(let i=0;i<total;i++){const fi=sendQueue[i];try{await sendSingleMsg(caption,fi);}catch(e){toast(`Ошибка отправки ${fi.name}`,'err');}}sendQueue=[];queueInProgress=false;setInputsDisabled(false);hideProgressToast();}
@@ -3849,7 +3929,7 @@ function handleTyping(isTyping){
 }
 
 // ── REACTIONS ──
-async function toggleReaction(msgId,emoji){const msgs=await loadMsgs(activePid);const m=msgs.find(m=>m.id===msgId);if(!m)return;if(!m.reactions)m.reactions={};const cur=Object.keys(m.reactions).filter(k=>m.reactions[k].includes(MY_ID)).length;if(cur>=MAX_REACTIONS_PER_MSG&&!m.reactions[emoji]?.includes(MY_ID)){toast(`Нельзя поставить больше ${MAX_REACTIONS_PER_MSG} реакций`,'warn');return;}if(!m.reactions[emoji])m.reactions[emoji]=[];const idx=m.reactions[emoji].indexOf(MY_ID);if(idx===-1)m.reactions[emoji].push(MY_ID);else m.reactions[emoji].splice(idx,1);if(!m.reactions[emoji].length)delete m.reactions[emoji];await saveMsgs(activePid,msgs);reRenderReactions(document.querySelector(`.msg-row[data-msgid="${msgId}"]`),m.reactions,msgId);if(activePid===MY_ID)return;const key=keyCache[activePid];if(!key)return;const enc=await encData(ENC.encode(JSON.stringify({type:'reaction',msgId,emoji,ts:Date.now()})),key);wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:payloadToB64(enc)});}
+async function toggleReaction(msgId,emoji){const msgs=await loadMsgs(activePid);const m=msgs.find(m=>m.id===msgId);if(!m)return;if(!m.reactions)m.reactions={};const cur=Object.keys(m.reactions).filter(k=>m.reactions[k].includes(MY_ID)).length;if(cur>=MAX_REACTIONS_PER_MSG&&!m.reactions[emoji]?.includes(MY_ID)){toast(`Нельзя поставить больше ${MAX_REACTIONS_PER_MSG} реакций`,'warn');return;}_vib('tick');if(!m.reactions[emoji])m.reactions[emoji]=[];const idx=m.reactions[emoji].indexOf(MY_ID);if(idx===-1)m.reactions[emoji].push(MY_ID);else m.reactions[emoji].splice(idx,1);if(!m.reactions[emoji].length)delete m.reactions[emoji];await saveMsgs(activePid,msgs);reRenderReactions(document.querySelector(`.msg-row[data-msgid="${msgId}"]`),m.reactions,msgId);if(activePid===MY_ID)return;const key=keyCache[activePid];if(!key)return;const enc=await encData(ENC.encode(JSON.stringify({type:'reaction',msgId,emoji,ts:Date.now()})),key);wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:payloadToB64(enc)});}
 async function handleInReaction(from,msgId,emoji){await withChatLock(from,async()=>{const msgs=await loadMsgs(from);const m=msgs.find(m=>m.id===msgId);if(!m)return;if(!m.reactions)m.reactions={};if(!m.reactions[emoji])m.reactions[emoji]=[];const idx=m.reactions[emoji].indexOf(from);if(idx===-1)m.reactions[emoji].push(from);else m.reactions[emoji].splice(idx,1);if(!m.reactions[emoji].length)delete m.reactions[emoji];await saveMsgs(from,msgs);});if(activePid===from){const msgs=await loadMsgs(from);const m=msgs.find(m=>m.id===msgId);if(m)reRenderReactions(document.querySelector(`.msg-row[data-msgid="${msgId}"]`),m.reactions,msgId);}}
 function reRenderReactions(row,reactions,msgId){if(!row)return;const os=row.querySelector('.reactions-strip');if(os)os.remove();if(!reactions||!Object.keys(reactions).some(k=>reactions[k].length>0))return;const strip=document.createElement('div');strip.className='reactions-strip';Object.entries(reactions).filter(([,v])=>v.length>0).forEach(([em,users])=>{const chip=document.createElement('div');chip.className='reaction-chip'+(users.includes(MY_ID)?' mine':'');chip.innerHTML=`${em}<span class="rc-count">${users.length}</span>`;chip.onclick=e=>{e.stopPropagation();toggleReaction(msgId,em);};strip.appendChild(chip);});row.appendChild(strip);}
 
@@ -3861,16 +3941,26 @@ async function commitEdit(newText){await withChatLock(activePid,async()=>{const 
 async function handleInEdit(from,msgId,newText,ts){await withChatLock(from,async()=>{const msgs=await loadMsgs(from);const m=msgs.find(m=>m.id===msgId);if(!m)return;m.text=newText;m.edited=true;m.editedTs=ts||Date.now();await saveMsgs(from,msgs);});if(activePid===from){const row=document.querySelector(`.msg-row[data-msgid="${msgId}"]`);if(row){const bt=row.querySelector('.bubble-text');if(bt){bt.innerHTML=formatText(newText);if(!bt.querySelector('.msg-edited')){const ed=document.createElement('span');ed.className='msg-edited';ed.textContent=' ред.';bt.appendChild(ed);}}}}}
 
 // ── DELETE ──
-async function deleteMsg(msgId){if(!confirm('Удалить сообщение?'))return;
-  // Удаляем blob если есть
-  const _msgs0=await loadMsgs(activePid);
-  const _m0=_msgs0.find(m=>m.id===msgId);
-  if(_m0){
-    if(_m0.media?.blobId)deleteBlob(_m0.media.blobId);
-    if(_m0.voice?.blobId)deleteBlob(_m0.voice.blobId);
-    if(_m0.file?.blobId)deleteBlob(_m0.file.blobId);
-  }
-  await withChatLock(activePid,async()=>{const msgs=await loadMsgs(activePid);const idx=msgs.findIndex(m=>m.id===msgId);if(idx===-1)return;msgs.splice(idx,1);await saveMsgs(activePid,msgs);});const row=document.querySelector(`.msg-row[data-msgid="${msgId}"]`);if(row)(row.closest('.msg-row-outer')||row).remove();const msgs=await loadMsgs(activePid);const last=msgs[msgs.length-1];await updateChat(activePid,{lastMsg:last?.text||(last?.voice?'🎙 Голосовое':last?.media?'📷 Фото':last?.file?`📁 ${last.file.name}`:''),lastMsgTime:last?.time?new Date(last.time).getTime():null});if(activePid!==MY_ID){const key=keyCache[activePid];if(key){const enc=await encData(ENC.encode(JSON.stringify({type:'delete',msgId,ts:Date.now()})),key);wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:payloadToB64(enc)});}}}
+function deleteMsg(msgId){
+  showConfirm({
+    icon:'🗑',
+    title:'Удалить сообщение?',
+    text:'Сообщение будет удалено без возможности восстановления.',
+    yesLabel:'🗑 Удалить',
+    noLabel:'Отмена',
+    onYes: async ()=>{
+      // Удаляем blob если есть
+      const _msgs0=await loadMsgs(activePid);
+      const _m0=_msgs0.find(m=>m.id===msgId);
+      if(_m0){
+        if(_m0.media?.blobId)deleteBlob(_m0.media.blobId);
+        if(_m0.voice?.blobId)deleteBlob(_m0.voice.blobId);
+        if(_m0.file?.blobId)deleteBlob(_m0.file.blobId);
+      }
+      await withChatLock(activePid,async()=>{const msgs=await loadMsgs(activePid);const idx=msgs.findIndex(m=>m.id===msgId);if(idx===-1)return;msgs.splice(idx,1);await saveMsgs(activePid,msgs);});const row=document.querySelector(`.msg-row[data-msgid="${msgId}"]`);if(row)(row.closest('.msg-row-outer')||row).remove();const msgs=await loadMsgs(activePid);const last=msgs[msgs.length-1];await updateChat(activePid,{lastMsg:last?.text||(last?.voice?'🎙 Голосовое':last?.media?'📷 Фото':last?.file?`📁 ${last.file.name}`:''),lastMsgTime:last?.time?new Date(last.time).getTime():null});if(activePid!==MY_ID){const key=keyCache[activePid];if(key){const enc=await encData(ENC.encode(JSON.stringify({type:'delete',msgId,ts:Date.now()})),key);wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:payloadToB64(enc)});}}
+    }
+  });
+}
 async function handleInDelete(from,msgId){await withChatLock(from,async()=>{const msgs=await loadMsgs(from);const idx=msgs.findIndex(m=>m.id===msgId);if(idx===-1)return;msgs.splice(idx,1);await saveMsgs(from,msgs);});if(activePid===from){const row=document.querySelector(`.msg-row[data-msgid="${msgId}"]`);if(row)(row.closest('.msg-row-outer')||row).remove();}}
 
 // ══════════════════════════════════════════════════════
@@ -5108,16 +5198,29 @@ function exitSelectionMode(){
   area.classList.remove('selection-mode');
   $('selectionBar').classList.remove('visible');
 }
-async function deleteSelectedMessages(){if(!selectedMessages.size)return;if(!confirm(`Удалить ${selectedMessages.size} сообщ.?`))return;const msgs=await loadMsgs(activePid);
-  // Удаляем blobs выбранных сообщений
-  for(const m of msgs){
-    if(selectedMessages.has(m.id)){
-      if(m.media?.blobId)deleteBlob(m.media.blobId);
-      if(m.voice?.blobId)deleteBlob(m.voice.blobId);
-      if(m.file?.blobId)deleteBlob(m.file.blobId);
+function deleteSelectedMessages(){
+  if(!selectedMessages.size)return;
+  const count=selectedMessages.size;
+  showConfirm({
+    icon:'🗑',
+    title:'Удалить сообщения?',
+    text:`Будет удалено ${count} ${_pluralMsgWord(count)}. Это действие нельзя отменить.`,
+    yesLabel:'🗑 Удалить',
+    noLabel:'Отмена',
+    onYes: async ()=>{
+      const msgs=await loadMsgs(activePid);
+      // Удаляем blobs выбранных сообщений
+      for(const m of msgs){
+        if(selectedMessages.has(m.id)){
+          if(m.media?.blobId)deleteBlob(m.media.blobId);
+          if(m.voice?.blobId)deleteBlob(m.voice.blobId);
+          if(m.file?.blobId)deleteBlob(m.file.blobId);
+        }
+      }
+      const newMsgs=msgs.filter(m=>!selectedMessages.has(m.id));await saveMsgs(activePid,newMsgs);for(const id of selectedMessages){const row=document.querySelector(`.msg-row[data-msgid="${id}"]`);if(row)(row.closest('.msg-row-outer')||row).remove();if(activePid!==MY_ID){const key=keyCache[activePid];if(key){const enc=await encData(ENC.encode(JSON.stringify({type:'delete',msgId:id,ts:Date.now()})),key);wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:payloadToB64(enc)});}}}const last=newMsgs[newMsgs.length-1];await updateChat(activePid,{lastMsg:last?.text||(last?.voice?'🎙 Голосовое':last?.media?'📷 Фото':last?.file?`📁 ${last.file.name}`:''),lastMsgTime:last?.time?new Date(last.time).getTime():null});exitSelectionMode();toast('Сообщения удалены');
     }
-  }
-  const newMsgs=msgs.filter(m=>!selectedMessages.has(m.id));await saveMsgs(activePid,newMsgs);for(const id of selectedMessages){const row=document.querySelector(`.msg-row[data-msgid="${id}"]`);if(row)(row.closest('.msg-row-outer')||row).remove();if(activePid!==MY_ID){const key=keyCache[activePid];if(key){const enc=await encData(ENC.encode(JSON.stringify({type:'delete',msgId:id,ts:Date.now()})),key);wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:payloadToB64(enc)});}}}const last=newMsgs[newMsgs.length-1];await updateChat(activePid,{lastMsg:last?.text||(last?.voice?'🎙 Голосовое':last?.media?'📷 Фото':last?.file?`📁 ${last.file.name}`:''),lastMsgTime:last?.time?new Date(last.time).getTime():null});exitSelectionMode();toast('Сообщения удалены');}
+  });
+}
 window.deleteSelectedMessages=deleteSelectedMessages;window.exitSelectionMode=exitSelectionMode;
 
 // ── HISTORY ──
@@ -5368,6 +5471,7 @@ function showExtendedEmojiPicker(msgId,anchor){
 }
 function showCtx(m,anchor,tx,ty){
   if(m.uploading)return;
+  _vib('impactMedium'); // тактильный отклик — открыто контекстное меню (long-press)
   closeAll();mkBack();const menu=document.createElement('div');menu.className='ctx-menu';
   const add=(ic,lb,fn,danger=false)=>{const el=document.createElement('div');el.className='ctx-item'+(danger?' danger':'');el.innerHTML=`<span>${ic}</span><span>${lb}</span>`;el.addEventListener('click',e=>{e.stopPropagation();fn();});menu.appendChild(el);};
   add('😀','Реакция',()=>{closeCtx();showEmo(m.id,anchor);});
@@ -5649,6 +5753,7 @@ window.toggleRecording=async function(){
     audioChunks=[];mediaRecorder.ondataavailable=e=>{if(e.data?.size>0)audioChunks.push(e.data);};mediaRecorder.start(100);
     isRecording=true;recStartTime=Date.now();initRecWaveform();
     $('voiceRecordOverlay').classList.add('active');$('micBtn').classList.add('recording');$('micBtn').textContent='⏹';
+    _vib('impactMedium'); // тактильный отклик — началась запись
     recTimerInterval=setInterval(updateRecTimer,200);animateRecWaveform();
     // Сигнал "записывает голосовое" + heartbeat каждые 3с
     _sendActivitySignal(activePid,'recording');
@@ -5656,7 +5761,7 @@ window.toggleRecording=async function(){
   }catch(e){if(e.name==='NotAllowedError')toast('Нет доступа к микрофону','err');else toast('Ошибка микрофона','err');}
 };
 
-window.cancelRecording=function(){if(!isRecording)return;clearInterval(_recActivityHb);_recActivityHb=null;_stopRecordingInternal();audioChunks=[];_sendActivityStop(activePid);toast('Запись отменена');};
+window.cancelRecording=function(){if(!isRecording)return;clearInterval(_recActivityHb);_recActivityHb=null;_stopRecordingInternal();audioChunks=[];_sendActivityStop(activePid);_vib('notificationWarning');toast('Запись отменена');};
 
 window.stopRecordingForPreview=async function(){
   if(!isRecording)return;const capturedStart=recStartTime;
@@ -5666,6 +5771,7 @@ window.stopRecordingForPreview=async function(){
   const blob=new Blob(chunks,{type:chunks[0]?.type||'audio/webm'});
   if(!blob.size){toast('Пустая запись','warn');return;}
   previewBlob=blob;previewDur=durSec;previewWaveform=generateWaveform();_showPreviewBar();
+  _vib('impactLight'); // тактильный отклик — запись остановлена, готов предпросмотр
   // Сигнал "отправляет голосовое" + heartbeat пока preview открыт
   _sendActivitySignal(activePid,'sending_voice');
   _recActivityHb=setInterval(()=>{if(activePid&&previewBlob)_sendActivitySignal(activePid,'sending_voice');},3000);
@@ -5748,17 +5854,19 @@ window.resumeRecording=async function(){
     audioChunks=oldChunks;mediaRecorder.ondataavailable=e=>{if(e.data?.size>0)audioChunks.push(e.data);};mediaRecorder.start(100);
     isRecording=true;recStartTime=Date.now()-previewDur*1000;initRecWaveform();
     $('voiceRecordOverlay').classList.add('active');$('micBtn').classList.add('recording');$('micBtn').textContent='⏹';
+    _vib('impactMedium'); // тактильный отклик — запись продолжена
     recTimerInterval=setInterval(updateRecTimer,200);animateRecWaveform();previewBlob=null;previewDur=0;previewWaveform=[];
     _sendActivitySignal(activePid,'recording');
     _recActivityHb=setInterval(()=>{if(activePid&&isRecording)_sendActivitySignal(activePid,'recording');},3000);
   }catch(e){toast('Ошибка микрофона','err');$('voicePreviewBar').classList.add('active');}
 };
 
-window.cancelPreview=function(){clearInterval(_recActivityHb);_recActivityHb=null;_stopPreviewAudio();previewBlob=null;previewDur=0;previewWaveform=[];pvbBarEls=[];$('voicePreviewBar').classList.remove('active');_sendActivityStop(activePid);toast('Запись удалена');};
+window.cancelPreview=function(){clearInterval(_recActivityHb);_recActivityHb=null;_stopPreviewAudio();previewBlob=null;previewDur=0;previewWaveform=[];pvbBarEls=[];$('voicePreviewBar').classList.remove('active');_sendActivityStop(activePid);_vib('notificationWarning');toast('Запись удалена');};
 
 window.sendPreviewVoice=async function(){
   if(!previewBlob)return;clearInterval(_recActivityHb);_recActivityHb=null;_stopPreviewAudio();const blob=previewBlob,dur=previewDur,wf=previewWaveform;
   previewBlob=null;previewDur=0;previewWaveform=[];pvbBarEls=[];$('voicePreviewBar').classList.remove('active');
+  _vib('impactLight'); // тактильный отклик — голосовое отправляется
   const reader=new FileReader();reader.onload=async e=>{await sendVoiceMessage(e.target.result,dur,wf);};reader.readAsDataURL(blob);
 };
 
@@ -6865,6 +6973,7 @@ function renderStickerGrid(packIdx,query){
 async function sendSticker(emoji){
   if(!activePid||!wsUp){toast('Нет соединения','err');return;}
   if(isContactBlocked(activePid))return;
+  _vib('impactLight'); // тактильный отклик — стикер отправлен
   // Панель НЕ закрываем — пользователь может отправить ещё стикеры
   const key=await getKey(activePid);
   if(!key){toast('Сначала установите ключ шифрования','warn');return;}
