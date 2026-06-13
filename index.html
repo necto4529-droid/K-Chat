@@ -3553,7 +3553,26 @@ async function renderChatList(){
 }
 
 function renderContacts(){const q=($('contactsSearch')?.value||'').toLowerCase();let contacts=loadContacts();if(q)contacts=contacts.filter(c=>c.name.toLowerCase().includes(q)||c.id.toLowerCase().includes(q));const list=$('contactsList');if(!contacts.length){list.innerHTML=`<div class="empty-state"><div class="empty-state-icon">👤</div><div class="empty-state-text">Нет контактов.<br>Нажмите «+ Добавить»</div></div>`;return;}list.innerHTML=contacts.map((c,i)=>{const on=!!online[c.id];return`<div class="contact-item"><div class="contact-avatar">${c.avatar||'👤'}<span class="presence-dot${on?' online':''}"></span></div><div class="contact-info" onclick="startChatWithContact('${esc(c.id)}')"><div class="contact-name">${esc(c.name)}</div><div class="contact-id">${esc(c.id)}</div></div><div class="contact-actions"><div class="icon-btn-sm" onclick="startChatWithContact('${esc(c.id)}')">💬</div><div class="contact-del-btn" onclick="delContact(${i},event)">🗑</div></div></div>`;}).join('');}
-window.delContact=(i,e)=>{e?.stopPropagation();const c=loadContacts();c.splice(i,1);saveContacts(c);renderContacts();toast('Контакт удалён');};
+window.delContact=(i,e)=>{
+  e?.stopPropagation();
+  const contacts=loadContacts();
+  const c=contacts[i];
+  if(!c)return;
+  showConfirm({
+    icon:'🗑',
+    title:'Удалить контакт?',
+    text:`Контакт «${c.name}» будет удалён из списка. История переписки и ключи шифрования сохранятся.`,
+    yesLabel:'🗑 Удалить',
+    noLabel:'Отмена',
+    onYes:()=>{
+      const list=loadContacts();
+      list.splice(i,1);
+      saveContacts(list);
+      renderContacts();
+      toast('Контакт удалён');
+    }
+  });
+};
 window.startChatWithContact=async id=>{const ct=loadContacts().find(c=>c.id===id);await getOrCreateChat(id,ct?.name,ct?.avatar);await renderChatList();goHome();setTimeout(()=>openChatById(id),120);};
 
 const AVTS=['👤','🤖','🦊','🐱','🐶','🦁','🐼','🦄','🔥','⭐','🌊','🍄','❤️','🌚'];
