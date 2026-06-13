@@ -810,32 +810,28 @@
       position:fixed;inset:0;z-index:99999;
       background:var(--bg,#08080e);
       display:flex;flex-direction:column;align-items:center;justify-content:center;
-      gap:0;
-      opacity:0;
-      transition:opacity .3s;
-      pointer-events:none;
+      opacity:0;pointer-events:none;
+      transition:opacity .25s;
     }
     #bioLockScreen.visible{opacity:1;pointer-events:all;}
-    .bio-lock-logo{font-size:52px;margin-bottom:24px;filter:drop-shadow(0 0 18px rgba(0,255,136,.3));}
+    .bio-lock-logo{font-size:52px;margin-bottom:20px;filter:drop-shadow(0 0 18px rgba(0,255,136,.3));}
     .bio-lock-title{font-size:22px;font-weight:800;color:rgba(255,255,255,.92);letter-spacing:-.4px;margin-bottom:6px;font-family:'Syne',sans-serif;}
-    .bio-lock-sub{font-size:13px;color:rgba(255,255,255,.38);margin-bottom:48px;text-align:center;padding:0 32px;}
+    .bio-lock-sub{font-size:13px;color:rgba(255,255,255,.38);margin-bottom:44px;text-align:center;padding:0 32px;}
     .bio-lock-icon{
-      width:72px;height:72px;
+      width:74px;height:74px;
       background:rgba(255,255,255,.07);
-      border:2px solid rgba(255,255,255,.12);
+      border:2px solid rgba(255,255,255,.14);
       border-radius:50%;
       display:flex;align-items:center;justify-content:center;
-      font-size:30px;
-      cursor:pointer;
-      transition:background .15s,transform .12s,border-color .2s;
+      font-size:30px;cursor:pointer;
+      transition:background .15s,transform .12s;
       box-shadow:0 4px 24px rgba(0,0,0,.4);
     }
-    .bio-lock-icon:hover{background:rgba(255,255,255,.12);transform:scale(1.05);}
-    .bio-lock-icon:active{transform:scale(.96);}
-    .bio-lock-icon.pulse{animation:bioPulse .6s ease;}
+    .bio-lock-icon:active{transform:scale(.94);}
+    .bio-lock-icon.pulse{animation:bioPulse .55s ease;}
     @keyframes bioPulse{0%{transform:scale(1)}40%{transform:scale(1.15)}100%{transform:scale(1)}}
-    .bio-lock-hint{font-size:12px;color:rgba(255,255,255,.3);margin-top:18px;text-align:center;}
-    .bio-lock-err{font-size:13px;color:#ff6b6b;margin-top:12px;min-height:20px;text-align:center;}
+    .bio-lock-hint{font-size:12px;color:rgba(255,255,255,.28);margin-top:16px;text-align:center;}
+    .bio-lock-err{font-size:13px;color:#ff6b6b;margin-top:10px;min-height:20px;text-align:center;padding:0 24px;}
     .settings-version{display:flex;align-items:center;justify-content:center;gap:6px;padding:12px 0 4px}
     .settings-version span{font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(255,255,255,.2)}
     .settings-version-dot{width:3px;height:3px;border-radius:50%;background:rgba(255,255,255,.15)}
@@ -2753,11 +2749,11 @@ function openSettingsModal(){
               <div class="settings-tog-sw" id="energySaveSw"><div class="settings-tog-knob"></div></div>
             </div>
             <div style="height:1px;background:rgba(255,255,255,.06);margin:0 2px"></div>
-            <div class="settings-tog-row" id="bioLockRow">
+            <div class="settings-tog-row" id="bioLockRow" style="display:none">
               <span class="settings-tog-icon">☝️</span>
               <div class="settings-tog-info">
                 <div class="settings-tog-title">Блокировка по биометрии</div>
-                <div class="settings-tog-desc" id="bioLockDesc">Разблокировка по отпечатку пальца / лицу</div>
+                <div class="settings-tog-desc" id="bioLockDesc">Touch ID / Face ID при открытии приложения</div>
               </div>
               <div class="settings-tog-sw" id="bioLockSw"><div class="settings-tog-knob"></div></div>
             </div>
@@ -2904,69 +2900,74 @@ function openSettingsModal(){
     };
   }
 
-  // ── Toggle "☝️ Биометрия" ──
-  (async () => {
-    const bioSw  = document.getElementById('bioLockSw');
-    const bioRow = document.getElementById('bioLockRow');
-    const bioDesc = document.getElementById('bioLockDesc');
-    if(!bioSw || !bioRow) return;
+  // ── Тоггл биометрии — инициализация ──
+  (function(){
+    var bioRow  = document.getElementById('bioLockRow');
+    var bioSw   = document.getElementById('bioLockSw');
+    var bioDesc = document.getElementById('bioLockDesc');
+    if(!bioRow || !bioSw) return;
 
-    // Проверяем доступность биометрии через Median API
-    const isMedian = typeof median !== 'undefined' && median?.auth?.status;
-    let bioAvailable = false;
-    if(isMedian){
-      try{
-        const status = await median.auth.status({minimumAndroidBiometric:'weak'});
-        bioAvailable = !!(status && status.hasTouchId);
-      }catch(e){ bioAvailable = false; }
-    }
-
-    if(!bioAvailable){
-      // Биометрия недоступна — скрываем строку
-      bioRow.style.display = 'none';
+    // Проверяем наличие Median API
+    if(typeof median === 'undefined' || !median || !median.auth || !median.auth.status){
+      bioRow.style.display = 'none'; // не в Median — прячем
       return;
     }
 
-    const bioEnabled = lsGet('bc_bio_lock', false);
-    bioSw.classList.toggle('on', bioEnabled);
-    if(bioDesc) bioDesc.textContent = bioEnabled ? 'Включена — приложение блокируется при сворачивании' : 'Разблокировка по отпечатку пальца / лицу';
-
-    bioRow.onclick = async () => {
-      const bioSw2 = document.getElementById('bioLockSw');
-      if(!bioSw2) return;
-      const nowOn = !bioSw2.classList.contains('on');
-
-      if(nowOn){
-        // Включаем — сначала пробуем сохранить секрет
-        try{
-          const saveRes = await median.auth.save({
-            secret: 'kchat_bio_unlock',
-            minimumAndroidBiometric: 'weak'
-          });
-          if(saveRes && saveRes.success){
-            bioSw2.classList.add('on');
-            lsSet('bc_bio_lock', true);
-            const d2 = document.getElementById('bioLockDesc');
-            if(d2) d2.textContent = 'Включена — приложение блокируется при сворачивании';
-            toast('☝️ Биометрия включена');
-          } else {
-            toast('Не удалось сохранить биометрию','err');
-          }
-        }catch(e){
-          toast('Ошибка биометрии','err');
-        }
-      } else {
-        // Выключаем — удаляем секрет
-        try{
-          await median.auth.delete({});
-        }catch(e){}
-        bioSw2.classList.remove('on');
-        lsSet('bc_bio_lock', false);
-        const d2 = document.getElementById('bioLockDesc');
-        if(d2) d2.textContent = 'Разблокировка по отпечатку пальца / лицу';
-        toast('Биометрия отключена');
+    // Проверяем доступность биометрии через callback (единственный надёжный способ)
+    median.auth.status({callbackFunction: function(data){
+      if(!data || !data.hasTouchId){
+        bioRow.style.display = 'none';
+        return;
       }
-    };
+      // Биометрия есть — показываем строку
+      bioRow.style.display = 'flex';
+      var enabled = lsGet('bc_bio_lock', false);
+      bioSw.classList.toggle('on', enabled);
+      if(bioDesc) bioDesc.textContent = enabled
+        ? 'Включена — запрашивается при открытии приложения'
+        : 'Touch ID / Face ID при открытии приложения';
+
+      bioRow.onclick = function(){
+        var bioSw2 = document.getElementById('bioLockSw');
+        if(!bioSw2) return;
+        var isOn = bioSw2.classList.contains('on');
+        if(!isOn){
+          // Включаем: сначала удалим старый секрет (если был), затем сохраним новый
+          median.auth.delete({callbackFunction: function(){
+            median.auth.save({secret:'kchat_bio_unlock', callbackFunction: function(res){
+              if(res && res.success){
+                bioSw2.classList.add('on');
+                lsSet('bc_bio_lock', true);
+                var d2 = document.getElementById('bioLockDesc');
+                if(d2) d2.textContent = 'Включена — запрашивается при открытии приложения';
+                toast('☝️ Биометрия включена');
+              } else {
+                // duplicateItem — секрет уже существует, считаем успехом
+                var errCode = res && res.error;
+                if(errCode === 'duplicateItem'){
+                  bioSw2.classList.add('on');
+                  lsSet('bc_bio_lock', true);
+                  var d3 = document.getElementById('bioLockDesc');
+                  if(d3) d3.textContent = 'Включена — запрашивается при открытии приложения';
+                  toast('☝️ Биометрия включена');
+                } else {
+                  toast('Ошибка сохранения биометрии: ' + (errCode||'?'), 'err');
+                }
+              }
+            }});
+          }});
+        } else {
+          // Выключаем
+          median.auth.delete({callbackFunction: function(){
+            bioSw2.classList.remove('on');
+            lsSet('bc_bio_lock', false);
+            var d2 = document.getElementById('bioLockDesc');
+            if(d2) d2.textContent = 'Touch ID / Face ID при открытии приложения';
+            toast('Биометрия отключена');
+          }});
+        }
+      };
+    }});
   })();
 
   // Danger zone — открываем отдельный sheet-диалог
@@ -6622,93 +6623,104 @@ async function sendSticker(emoji){
 
 
 // ══════════════════════════════════════════════════════
-// ── БИОМЕТРИЧЕСКАЯ БЛОКИРОВКА (Median.co API) ──
+// ── БИОМЕТРИЧЕСКАЯ БЛОКИРОВКА (Median.co Callback API) ──
 // ══════════════════════════════════════════════════════
 
-let _bioLocked = false;
-let _bioUnlocked = false;
-let _bioCheckTimeout = null;
+var _bioLocked   = false;
+var _bioUnlocked = false;
+var _bioTimer    = null;
 
+// Показать экран блокировки и запустить запрос биометрии
 function bioLock(){
   if(_bioLocked) return;
-  _bioLocked = true;
+  _bioLocked   = true;
   _bioUnlocked = false;
-  const scr = document.getElementById('bioLockScreen');
-  if(!scr) return;
-  scr.classList.add('visible');
-  clearTimeout(_bioCheckTimeout);
-  _bioCheckTimeout = setTimeout(()=> bioPrompt(), 350);
+  var scr = document.getElementById('bioLockScreen');
+  if(scr) scr.classList.add('visible');
+  clearTimeout(_bioTimer);
+  _bioTimer = setTimeout(function(){ window.bioPrompt(); }, 400);
 }
 
+// Скрыть экран блокировки
 function bioUnlock(){
-  _bioLocked = false;
+  _bioLocked   = false;
   _bioUnlocked = true;
-  const scr = document.getElementById('bioLockScreen');
-  if(!scr) return;
-  scr.classList.remove('visible');
-  const errEl = document.getElementById('bioLockErr');
+  var scr = document.getElementById('bioLockScreen');
+  if(scr) scr.classList.remove('visible');
+  var errEl = document.getElementById('bioLockErr');
   if(errEl) errEl.textContent = '';
 }
 
-async function bioPrompt(){
-  const isMedian = typeof median !== 'undefined' && median && median.auth && median.auth.get;
-  if(!isMedian){ bioUnlock(); return; }
-  const btn = document.getElementById('bioLockBtn');
-  const errEl = document.getElementById('bioLockErr');
-  if(btn) btn.classList.add('pulse');
-  if(errEl) errEl.textContent = '';
-  try{
-    const result = await median.auth.get({
-      prompt: 'Войти в K-Chat',
-      minimumAndroidBiometric: 'weak',
-      callbackOnCancel: 1
-    });
-    if(btn) btn.classList.remove('pulse');
-    if(result && result.success && result.secret === 'kchat_bio_unlock'){
-      bioUnlock();
-    } else {
-      let errMsg = 'Ошибка. Нажмите ☝️ для повтора.';
-      if(result && result.error === 'userCanceled') errMsg = 'Отменено. Нажмите ☝️ для повтора.';
-      else if(result && result.error === 'authenticationFailed') errMsg = 'Не распознано. Попробуйте ещё раз.';
-      if(errEl) errEl.textContent = errMsg;
-    }
-  }catch(e){
-    if(btn) btn.classList.remove('pulse');
-    if(errEl) errEl.textContent = 'Ошибка. Нажмите ☝️ для повтора.';
+// Запрос биометрии — только callback-стиль (работает на iOS + Android)
+window.bioPrompt = function(){
+  // Не в Median — просто пускаем
+  if(typeof median === 'undefined' || !median || !median.auth || !median.auth.get){
+    bioUnlock(); return;
   }
-}
-window.bioPrompt = bioPrompt;
+  var btn   = document.getElementById('bioLockBtn');
+  var errEl = document.getElementById('bioLockErr');
+  if(btn)   btn.classList.add('pulse');
+  if(errEl) errEl.textContent = '';
 
-async function bioInit(){
-  const bioEnabled = lsGet('bc_bio_lock', false);
-  if(!bioEnabled) return;
-  const isMedian = typeof median !== 'undefined' && median && median.auth && median.auth.status;
-  if(!isMedian) return;
-  try{
-    const status = await median.auth.status({minimumAndroidBiometric:'weak'});
-    if(status && status.hasTouchId && status.hasSecret){
+  median.auth.get({
+    prompt:           'Войти в K-Chat',
+    callbackFunction: function(result){
+      if(btn) btn.classList.remove('pulse');
+      if(result && result.success && result.secret === 'kchat_bio_unlock'){
+        bioUnlock();
+      } else {
+        var code = result && result.error;
+        var msg  = 'Ошибка. Нажмите ☝️ для повтора.';
+        if(code === 'userCanceled')        msg = 'Отменено. Нажмите ☝️ для повтора.';
+        if(code === 'authenticationFailed') msg = 'Не распознано. Попробуйте ещё раз.';
+        if(code === 'itemNotFound'){
+          // Секрет потерян (переустановка?) — сбрасываем настройку
+          lsSet('bc_bio_lock', false);
+          bioUnlock();
+          return;
+        }
+        if(errEl) errEl.textContent = msg;
+      }
+    },
+    callbackOnCancel: 1
+  });
+};
+
+// Инициализация при старте — проверяем нужна ли блокировка
+function bioInit(){
+  if(!lsGet('bc_bio_lock', false)) return;
+  if(typeof median === 'undefined' || !median || !median.auth || !median.auth.status) return;
+
+  // Используем только callback (не Promise) для максимальной совместимости
+  median.auth.status({callbackFunction: function(data){
+    if(data && data.hasTouchId && data.hasSecret){
       bioLock();
+    } else {
+      // Биометрия недоступна или секрет удалён — сбрасываем
+      if(!data || !data.hasTouchId){
+        lsSet('bc_bio_lock', false);
+      }
     }
-  }catch(e){}
+  }});
 }
 
-document.addEventListener('visibilitychange', () => {
+// Блокируем при сворачивании приложения
+document.addEventListener('visibilitychange', function(){
+  if(!lsGet('bc_bio_lock', false)) return;
   if(document.visibilityState === 'hidden'){
-    if(lsGet('bc_bio_lock', false)) _bioUnlocked = false;
+    _bioUnlocked = false;
   } else if(document.visibilityState === 'visible'){
-    if(lsGet('bc_bio_lock', false) && !_bioUnlocked && !_bioLocked){
-      bioLock();
-    }
+    if(!_bioUnlocked && !_bioLocked) bioLock();
   }
 });
 
+// Median callback при возврате в приложение (Android)
 window.gonative_app_resumed = function(){
-  if(lsGet('bc_bio_lock', false) && !_bioUnlocked){
-    bioLock();
-  }
+  if(lsGet('bc_bio_lock', false) && !_bioUnlocked) bioLock();
 };
 
-bioInit();
+// Запускаем с небольшой задержкой (Median API должен загрузиться)
+setTimeout(function(){ bioInit(); }, 600);
 
 })();
 </script>
@@ -6760,13 +6772,13 @@ bioInit();
     </div>
   </div>
 </div>
-  <!-- ── БИОМЕТРИЧЕСКИЙ ЭКРАН БЛОКИРОВКИ ── -->
+  <!-- БИОМЕТРИЧЕСКИЙ ЭКРАН БЛОКИРОВКИ -->
   <div id="bioLockScreen">
     <div class="bio-lock-logo">🔐</div>
     <div class="bio-lock-title">K-Chat</div>
-    <div class="bio-lock-sub">Подтвердите личность для входа</div>
-    <div class="bio-lock-icon" id="bioLockBtn" onclick="bioPrompt()">☝️</div>
-    <div class="bio-lock-hint" id="bioLockHint">Нажмите для входа по биометрии</div>
+    <div class="bio-lock-sub">Подтвердите личность для доступа</div>
+    <div class="bio-lock-icon" id="bioLockBtn" onclick="window.bioPrompt()">☝️</div>
+    <div class="bio-lock-hint">Нажмите для входа по биометрии</div>
     <div class="bio-lock-err" id="bioLockErr"></div>
   </div>
 </body>
