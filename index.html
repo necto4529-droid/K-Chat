@@ -3616,6 +3616,24 @@ window.selectShareTarget=function(pid){
   $('shareSendFab').classList.toggle('visible',!!_shareSelectedPid);
 };
 
+// Ждём подключения WebSocket (с таймаутом). На холодном старте
+// приложения (например, когда оно запущено системой ради приёма
+// "Поделиться") установление соединения занимает заметно больше,
+// чем 150мс — раньше из-за этого sendSingleMsg сразу падал с
+// "offline" и пользователь видел "Не удалось отправить", хотя
+// на самом деле соединение просто ещё не успело подняться.
+function waitForWS(timeoutMs=8000){
+  return new Promise(resolve=>{
+    if(wsUp){resolve(true);return;}
+    ensureWS();
+    const start=Date.now();
+    const iv=setInterval(()=>{
+      if(wsUp){clearInterval(iv);resolve(true);return;}
+      if(Date.now()-start>timeoutMs){clearInterval(iv);resolve(false);}
+    },100);
+  });
+}
+
 window.confirmShareSend=async function(){
   if(!_shareSelectedPid)return;
   // Доп. защита: если payload вдруг пуст (например, был затёрт до этого
@@ -3630,7 +3648,22 @@ window.confirmShareSend=async function(){
   const textToSend=_sharePayloadText;
   const fab=$('shareSendFab');
   fab.style.pointerEvents='none';
+  fab.style.opacity='.6';
   try{
+    // Если отправляем не в "Избранное" — нужна связь с сервером.
+    // На холодном старте (приложение только что открыто системой
+    // через "Поделиться") WS может ещё не успеть подняться —
+    // подождём, показывая пользователю статус подключения.
+    if(pid!==MY_ID&&!wsUp){
+      toast('Подключение...');
+      const ok=await waitForWS(8000);
+      if(!ok){
+        toast('Нет связи с сервером. Сообщение сохранено, нажмите ➤ ещё раз','err');
+        fab.style.pointerEvents='';
+        fab.style.opacity='';
+        return; // не закрываем экран шаринга — payload сохранён, можно повторить отправку
+      }
+    }
     const ct=loadContacts().find(c=>c.id===pid);
     await getOrCreateChat(pid,ct?.name,ct?.avatar);
     closeShareScreen();
@@ -3638,10 +3671,16 @@ window.confirmShareSend=async function(){
     setTimeout(async()=>{
       await openChatById(pid);
       activePid=pid;
-      try{await sendSingleMsg(textToSend);}catch(e){toast('Не удалось отправить','err');}
+      try{
+        await sendSingleMsg(textToSend);
+      }catch(e){
+        console.error('confirmShareSend send error',e);
+        toast('Не удалось отправить','err');
+      }
     },150);
   }finally{
     fab.style.pointerEvents='';
+    fab.style.opacity='';
   }
 };
 
@@ -6889,6 +6928,17 @@ window.bioPrompt = function(){
   if(btn)   btn.classList.add('pulse');
   if(errEl) errEl.textContent = '';
 
+  // ВАЖНО: вызов native-биометрии (median.auth.get) переводит WebView
+  // в background на время показа системного диалога Touch/Face ID —
+  // это вызывает document.visibilitychange ('hidden' → 'visible').
+  // Без этого флага обработчик visibilitychange (см. ниже) решал, что
+  // приложение было свёрнуто пользователем (>3с), и вызывал
+  // goHome()/leaveChat() — что сбрасывало экран выбора чата,
+  // открытый через "Поделиться" (median_share_to_app), ДО того как
+  // пользователь успевал отправить сообщение. Помечаем этот переход
+  // как "ожидаемый", чтобы visibilitychange его проигнорировал.
+  ignoreNextVisibilityReturn = true;
+
   median.auth.get({
     prompt:           'Войти в K-Chat',
     callbackFunction: function(result){
@@ -6907,6 +6957,9 @@ window.bioPrompt = function(){
           return;
         }
         if(errEl) errEl.textContent = msg;
+        // Повторный показ диалога биометрии (после повторного нажатия)
+        // также может вызвать visibilitychange — снова игнорируем его.
+        ignoreNextVisibilityReturn = true;
       }
     },
     callbackOnCancel: 1
