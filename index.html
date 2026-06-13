@@ -3500,26 +3500,65 @@ window.showContacts=()=>{renderContacts();goScreen('scr-contacts');};
 // Мы показываем экран выбора чата (как в Telegram "Отправить"),
 // пользователь выбирает один чат, жмёт ➤ — и текст/ссылка
 // отправляется как обычное сообщение в выбранный чат.
+//
+// ВАЖНО: на Android Median иногда вызывает median_share_to_app()
+// ПОВТОРНО — например при возврате webview из фона/после анимации
+// системного шаринга — но уже с ПУСТЫМ data (или вовсе без аргумента).
+// Если это происходит после того, как пользователь уже открыл экран
+// выбора чата, повторный пустой вызов раньше ЗАТИРАЛ _sharePayloadText
+// пустой строкой — и при нажатии "Отправить" в чат уходило пустое
+// сообщение. Теперь пустой/повторный вызов без полезных данных
+// полностью игнорируется и не трогает уже сохранённый payload.
+// Дополнительно payload сохраняется в sessionStorage, чтобы пережить
+// возможный ре-рендер/повторную инициализацию страницы.
 // ══════════════════════════════════════════════════════════════════
 let _shareSelectedPid=null;
 let _sharePayloadText='';
 
+function _extractShareText(data){
+  data=data||{};
+  // Поддерживаем все известные варианты полей, которые встречаются
+  // у разных версий Median/устройств/Android share-intent мостов.
+  const pick=(...keys)=>{
+    for(const k of keys){
+      const v=data[k];
+      if(typeof v==='string'&&v.trim())return v.trim();
+    }
+    return '';
+  };
+  const url=pick('url','link','uri','sharedUrl');
+  const subject=pick('subject','title','sharedTitle');
+  const text=pick('text','body','message','sharedText','description');
+  // Собираем итоговый текст для отправки: заголовок/текст + ссылка
+  const parts=[];
+  if(subject&&subject!==url)parts.push(subject);
+  if(text&&text!==url&&text!==subject)parts.push(text);
+  if(url&&!parts.includes(url))parts.push(url);
+  return parts.join('\n');
+}
+
 window.median_share_to_app=function(data){
   try{
-    data=data||{};
-    const url=(data.url||'').trim();
-    const subject=(data.subject||data.title||'').trim();
-    const text=(data.text||'').trim();
-    // Собираем итоговый текст для отправки: заголовок/текст + ссылка
-    const parts=[];
-    if(subject&&subject!==url)parts.push(subject);
-    if(text&&text!==url&&text!==subject)parts.push(text);
-    if(url)parts.push(url);
-    _sharePayloadText=parts.join('\n')||url||text||subject||'';
-    if(!_sharePayloadText){toast('Нет данных для отправки','err');return;}
+    const payload=_extractShareText(data);
+    if(!payload){
+      // Пустой повторный вызов (Median resume-quirk) — игнорируем,
+      // НЕ трогаем уже сохранённый _sharePayloadText.
+      console.warn('median_share_to_app: empty payload, ignored',data);
+      return;
+    }
+    _sharePayloadText=payload;
+    try{sessionStorage.setItem('_pendingSharePayload',payload);}catch(e){}
     openShareScreen();
   }catch(e){console.error('median_share_to_app error',e);}
 };
+
+// При старте страницы — если есть незавершённый shared-payload
+// (например, страница была перезагружена пока был открыт экран
+// выбора чата) — восстанавливаем его.
+try{
+  const _restored=sessionStorage.getItem('_pendingSharePayload');
+  if(_restored)_sharePayloadText=_restored;
+}catch(e){}
 
 function openShareScreen(){
   _shareSelectedPid=null;
@@ -3578,7 +3617,15 @@ window.selectShareTarget=function(pid){
 };
 
 window.confirmShareSend=async function(){
-  if(!_shareSelectedPid||!_sharePayloadText)return;
+  if(!_shareSelectedPid)return;
+  // Доп. защита: если payload вдруг пуст (например, был затёрт до этого
+  // фикса или storage пуст) — не отправляем пустое сообщение,
+  // показываем ошибку и закрываем экран шаринга.
+  if(!_sharePayloadText||!_sharePayloadText.trim()){
+    toast('Нет данных для отправки','err');
+    closeShareScreen();
+    return;
+  }
   const pid=_shareSelectedPid;
   const textToSend=_sharePayloadText;
   const fab=$('shareSendFab');
@@ -3600,6 +3647,7 @@ window.confirmShareSend=async function(){
 
 window.closeShareScreen=function(){
   _shareSelectedPid=null;_sharePayloadText='';
+  try{sessionStorage.removeItem('_pendingSharePayload');}catch(e){}
   goHome();
 };
 
