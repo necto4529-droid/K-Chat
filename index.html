@@ -3580,6 +3580,7 @@ window.selectShareTarget=function(pid){
 window.confirmShareSend=async function(){
   if(!_shareSelectedPid||!_sharePayloadText)return;
   const pid=_shareSelectedPid;
+  const textToSend=_sharePayloadText;
   const fab=$('shareSendFab');
   fab.style.pointerEvents='none';
   try{
@@ -3590,8 +3591,7 @@ window.confirmShareSend=async function(){
     setTimeout(async()=>{
       await openChatById(pid);
       activePid=pid;
-      try{await sendSingleMsg(_sharePayloadText);}catch(e){toast('Не удалось отправить','err');}
-      _sharePayloadText='';
+      try{await sendSingleMsg(textToSend);}catch(e){toast('Не удалось отправить','err');}
     },150);
   }finally{
     fab.style.pointerEvents='';
