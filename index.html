@@ -263,6 +263,25 @@
     body.power-save .rec-limit-bar.crit{animation:none!important;opacity:1}
     body.power-save .sdot{animation:none!important;opacity:1;transform:scale(1)}
     body.power-save .toast{transition:opacity .1s,transform .1s!important}
+    /* Видео-кружки — энергосбережение */
+    body.power-save .vn-bubble-wrap{animation:none!important}
+    body.power-save .vn-thumb-outer{transition:width .1s ease,height .1s ease!important;filter:none!important}
+    body.power-save .vn-thumb-circle{transition:none!important}
+    body.power-save .vn-bubble-wrap:not(.expanded):active .vn-thumb-circle{transform:none!important}
+    body.power-save .vn-unread-dot{animation:none!important;box-shadow:0 0 4px var(--g-40)}
+    body.power-save .vn-dl-spinner{animation:none!important;filter:none!important}
+    body.power-save circle[fill="#fff"]{animation:none!important}
+    body.power-save .vn-circle-wrap{transition:opacity .1s ease!important;transform:none!important}
+    body.power-save .vn-record-overlay.active .vn-circle-wrap{transform:none!important}
+    body.power-save .vn-circle-wrap.urgent .vn-preview{animation:none!important}
+    body.power-save .vn-preview{transition:filter .1s!important}
+    body.power-save .vn-rec-timer-wrap{transition:opacity .1s ease!important;transform:none!important}
+    body.power-save .vn-record-overlay.active .vn-rec-timer-wrap{transform:none!important}
+    body.power-save .vn-rec-bar>div{transition:opacity .1s ease!important;transform:none!important}
+    body.power-save .vn-record-overlay.active .vn-rec-bar>div{transform:none!important}
+    body.power-save .vn-send-btn.launching{animation:none!important;opacity:0}
+    body.power-save .vn-circle-wrap.cancelling{animation:none!important;opacity:0}
+    body.power-save .vn-backdrop{transition:opacity .1s ease!important}
     body.power-save .toast.processing::before{animation:none!important;opacity:1}
     body.power-save .toast.queue-progress::before{animation:none!important;opacity:1}
     body.power-save .lightbox-overlay{transition:opacity .12s ease!important;backdrop-filter:none!important}
@@ -643,34 +662,69 @@
     /* VIDEO NOTE RECORDING OVERLAY */
     .vn-record-overlay{position:fixed;inset:0;z-index:9000;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;opacity:0;transition:opacity .22s ease;background:transparent}
     .vn-record-overlay.active{opacity:1;pointer-events:all}
-    .vn-backdrop{position:absolute;inset:0;background:rgba(4,4,16,.88);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+    .vn-backdrop{position:absolute;inset:0;background:rgba(4,4,16,.88);backdrop-filter:blur(0px);-webkit-backdrop-filter:blur(0px);transition:backdrop-filter .35s ease,-webkit-backdrop-filter .35s ease,opacity .35s ease;opacity:0}
+    .vn-record-overlay.active .vn-backdrop{backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);opacity:1}
     /* Кружок + таймер — в центре экрана через flex, не смещаем padding */
-    .vn-circle-wrap{position:relative;width:248px;height:248px;flex-shrink:0;z-index:1}
-    .vn-preview{width:240px;height:240px;border-radius:50%;object-fit:cover;display:block;position:absolute;top:4px;left:4px;background:#111;transform:scaleX(-1)}
+    .vn-circle-wrap{position:relative;width:248px;height:248px;flex-shrink:0;z-index:1;transform:scale(.4);opacity:0;transition:transform .42s cubic-bezier(.34,1.56,.64,1),opacity .28s ease}
+    .vn-record-overlay.active .vn-circle-wrap{transform:scale(1);opacity:1}
+    @keyframes vnCircleCancel{
+      0%{transform:scale(1);opacity:1}
+      30%{transform:scale(1.06);opacity:1}
+      100%{transform:scale(.3) rotate(15deg);opacity:0}
+    }
+    .vn-circle-wrap.cancelling{animation:vnCircleCancel .32s cubic-bezier(.4,0,.2,1) forwards}
+    .vn-preview{width:240px;height:240px;border-radius:50%;object-fit:cover;display:block;position:absolute;top:0px;left:4px;background:#111;transform:scaleX(-1);transition:transform .5s cubic-bezier(.34,1.56,.64,1),filter .3s}
+    .vn-preview.flipping{filter:brightness(.3) blur(2px)}
     .vn-ring-svg{position:absolute;top:0;left:0;width:248px;height:248px;pointer-events:none}
     .vn-ring-track{fill:none;stroke:rgba(255,255,255,.18);stroke-width:4}
-    .vn-ring-prog{fill:none;stroke:var(--g);stroke-width:4;stroke-linecap:round;transform:rotate(-90deg);transform-origin:50% 50%;transition:stroke-dashoffset .4s linear}
+    .vn-ring-prog{fill:none;stroke:var(--g);stroke-width:4;stroke-linecap:round;transform:rotate(-90deg);transform-origin:50% 50%;transition:stroke-dashoffset .4s linear,stroke .25s,filter .25s}
+    /* Последние секунды записи — кольцо переливается тревожным цветом с глоу */
+    .vn-ring-prog.urgent{stroke:var(--err);filter:drop-shadow(0 0 6px var(--err))}
+    .vn-circle-wrap.urgent .vn-preview{box-shadow:0 0 0 0 rgba(255,79,106,0)}
+    @keyframes vnUrgentPulse{0%,100%{box-shadow:0 0 0 0 rgba(255,79,106,.55)}50%{box-shadow:0 0 0 10px rgba(255,79,106,0)}}
+    .vn-circle-wrap.urgent .vn-preview{animation:vnUrgentPulse 1s ease-out infinite}
     /* Таймер под кружком */
-    .vn-rec-timer-wrap{position:relative;z-index:2;margin-top:20px;display:flex;align-items:center;gap:8px}
+    .vn-rec-timer-wrap{position:relative;z-index:2;margin-top:20px;display:flex;align-items:center;gap:8px;transform:translateY(10px);opacity:0;transition:transform .35s cubic-bezier(.34,1.56,.64,1) .08s,opacity .3s ease .08s}
+    .vn-record-overlay.active .vn-rec-timer-wrap{transform:translateY(0);opacity:1}
     .vn-rec-dot{width:8px;height:8px;border-radius:50%;background:var(--err);animation:recpulse 1s ease-in-out infinite;flex-shrink:0}
-    .vn-rec-time{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;color:#fff;letter-spacing:3px;min-width:60px;text-align:center}
+    .vn-rec-time{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;color:#fff;letter-spacing:3px;min-width:60px;text-align:center;transition:color .25s}
+    .vn-rec-time.urgent{color:var(--err)}
     /* Панель кнопок — абсолютно прибита к низу, не участвует в flex-центровке */
     .vn-rec-bar{position:absolute;bottom:0;left:0;right:0;z-index:2;display:flex;align-items:center;justify-content:center;gap:28px;padding:20px 32px max(28px,env(safe-area-inset-bottom));background:linear-gradient(to top,rgba(4,4,16,.97) 55%,transparent 100%)}
+    .vn-rec-bar>div{transform:translateY(30px);opacity:0;transition:transform .4s cubic-bezier(.34,1.56,.64,1),opacity .3s ease}
+    .vn-record-overlay.active .vn-rec-bar>div{transform:translateY(0);opacity:1}
+    .vn-record-overlay.active .vn-cancel-btn{transition-delay:.06s}
+    .vn-record-overlay.active .vn-send-btn{transition-delay:.12s}
+    .vn-record-overlay.active .vn-flip-btn{transition-delay:.18s}
     .vn-cancel-btn{width:58px;height:58px;border-radius:50%;background:rgba(255,79,106,.16);border:1.5px solid rgba(255,79,106,.45);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:22px;color:var(--err);transition:background .18s,transform .15s;flex-shrink:0}
     .vn-cancel-btn:active{transform:scale(.88);background:rgba(255,79,106,.3)}
     .vn-send-btn{width:70px;height:70px;border-radius:50%;background:linear-gradient(135deg,var(--g),var(--b));border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:28px;color:#000;box-shadow:0 4px 24px var(--g-40);transition:box-shadow .18s,transform .15s;flex-shrink:0}
     .vn-send-btn:active{transform:scale(.9)}
-    .vn-flip-btn{width:54px;height:54px;border-radius:50%;background:rgba(255,255,255,.1);border:1.5px solid rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:22px;transition:background .18s,transform .25s;flex-shrink:0}
+    @keyframes vnSendLaunch{
+      0%{transform:scale(1);opacity:1}
+      40%{transform:scale(1.25);opacity:1;box-shadow:0 4px 40px var(--g-40)}
+      100%{transform:scale(.3) translateY(40px);opacity:0}
+    }
+    .vn-send-btn.launching{animation:vnSendLaunch .38s cubic-bezier(.4,0,.2,1) forwards}
+    .vn-cancel-btn.fading-out,.vn-flip-btn.fading-out{transition:transform .25s ease,opacity .25s ease;transform:scale(.6);opacity:0}
+    .vn-flip-btn{width:54px;height:54px;border-radius:50%;background:rgba(255,255,255,.1);border:1.5px solid rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:22px;transition:background .18s,transform .35s cubic-bezier(.34,1.56,.64,1);flex-shrink:0}
     .vn-flip-btn:active{transform:scale(.88) rotate(180deg);background:rgba(255,255,255,.18)}
     /* VIDEO NOTE BUBBLE */
-    .vn-bubble-wrap{display:inline-flex;flex-direction:column;position:relative;cursor:pointer}
+    @keyframes vnBubbleIn{
+      0%{opacity:0;transform:scale(.5) rotate(-12deg)}
+      60%{opacity:1;transform:scale(1.06) rotate(2deg)}
+      100%{opacity:1;transform:scale(1) rotate(0deg)}
+    }
+    .vn-bubble-wrap{display:inline-flex;flex-direction:column;position:relative;cursor:pointer;animation:vnBubbleIn .45s cubic-bezier(.34,1.56,.64,1) backwards}
     .vn-bubble-wrap.sent{align-self:flex-end}
     .vn-bubble-wrap.recv{align-self:flex-start}
     /* Внешний контейнер: без overflow:hidden — SVG кольцо выходит за края */
-    .vn-thumb-outer{position:relative;flex-shrink:0;transition:width .28s cubic-bezier(.4,0,.2,1),height .28s cubic-bezier(.4,0,.2,1)}
+    .vn-thumb-outer{position:relative;flex-shrink:0;transition:width .38s cubic-bezier(.34,1.56,.64,1),height .38s cubic-bezier(.34,1.56,.64,1),filter .38s ease}
+    .vn-bubble-wrap.expanded .vn-thumb-outer{filter:drop-shadow(0 8px 24px rgba(0,0,0,.45)) drop-shadow(0 0 3px var(--g-25))}
     /* Круг с overflow:hidden только для видео — вписан внутрь outer с отступом под кольцо */
-    .vn-thumb-circle{border-radius:50%;overflow:hidden;display:block;position:absolute;top:4px;left:4px;right:4px;bottom:4px;background:#111}
-    .vn-thumb-video{width:100%;height:100%;object-fit:cover;display:block}
+    .vn-thumb-circle{border-radius:50%;overflow:hidden;position:absolute;top:4px;left:4px;right:4px;bottom:4px;background:#111;transition:transform .12s cubic-bezier(.34,1.56,.64,1)}
+    .vn-bubble-wrap:not(.expanded):active .vn-thumb-circle{transform:scale(.94)}
+    .vn-thumb-video{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;object-position:center center;display:block}
     /* SVG кольцо поверх — занимает весь outer, не обрезается */
     .vn-ring-svg-play{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;transition:opacity .28s}
     .vn-ring-track-play{fill:none;stroke:rgba(255,255,255,.2);stroke-width:3.5}
@@ -680,16 +734,20 @@
     .vn-dl-btn{width:42px;height:42px;border-radius:50%;background:rgba(0,217,255,.16);border:2px solid rgba(0,217,255,.4);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .2s,transform .15s;font-size:16px;color:#fff}
     .vn-dl-btn:hover{background:rgba(0,217,255,.26);transform:scale(1.06)}
     .vn-dl-btn:active{transform:scale(.92)}
-    .vn-dl-spinner{width:42px;height:42px;position:relative}
+    .vn-dl-spinner{width:42px;height:42px;position:relative;animation:vnDlPulse 1.8s ease-in-out infinite}
+    @keyframes vnDlPulse{0%,100%{filter:drop-shadow(0 0 0 transparent)}50%{filter:drop-shadow(0 0 6px var(--g-40))}}
     .vn-dl-spinner svg{width:42px;height:42px;transform:rotate(-90deg)}
     .vn-dl-spinner-track{fill:none;stroke:rgba(255,255,255,.18);stroke-width:3}
     .vn-dl-spinner-fill{fill:none;stroke:var(--g);stroke-width:3;stroke-linecap:round;stroke-dasharray:122;stroke-dashoffset:122;transition:stroke-dashoffset .25s ease}
     .vn-dl-spinner-icon{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff}
     /* pauseDot — SVG circle в кольце, не обрезается */
     .vn-pause-dot{position:absolute;border-radius:50%;background:#fff;box-shadow:0 0 4px rgba(0,0,0,.5);pointer-events:none;opacity:0;transition:opacity .18s;width:11px;height:11px;z-index:5}
+    @keyframes vnPauseDotPulse{0%,100%{r:6}50%{r:7}}
+    .vn-bubble-wrap.expanded:not(.vn-playing) circle[fill="#fff"]{animation:vnPauseDotPulse 1.4s ease-in-out infinite}
     /* Dot непросмотренного — теперь живёт внутри .vn-dur-pill */
-    .vn-unread-dot{width:9px;height:9px;border-radius:50%;background:var(--g);box-shadow:0 0 6px var(--g-40);flex-shrink:0;transition:opacity .35s,transform .35s}
-    .vn-unread-dot.hidden{opacity:0;transform:scale(0);pointer-events:none;width:0;margin:0}
+    .vn-unread-dot{width:9px;height:9px;border-radius:50%;background:var(--g);box-shadow:0 0 6px var(--g-40);flex-shrink:0;transition:opacity .35s,transform .35s;animation:vnUnreadPulse 1.6s ease-in-out infinite}
+    .vn-unread-dot.hidden{opacity:0;transform:scale(0);pointer-events:none;width:0;margin:0;animation:none}
+    @keyframes vnUnreadPulse{0%,100%{box-shadow:0 0 4px var(--g-40);opacity:1}50%{box-shadow:0 0 10px var(--g);opacity:.7}}
     .msg-row.sent .vn-unread-dot{background:var(--g);box-shadow:0 0 6px var(--g-40)}
 
     /* ── Overlay-плашки на самом кружке (Telegram-стиль, как у обычного видео) ── */
@@ -6352,6 +6410,7 @@ function _initMicBtn(){
 
 // ── ЗАПИСЬ ВИДЕО-КРУЖКА ──
 let _vnRecording=false;
+let _vnStopping=false; // защита от повторного вызова cancel/stop во время анимации закрытия
 let _vnStream=null;
 let _vnMediaRecorder=null;
 let _vnChunks=[];
@@ -6398,10 +6457,17 @@ async function startVideoNote(){
   _vnTimerIv=setInterval(()=>{
     const elapsed=Date.now()-_vnStartTime;
     const sec=Math.floor(elapsed/1000);
-    $('vnRecTime').textContent=fmtDur(sec);
+    const timeEl=$('vnRecTime');
+    timeEl.textContent=fmtDur(sec);
     const pct=Math.min(elapsed/(MAX_VN_SEC*1000),1);
     ring.style.strokeDashoffset=(VN_CIRCUMFERENCE*(1-pct)).toFixed(2);
-    if(elapsed>=MAX_VN_SEC*1000){stopAndSendVideoNote();}
+    // Последние 5 секунд — тревожная индикация (цвет кольца, таймер, пульс кружка)
+    const remainingSec=MAX_VN_SEC-sec;
+    const isUrgent=remainingSec<=5&&remainingSec>=0;
+    ring.classList.toggle('urgent',isUrgent);
+    timeEl.classList.toggle('urgent',isUrgent);
+    $('vnCircleWrap').classList.toggle('urgent',isUrgent);
+    if(elapsed>=MAX_VN_SEC*1000){clearInterval(_vnTimerIv);_vnTimerIv=null;stopAndSendVideoNote();}
   },80);
 
   if(activePid&&activePid!==MY_ID){
@@ -6418,7 +6484,10 @@ function _stopVnInternal(){
     const ov=$('vnRecordOverlay');
     ov.classList.remove('active');
     $('vnRecTime').textContent='0:00';
+    $('vnRecTime').classList.remove('urgent');
     $('vnRingProg').style.strokeDashoffset=VN_CIRCUMFERENCE;
+    $('vnRingProg').classList.remove('urgent');
+    $('vnCircleWrap').classList.remove('urgent','cancelling');
     const preview=$('vnPreview');
     preview.srcObject=null;
     if(_vnStream){_vnStream.getTracks().forEach(t=>t.stop());_vnStream=null;}
@@ -6430,25 +6499,49 @@ function _stopVnInternal(){
 }
 
 window.cancelVideoNote=async function(){
-  if(!_vnRecording)return;
+  if(!_vnRecording||_vnStopping)return;
+  _vnStopping=true;
+  // Анимация "схлопывания" кружка перед закрытием оверлея
+  const circleWrap=$('vnCircleWrap');
+  const cancelBtn=$('vnCancelBtn'),flipBtn=$('vnFlipBtn');
+  circleWrap.classList.remove('urgent');
+  circleWrap.classList.add('cancelling');
+  cancelBtn.classList.add('fading-out');
+  flipBtn.classList.add('fading-out');
+  if(typeof _vib==='function')_vib('notificationWarning');
+  await new Promise(r=>setTimeout(r,220));
   await _stopVnInternal();
+  circleWrap.classList.remove('cancelling');
+  cancelBtn.classList.remove('fading-out');
+  flipBtn.classList.remove('fading-out');
   _vnChunks=[];
   if(activePid)_sendActivityStop(activePid);
-  if(typeof _vib==='function')_vib('notificationWarning');
   toast('Запись отменена');
+  _vnStopping=false;
 };
 
 window.stopAndSendVideoNote=async function(){
-  if(!_vnRecording)return;
+  if(!_vnRecording||_vnStopping)return;
+  _vnStopping=true;
   const capturedStart=_vnStartTime;
+  // Анимация "запуска" кнопки отправки перед закрытием оверлея
+  const sendBtn=$('vnSendBtn'),cancelBtn=$('vnCancelBtn'),flipBtn=$('vnFlipBtn');
+  sendBtn.classList.add('launching');
+  cancelBtn.classList.add('fading-out');
+  flipBtn.classList.add('fading-out');
+  if(typeof _vib==='function')_vib('notificationSuccess');
+  await new Promise(r=>setTimeout(r,180));
   const chunks=await _stopVnInternal();
+  sendBtn.classList.remove('launching');
+  cancelBtn.classList.remove('fading-out');
+  flipBtn.classList.remove('fading-out');
+  _vnStopping=false;
   const durSec=Math.max(1,Math.round((Date.now()-capturedStart)/1000));
   if(!chunks||!chunks.length){toast('Пустая запись','warn');return;}
   const mimeType=chunks[0]?.type||'video/webm';
   const blob=new Blob(chunks,{type:mimeType});
   if(!blob.size){toast('Пустая запись','warn');return;}
   if(activePid)_sendActivityStop(activePid);
-  if(typeof _vib==='function')_vib('notificationSuccess');
   try{
     // blob.arrayBuffer() — прямо без FileReader+base64 (надёжнее на Android WebView)
     const fileBuffer=await blob.arrayBuffer();
@@ -6462,6 +6555,8 @@ window.stopAndSendVideoNote=async function(){
 window.flipVideoCamera=async function(){
   if(!_vnRecording)return;
   _vnFacingMode=_vnFacingMode==='user'?'environment':'user';
+  const preview=$('vnPreview');
+  preview.classList.add('flipping');
   try{
     const newStream=await navigator.mediaDevices.getUserMedia({
       video:{facingMode:_vnFacingMode,width:{ideal:480},height:{ideal:480},frameRate:{ideal:30}},
@@ -6474,10 +6569,10 @@ window.flipVideoCamera=async function(){
       _vnStream.removeTrack(oldVideoTrack);
       _vnStream.addTrack(newVideoTrack);
     }
-    const preview=$('vnPreview');
     preview.srcObject=_vnStream;
     preview.style.transform=_vnFacingMode==='user'?'scaleX(-1)':'scaleX(1)';
   }catch(e){toast('Ошибка переключения камеры','err');}
+  setTimeout(()=>preview.classList.remove('flipping'),120);
 };
 
 // ── ОТПРАВКА ВИДЕО-КРУЖКА ЧЕРЕЗ ЧАНКОВЫЙ ПРОТОКОЛ ──────────────────────────
@@ -6609,7 +6704,7 @@ function buildVideoNoteBubble(m,isSent){
   vid.preload='metadata';
   vid.loop=false;
   vid.muted=false;
-  vid.style.cssText=`width:100%;height:100%;object-fit:cover;display:block;`;
+  vid.style.cssText=`position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;object-position:center center;display:block;`;
 
   // ── FIX: загрузка видео с правильным управлением ObjectURL ──
   let _activeObjectURL=null;
@@ -6808,6 +6903,7 @@ function buildVideoNoteBubble(m,isSent){
   wrap.appendChild(outer);
 
   let expanded=false,playing=false,rafId=null;
+  function _setPlaying(v){playing=v;wrap.classList.toggle('vn-playing',v);}
   // Обработчик клика вне кружка для сворачивания
   let _outsideClickHandler=null;
 
@@ -6875,7 +6971,7 @@ function buildVideoNoteBubble(m,isSent){
 
   function _doReset(){
     if(playing)vid.pause();
-    playing=false;
+    _setPlaying(false);
     if(rafId){cancelAnimationFrame(rafId);rafId=null;}
     pauseDotEl.style.opacity='0';
     svgObj.svg.style.opacity='0';
@@ -6917,7 +7013,7 @@ function buildVideoNoteBubble(m,isSent){
         try{vid.currentTime=0;}catch(e){}
       }
       vid.play().then(()=>{
-        playing=true;pauseDotEl.style.opacity='0';
+        _setPlaying(true);pauseDotEl.style.opacity='0';
         // Кольцо появляется при начале воспроизведения
         svgObj.svg.style.opacity='1';
         if(rafId)cancelAnimationFrame(rafId);
@@ -6957,7 +7053,7 @@ function buildVideoNoteBubble(m,isSent){
   }
 
   vid.addEventListener('ended',()=>{
-    playing=false;if(rafId){cancelAnimationFrame(rafId);rafId=null;}
+    _setPlaying(false);if(rafId){cancelAnimationFrame(rafId);rafId=null;}
     pauseDotEl.style.opacity='0';
     vid.currentTime=0;
     // Кольцо заполнено до конца — плавно скрываем, потом сворачиваем
@@ -6992,7 +7088,7 @@ function buildVideoNoteBubble(m,isSent){
     e.stopPropagation();
     if(isPending)return; // ждём скачивания — клик обрабатывает кнопка ⬇ внутри overlay
     if(!expanded){_expand();_startPlay();}
-    else if(playing){vid.pause();playing=false;if(rafId){cancelAnimationFrame(rafId);rafId=null;}_updateRing();}
+    else if(playing){vid.pause();_setPlaying(false);if(rafId){cancelAnimationFrame(rafId);rafId=null;}_updateRing();}
     else{pauseDotEl.style.opacity='0';if(vid.ended||vid.currentTime===0)vid.currentTime=0;_startPlay();}
   });
 
