@@ -632,10 +632,51 @@
     .pvb-send{background:linear-gradient(135deg,var(--g),var(--b));border:none;color:#000;font-size:17px;box-shadow:0 3px 14px var(--g-40)}
     .pvb-send:hover{box-shadow:0 5px 22px var(--g-85);transform:scale(1.06)}
     /* MIC */
-    .mic-btn{width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:20px;flex-shrink:0;transition:background .2s,box-shadow .25s}
+    .mic-btn{width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:20px;flex-shrink:0;transition:background .2s,box-shadow .25s,transform .25s}
     .mic-btn:hover{background:var(--g-14)}
     .mic-btn.recording{background:rgba(255,79,106,.18);border-color:rgba(255,79,106,.45);animation:micring 1s ease-in-out infinite}
+    .mic-btn.mode-video{background:rgba(0,217,255,.1);border-color:rgba(0,217,255,.28)}
+    .mic-btn.mode-video:hover{background:rgba(0,217,255,.18)}
+    .mic-btn.switch-anim{animation:micswitch .28s ease}
+    @keyframes micswitch{0%{transform:scale(1) rotate(0deg);opacity:1}40%{transform:scale(.62) rotate(90deg);opacity:0}41%{}100%{transform:scale(1) rotate(0deg);opacity:1}}
     @keyframes micring{0%{box-shadow:0 0 0 0 rgba(255,79,106,.45)}70%{box-shadow:0 0 0 10px rgba(255,79,106,0)}100%{box-shadow:0 0 0 0 rgba(255,79,106,0)}}
+    /* VIDEO NOTE RECORDING OVERLAY */
+    .vn-record-overlay{position:fixed;inset:0;z-index:9000;display:flex;flex-direction:column;align-items:center;justify-content:center;padding-bottom:140px;pointer-events:none;opacity:0;transition:opacity .22s ease;background:transparent}
+    .vn-record-overlay.active{opacity:1;pointer-events:all}
+    .vn-backdrop{position:absolute;inset:0;background:rgba(4,4,16,.88);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+    .vn-circle-wrap{position:relative;width:248px;height:248px;flex-shrink:0;z-index:1}
+    .vn-preview{width:240px;height:240px;border-radius:50%;object-fit:cover;display:block;position:absolute;top:4px;left:4px;background:#111;transform:scaleX(-1)}
+    .vn-ring-svg{position:absolute;top:0;left:0;width:248px;height:248px;pointer-events:none}
+    .vn-ring-track{fill:none;stroke:rgba(255,255,255,.18);stroke-width:4}
+    .vn-ring-prog{fill:none;stroke:var(--g);stroke-width:4;stroke-linecap:round;transform:rotate(-90deg);transform-origin:50% 50%;transition:stroke-dashoffset .4s linear}
+    /* Таймер под кружком */
+    .vn-rec-timer-wrap{position:relative;z-index:2;margin-top:20px;display:flex;align-items:center;gap:8px}
+    .vn-rec-dot{width:8px;height:8px;border-radius:50%;background:var(--err);animation:recpulse 1s ease-in-out infinite;flex-shrink:0}
+    .vn-rec-time{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;color:#fff;letter-spacing:3px;min-width:60px;text-align:center}
+    /* Панель кнопок — прибита к низу экрана */
+    .vn-rec-bar{position:absolute;bottom:0;left:0;right:0;z-index:2;display:flex;align-items:center;justify-content:center;gap:28px;padding:20px 32px max(28px,env(safe-area-inset-bottom));background:linear-gradient(to top,rgba(4,4,16,.97) 55%,transparent 100%)}
+    .vn-cancel-btn{width:58px;height:58px;border-radius:50%;background:rgba(255,79,106,.16);border:1.5px solid rgba(255,79,106,.45);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:22px;color:var(--err);transition:background .18s,transform .15s;flex-shrink:0}
+    .vn-cancel-btn:active{transform:scale(.88);background:rgba(255,79,106,.3)}
+    .vn-send-btn{width:70px;height:70px;border-radius:50%;background:linear-gradient(135deg,var(--g),var(--b));border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:28px;color:#000;box-shadow:0 4px 24px var(--g-40);transition:box-shadow .18s,transform .15s;flex-shrink:0}
+    .vn-send-btn:active{transform:scale(.9)}
+    .vn-flip-btn{width:54px;height:54px;border-radius:50%;background:rgba(255,255,255,.1);border:1.5px solid rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:22px;transition:background .18s,transform .25s;flex-shrink:0}
+    .vn-flip-btn:active{transform:scale(.88) rotate(180deg);background:rgba(255,255,255,.18)}
+    /* VIDEO NOTE BUBBLE */
+    .vn-bubble-wrap{display:inline-block;position:relative;cursor:pointer}
+    .vn-bubble-wrap.sent{align-self:flex-end}
+    .vn-bubble-wrap.recv{align-self:flex-start}
+    .vn-thumb-circle{border-radius:50%;overflow:hidden;display:block;position:relative;transition:width .28s cubic-bezier(.4,0,.2,1),height .28s cubic-bezier(.4,0,.2,1);flex-shrink:0}
+    .vn-thumb-video{width:100%;height:100%;object-fit:cover;display:block;border-radius:50%;transition:border-radius .28s cubic-bezier(.4,0,.2,1)}
+    .vn-ring-svg-play{position:absolute;top:-4px;left:-4px;pointer-events:none;transition:width .28s cubic-bezier(.4,0,.2,1),height .28s cubic-bezier(.4,0,.2,1)}
+    .vn-ring-track-play{fill:none;stroke:rgba(255,255,255,.2);stroke-width:3.5}
+    .vn-ring-prog-play{fill:none;stroke:var(--g);stroke-width:3.5;stroke-linecap:round;transform:rotate(-90deg);transform-origin:50% 50%}
+    .vn-pause-dot{position:absolute;border-radius:50%;background:#fff;box-shadow:0 0 4px rgba(0,0,0,.5);pointer-events:none;opacity:0;transition:opacity .18s;width:11px;height:11px}
+    .vn-meta-row{display:flex;align-items:center;gap:5px;margin-top:5px;padding:0 3px}
+    .vn-meta-row .voice-timer{color:rgba(255,255,255,.55);font-size:10.5px}
+    .vn-meta-row .msg-ticks{font-size:11px}
+    .vn-unread-dot{width:8px;height:8px;border-radius:50%;background:var(--g);box-shadow:0 0 5px var(--g-40);flex-shrink:0;transition:opacity .35s,transform .35s}
+    .vn-unread-dot.hidden{opacity:0;transform:scale(0)}
+    .msg-row.sent .vn-unread-dot{background:var(--g-85)}
     /* CONTEXT MENU */
     .ctx-menu{position:fixed;z-index:600;background:#0d0d1f;border:1px solid var(--border);border-radius:14px;padding:6px;box-shadow:0 8px 32px rgba(0,0,0,.7);min-width:175px}
     .ctx-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px;cursor:pointer;font-size:13px;font-weight:600;transition:background .15s;white-space:nowrap}
@@ -1199,7 +1240,7 @@
     <div class="msg-input-wrap">
       <textarea class="msg-input" id="messageInput" placeholder="Сообщение…" rows="1" autocomplete="off"></textarea>
     </div>
-    <div class="mic-btn" id="micBtn" onclick="toggleRecording()">🎙</div>
+    <div class="mic-btn" id="micBtn">🎙</div>
     <button class="send-btn" id="sendBtn" disabled>➤</button>
   </div>
 </div>
@@ -1208,6 +1249,29 @@
   <span class="lightbox-close" onclick="closeLightbox()">✕</span>
   <img class="lightbox-img" id="lightboxImg" src="" alt="" draggable="false">
   <div class="lightbox-zoom-hint" id="lightboxZoomHint">щипок для масштаба · двойной тап для сброса</div>
+</div>
+
+<!-- VIDEO NOTE RECORDING OVERLAY -->
+<div class="vn-record-overlay" id="vnRecordOverlay">
+  <div class="vn-backdrop"></div>
+  <div class="vn-circle-wrap" id="vnCircleWrap">
+    <video class="vn-preview" id="vnPreview" autoplay muted playsinline></video>
+    <svg class="vn-ring-svg" viewBox="0 0 248 248">
+      <circle class="vn-ring-track" cx="124" cy="124" r="120"/>
+      <circle class="vn-ring-prog" id="vnRingProg" cx="124" cy="124" r="120" stroke-dasharray="753.98" stroke-dashoffset="753.98"/>
+    </svg>
+  </div>
+  <!-- Таймер под кружком -->
+  <div class="vn-rec-timer-wrap">
+    <div class="vn-rec-dot"></div>
+    <div class="vn-rec-time" id="vnRecTime">0:00</div>
+  </div>
+  <!-- Кнопки — прибиты к низу экрана как в Telegram -->
+  <div class="vn-rec-bar">
+    <div class="vn-cancel-btn" id="vnCancelBtn" onclick="cancelVideoNote()" title="Отмена">✕</div>
+    <div class="vn-send-btn" id="vnSendBtn" onclick="stopAndSendVideoNote()" title="Отправить">➤</div>
+    <div class="vn-flip-btn" id="vnFlipBtn" onclick="flipVideoCamera()" title="Перевернуть камеру">🔄</div>
+  </div>
 </div>
 
 <!-- КАСТОМНЫЙ ВИДЕОПЛЕЕР (fullscreen lightbox) -->
@@ -1564,37 +1628,36 @@ function _vib(style='impactLight'){
   }
 }
 const DB_NAME='KChatMessages',STORE_NAME='messages';
+// IDB version 3: добавлен store 'meta' для chats и других метаданных
+const DB_VERSION=3;
 let db=null;
 let _dbOpenPromise=null;
 
 // ═══════════════════════════════════════════════════════════
-// НАДЁЖНЫЙ IDB — три проблемы исправлены:
-// 1. Кэшированный db может быть закрыт (мобильный браузер,
-//    другая вкладка, backgrounding) — проверяем и переоткрываем
-// 2. onversionchange / onclose — явно сбрасываем кэш
-// 3. saveMsgs + loadMsgs — двойное хранилище IDB + ls-backup
+// НАДЁЖНЫЙ IDB v3 — исправления:
+// 1. Чаты (bc_chats) хранятся в IDB 'meta', а не только в localStorage
+// 2. Сообщения хранятся в IDB 'messages' + ls-backup (только текст, без медиа)
+// 3. openMessagesDB: проверка живости через objectStoreNames вместо abort()
+// 4. saveMsgs: ls-backup очищен от data: URL (только структура) → не переполняет quota
+// 5. loadMsgs: умный merge IDB + ls для защиты от любой потери данных
 // ═══════════════════════════════════════════════════════════
 function openMessagesDB(){
-  // Проверяем живость кэшированного соединения
+  // Проверяем живость кэшированного соединения через свойство (не через транзакцию!)
   if(db){
     try{
-      // Если db закрыт — эта операция бросит исключение
-      db.transaction(STORE_NAME,'readonly').abort();
-      return Promise.resolve(db);
-    }catch(e){
-      db=null; _dbOpenPromise=null;
-    }
+      // objectStoreNames.contains() не создаёт транзакций — безопасная проверка
+      if(db.objectStoreNames.contains(STORE_NAME)) return Promise.resolve(db);
+    }catch(e){}
+    db=null; _dbOpenPromise=null;
   }
   if(_dbOpenPromise) return _dbOpenPromise;
   _dbOpenPromise=new Promise((resolve,reject)=>{
-    const req=indexedDB.open(DB_NAME,2);
+    const req=indexedDB.open(DB_NAME,DB_VERSION);
     req.onerror=()=>{_dbOpenPromise=null;reject(req.error);};
     req.onsuccess=()=>{
       db=req.result;
       _dbOpenPromise=null;
-      // Другая вкладка запросила upgrade — уступаем
       db.onversionchange=()=>{db.close();db=null;_dbOpenPromise=null;};
-      // Браузер принудительно закрыл (Chrome on Android при backgrounding)
       db.onclose=()=>{db=null;_dbOpenPromise=null;};
       resolve(db);
     };
@@ -1604,11 +1667,15 @@ function openMessagesDB(){
         d.createObjectStore(STORE_NAME,{keyPath:'peerId'});
       if(!d.objectStoreNames.contains('blobs'))
         d.createObjectStore('blobs');
+      // NEW в v3: хранилище для метаданных (чаты, настройки и т.д.)
+      if(!d.objectStoreNames.contains('meta'))
+        d.createObjectStore('meta');
     };
   });
   return _dbOpenPromise;
 }
 
+// ── Вспомогательные IDB-операции ──
 async function _idbGet(peerId){
   const d=await openMessagesDB();
   return new Promise((res,rej)=>{
@@ -1617,6 +1684,7 @@ async function _idbGet(peerId){
     req.onsuccess=()=>res(req.result?req.result.messages:[]);
     req.onerror=()=>rej(req.error);
     tx.onerror=()=>rej(tx.error);
+    tx.onabort=()=>rej(new Error('tx aborted'));
   });
 }
 
@@ -1624,10 +1692,11 @@ async function _idbPut(peerId,messages){
   const d=await openMessagesDB();
   return new Promise((res,rej)=>{
     const tx=d.transaction(STORE_NAME,'readwrite');
-    tx.objectStore(STORE_NAME).put({peerId,messages});
+    const req=tx.objectStore(STORE_NAME).put({peerId,messages});
+    req.onerror=()=>rej(req.error);
     tx.oncomplete=()=>res();
     tx.onerror=()=>rej(tx.error);
-    tx.onabort=()=>rej(new Error('aborted'));
+    tx.onabort=()=>rej(new Error('tx aborted'));
   });
 }
 
@@ -1641,27 +1710,79 @@ async function _idbDelete(peerId){
   });
 }
 
+// ── META store (для чатов и других ключ→значение данных) ──
+async function _metaGet(key){
+  const d=await openMessagesDB();
+  return new Promise((res,rej)=>{
+    const tx=d.transaction('meta','readonly');
+    const req=tx.objectStore('meta').get(key);
+    req.onsuccess=()=>res(req.result!==undefined?req.result:null);
+    req.onerror=()=>rej(req.error);
+    tx.onerror=()=>rej(tx.error);
+  });
+}
+
+async function _metaPut(key,value){
+  const d=await openMessagesDB();
+  return new Promise((res,rej)=>{
+    const tx=d.transaction('meta','readwrite');
+    const req=tx.objectStore('meta').put(value,key);
+    req.onerror=()=>rej(req.error);
+    tx.oncomplete=()=>res();
+    tx.onerror=()=>rej(tx.error);
+    tx.onabort=()=>rej(new Error('tx aborted'));
+  });
+}
+
+// ── Stripped ls-backup: убираем бинарные данные перед записью в localStorage ──
+// Это предотвращает QuotaExceededError от фото/видео/голосовых в backup
+function _stripBinaryForBackup(msgs){
+  return msgs.map(m=>{
+    if(!m.media&&!m.voice&&!m.file) return m; // текстовые сообщения — без изменений
+    const stripped={...m};
+    if(m.media?.data){stripped.media={...m.media};delete stripped.media.data;}
+    if(m.voice?.data){stripped.voice={...m.voice};delete stripped.voice.data;}
+    if(m.file?.data){stripped.file={...m.file};delete stripped.file.data;}
+    return stripped;
+  });
+}
+
 async function loadMsgs(peerId){
-  // Попытка 1: IDB
-  try{ return await _idbGet(peerId); }catch(e){ db=null;_dbOpenPromise=null; }
-  // Небольшая пауза и retry (помогает при временных ошибках транзакций)
-  await new Promise(r=>setTimeout(r,100));
-  try{ return await _idbGet(peerId); }catch(e){ db=null;_dbOpenPromise=null; }
-  // Fallback: localStorage (там хранится срез последних 200 сообщений как backup)
+  let idbResult=null,idbOk=false;
+  // Попытка 1: IDB (основное хранилище)
+  try{ idbResult=await _idbGet(peerId); idbOk=true; }catch(e){ db=null;_dbOpenPromise=null; }
+  if(!idbOk){
+    // Небольшая пауза и retry
+    await new Promise(r=>setTimeout(r,120));
+    try{ idbResult=await _idbGet(peerId); idbOk=true; }catch(e){ db=null;_dbOpenPromise=null; }
+  }
   const ls=lsGet(`bc_msgs_${peerId}`,null);
+  if(idbOk){
+    // Защита: если IDB пуст, но ls-backup есть — возвращаем backup
+    if((!idbResult||!idbResult.length)&&ls&&ls.length){
+      // Пишем backup обратно в IDB чтобы починить рассинхронизацию
+      _idbPut(peerId,ls).catch(()=>{});
+      return ls;
+    }
+    return idbResult||[];
+  }
+  // IDB недоступен — fallback на ls-backup
   return ls&&ls.length?ls:[];
 }
 
 async function saveMsgs(peerId,messages){
-  // В режиме энергосбережения держим меньше сообщений в ls-бэкапе
-  const lsLimit = lsGet('bc_energy_save',false) ? 60 : 200;
-  try{lsSet(`bc_msgs_${peerId}`,messages.slice(-lsLimit));}catch(e){}
-  // Основное хранилище — IDB
-  for(let i=0;i<2;i++){
+  // ls-backup: только структура БЕЗ binary data — не переполняет localStorage quota
+  const lsLimit=lsGet('bc_energy_save',false)?60:200;
+  try{
+    const stripped=_stripBinaryForBackup(messages.slice(-lsLimit));
+    lsSet(`bc_msgs_${peerId}`,stripped);
+  }catch(e){}
+  // Основное хранилище — IDB (хранит всё включая binary data)
+  for(let i=0;i<3;i++){
     try{ await _idbPut(peerId,messages); return; }catch(e){ db=null;_dbOpenPromise=null; }
-    if(i===0) await new Promise(r=>setTimeout(r,100));
+    if(i<2) await new Promise(r=>setTimeout(r,i===0?80:200));
   }
-  // IDB недоступен — ls уже записали выше
+  // IDB недоступен — ls-backup уже записан выше
 }
 
 async function clearMsgs(peerId){
@@ -1731,9 +1852,42 @@ async function _blobToObjectURL(blobId,mimeType){
 }
 const loadContacts=()=>lsGet('bc_contacts',[]);
 const saveContacts=a=>lsSet('bc_contacts',a);
+// ── CHATS: IDB 'meta' — основное хранилище; localStorage — backup ──
+// ВАЖНО: раньше чаты хранились ТОЛЬКО в localStorage → терялись при очистке браузера.
+// Теперь IDB — главное, ls — быстрый кэш для первого рендера.
 let _chatsCache=null;
-async function loadChats(){if(_chatsCache!==null)return _chatsCache;_chatsCache=lsGet('bc_chats',[]);return _chatsCache;}
-async function saveChats(chats){_chatsCache=chats;lsSet('bc_chats',chats);}
+const CHATS_META_KEY='bc_chats_v3';
+
+async function loadChats(){
+  if(_chatsCache!==null) return _chatsCache;
+  // 1. Быстрый старт из localStorage (синхронно, чтобы список чатов появился сразу)
+  const lsChats=lsGet('bc_chats',null);
+  // 2. IDB — основное хранилище (async)
+  let idbChats=null;
+  try{ idbChats=await _metaGet(CHATS_META_KEY); }catch(e){}
+  if(idbChats&&idbChats.length){
+    // IDB есть — это самая свежая версия (могла быть обновлена в фоне)
+    _chatsCache=idbChats;
+  }else if(lsChats&&lsChats.length){
+    // IDB пуст (первый запуск v3 или IDB очищен) — берём из ls и пишем в IDB
+    _chatsCache=lsChats;
+    _metaPut(CHATS_META_KEY,lsChats).catch(()=>{});
+  }else{
+    _chatsCache=[];
+  }
+  return _chatsCache;
+}
+
+async function saveChats(chats){
+  _chatsCache=chats;
+  // Пишем в оба хранилища параллельно
+  try{ lsSet('bc_chats',chats); }catch(e){}
+  try{ await _metaPut(CHATS_META_KEY,chats); }catch(e){
+    // Retry один раз
+    await new Promise(r=>setTimeout(r,80));
+    try{ await _metaPut(CHATS_META_KEY,chats); }catch(e2){}
+  }
+}
 async function initFavoritesChat(){let chats=await loadChats();if(!chats.find(c=>c.peerId===MY_ID)){chats.push({peerId:MY_ID,peerName:'⭐ Избранное',avatar:'⭐',lastMsg:null,lastMsgTime:null,unread:0});await saveChats(chats);}}
 async function warmAllChatKeys(){
   const chats=await loadChats();
@@ -1982,19 +2136,62 @@ async function handleFileAvailable(msg){
     }
     return;
   }
+
+  // ── Детект видео-кружка ──
+  // Имя файла начинается с '__vnote__' — это видео-кружок, отправленный через чанковый протокол
+  if(name&&name.startsWith(VN_FILE_PREFIX)){
+    let vnMeta={durSec:0,videoMime:mimeType||'video/webm',replyTo:null};
+    try{ if(caption) vnMeta={...vnMeta,...JSON.parse(caption)}; }catch(e){}
+    // Автоматически скачиваем кружок, не спрашивая пользователя (файл <50МБ обычно)
+    const vnMsg={
+      id:fileId,text:'',type:'recv',
+      time:new Date(ts||Date.now()).toISOString(),
+      reactions:{},edited:false,replyTo:vnMeta.replyTo||null,
+      delivered:true,forwarded:false,
+      videoNote:true,voiceDuration:vnMeta.durSec||0,voiceListened:false,
+      videoMime:vnMeta.videoMime||mimeType||'video/webm',
+      // videoBlobId будет установлен после скачивания
+      _vnPending:true,_vnFileId:fileId,_vnSenderId:senderId,
+    };
+    await upsertMsg(senderId,vnMsg);
+    await updateChat(senderId,{lastMsg:'📹 Видео-кружок',lastMsgTime:new Date(vnMsg.time).getTime()});
+    if(currentScreen==='scr-chat'&&activePid===senderId){
+      const existingRow=document.querySelector(`.msg-row[data-msgid="${fileId}"]`);
+      if(!existingRow)appendOrReloadMsg(senderId,vnMsg);
+    }else{
+      const chat=(await loadChats()).find(c=>c.peerId===senderId);
+      await updateChat(senderId,{unread:(chat?.unread||0)+1});
+      toast(`📹 ${chat?.peerName||senderId}: Видео-кружок`);
+    }
+    // Немедленно запускаем скачивание кружка в фоне
+    _downloadVideoNote(fileId,senderId,vnMeta.videoMime||mimeType||'video/webm').catch(()=>{});
+    return;
+  }
+
   const placeholderMsg={id:fileId,text:caption||'',type:'recv',time:new Date(ts||Date.now()).toISOString(),reactions:{},edited:false,replyTo:null,delivered:true,forwarded:false,fileAvailable:{name,size,mimeType,totalChunks,senderId}};
   await upsertMsg(senderId,placeholderMsg);
   await updateChat(senderId,{lastMsg:`📎 ${name}`,lastMsgTime:new Date(placeholderMsg.time).getTime()});
   if(currentScreen==='scr-chat'&&activePid===senderId){
-    // Чат открыт — показываем без инкремента unread (пользователь уже смотрит)
     const existingRow=document.querySelector(`.msg-row[data-msgid="${fileId}"]`);
     if(!existingRow)appendOrReloadMsg(senderId,placeholderMsg);
   }else{
-    // Чат не открыт — инкрементируем счётчик один раз
     const chat=(await loadChats()).find(c=>c.peerId===senderId);
     await updateChat(senderId,{unread:(chat?.unread||0)+1});
     toast(`📎 ${chat?.peerName||senderId}: ${name}`);
   }
+}
+
+// Скачиваем видео-кружок в фоне и обновляем сообщение
+async function _downloadVideoNote(fileId, senderId, videoMime){
+  try{
+    // Используем существующий механизм скачивания файлов
+    const key=await getKey(senderId);
+    if(!key){console.warn('[vnote] no key for',senderId);return;}
+    fileTransfers.set(fileId,{state:'downloading',chunks:[],total:0,received:0,key,senderId,retries:0,maxRetries:3,_isVideoNote:true,_vnMime:videoMime});
+    wsSend({type:'fetch-file',fileId});
+    const ft=fileTransfers.get(fileId);
+    ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId),60000);
+  }catch(e){console.error('[vnote] download error',e);}
 }
 
 async function downloadFileFromServer(fileId,senderId){
@@ -2082,19 +2279,57 @@ async function assembleFile(fileId){
     for(const buf of ft.chunks){
       combined.set(new Uint8Array(buf),offset);
       offset+=buf.byteLength;
-      // Yield каждые 10МБ чтобы не замораживать UI
-      if(offset%( 10*1024*1024)<buf.byteLength) await new Promise(r=>setTimeout(r,0));
+      if(offset%(10*1024*1024)<buf.byteLength) await new Promise(r=>setTimeout(r,0));
     }
+
+    // ── Видео-кружок: особая обработка ──────────────────────────────────────
+    if(ft._isVideoNote){
+      const vnMime=ft._vnMime||'video/webm';
+      const blobId=fileId+'_vnote';
+      await saveBlob(blobId,combined.buffer);
+      // Создаём ObjectURL для немедленного отображения
+      const vnBlob=new Blob([combined.buffer],{type:vnMime});
+      const vnUrl=URL.createObjectURL(vnBlob);
+      const finalMsg={
+        id:fileId,text:'',type:'recv',
+        time:new Date(ft.ts||Date.now()).toISOString(),
+        reactions:{},edited:false,replyTo:null,delivered:true,forwarded:false,
+        videoNote:true,
+        voiceDuration:0, // durSec будет в ft.caption (JSON)
+        voiceListened:false,
+        videoBlobId:blobId,
+        videoMime:vnMime,
+        _vnPending:false,
+      };
+      // Восстанавливаем durSec из caption
+      try{const meta=JSON.parse(ft.caption||'{}');if(meta.durSec)finalMsg.voiceDuration=meta.durSec;}catch(e){}
+      await upsertMsg(ft.senderId,finalMsg);
+      await updateChat(ft.senderId,{lastMsg:'📹 Видео-кружок',lastMsgTime:new Date(finalMsg.time).getTime()});
+      if(currentScreen==='scr-chat'&&activePid===ft.senderId){
+        const existingRow=document.querySelector(`.msg-row[data-msgid="${fileId}"]`);
+        const renderMsg={...finalMsg,videoData:vnUrl};
+        if(existingRow)(existingRow.closest('.msg-row-outer')||existingRow).replaceWith(buildRow(renderMsg));
+        else appendOrReloadMsg(ft.senderId,renderMsg);
+      }
+      wsSend({type:'ack-file',fileId});
+      // Уведомляем отправителя → ✔✔
+      const _vnKey=await getKey(ft.senderId).catch(()=>null);
+      if(_vnKey&&wsUp&&ft.senderId!==MY_ID){
+        try{
+          const _vnEnc=await encData(ENC.encode(JSON.stringify({type:'file-delivered',fileId,ts:Date.now()})),_vnKey);
+          wsSend({type:'send-msg',target:ft.senderId,msgId:uid(),payload:payloadToB64(_vnEnc)});
+        }catch(e){}
+      }
+      return;
+    }
+
     // Создаём blob URL сразу для показа — saveBlob делаем в фоне
     const _combinedBlob=new Blob([combined.buffer],{type:ft.mimeType});
     const _blobUrl=URL.createObjectURL(_combinedBlob);
-    // Сохраняем в blobs асинхронно — не блокируем показ файла
     saveBlob(fileId,combined.buffer).catch(e=>console.warn('[blobs] save error',e));
-    // Сообщение для IndexedDB — БЕЗ _tempUrl (он не выживает после перезагрузки)
     const finalMsg={id:fileId,text:ft.caption||'',type:'recv',time:new Date(ft.ts||Date.now()).toISOString(),reactions:{},edited:false,replyTo:null,delivered:true,forwarded:false,fileAvailable:null,file:{name:ft.name,type:ft.mimeType,size:ft.size,blobId:fileId}};
     await upsertMsg(ft.senderId,finalMsg);
     await updateChat(ft.senderId,{lastMsg:`📁 ${ft.name}`,lastMsgTime:new Date(finalMsg.time).getTime()});
-    // Для немедленного показа добавляем _tempUrl только в рендер-объект (не в БД)
     const renderMsg={...finalMsg,file:{...finalMsg.file,_tempUrl:_blobUrl}};
     if(currentScreen==='scr-chat'&&activePid===ft.senderId){
       const existingRow=document.querySelector(`.msg-row[data-msgid="${fileId}"]`);
@@ -2102,12 +2337,10 @@ async function assembleFile(fileId){
       else appendOrReloadMsg(ft.senderId,renderMsg);
     }
     wsSend({type:'ack-file',fileId});toast(`${ft.name} загружен ✓`);
-    // Уведомляем отправителя что файл получен → он увидит ✔✔
-    // Используем зашифрованный envelope через send-msg (тот же путь что реакции/редактирование)
-    const _fdKey = await getKey(ft.senderId).catch(()=>null);
-    if(_fdKey && wsUp && ft.senderId !== MY_ID){
+    const _fdKey=await getKey(ft.senderId).catch(()=>null);
+    if(_fdKey&&wsUp&&ft.senderId!==MY_ID){
       try{
-        const _fdEnc = await encData(ENC.encode(JSON.stringify({type:'file-delivered',fileId,ts:Date.now()})),_fdKey);
+        const _fdEnc=await encData(ENC.encode(JSON.stringify({type:'file-delivered',fileId,ts:Date.now()})),_fdKey);
         wsSend({type:'send-msg',target:ft.senderId,msgId:uid(),payload:payloadToB64(_fdEnc)});
       }catch(e){}
     }
@@ -2334,7 +2567,7 @@ async function handleEnvelope(from,env){
     }
     return;
   }
-  if(env.type==='msg'||env.type==='media'||env.type==='voice'){
+  if(env.type==='msg'||env.type==='media'||env.type==='voice'||env.type==='video_note'){
     const m={id:env.id,text:env.text||'',type:'recv',time:new Date(env.ts||Date.now()).toISOString(),reactions:{},edited:false,replyTo:env.replyTo||null,delivered:true,forwarded:env.forwarded||false};
     if(env.type==='media'){
       if(env.media?.data){
@@ -2373,6 +2606,32 @@ async function handleEnvelope(from,env){
         }).catch(()=>{});
       }else{m.voice=env.voice;m.voiceDuration=env.voiceDuration;m.voiceListened=false;}
     }
+    else if(env.type==='video_note'){
+      // Видео-кружок: data URL → сразу сохраняем blob, показываем через videoData
+      m.videoNote=true;
+      m.voiceDuration=env.voiceDuration||0;
+      m.voiceListened=false;
+      if(env.videoData){
+        // Сначала сохраняем blob синхронно (await), потом рендерим
+        const _vid=env.id+'_vnote';
+        try{
+          const buf=base64ToArrayBuffer(env.videoData.replace(/^data:[^,]+,/,''));
+          await saveBlob(_vid,buf);
+          // В БД храним только blobId (без videoData — слишком большой)
+          m.videoBlobId=_vid;
+          m.videoMime=env.videoMime||'video/webm';
+          // Для рендера добавляем videoData временно (не пойдёт в БД)
+          m._videoDataForRender=env.videoData;
+        }catch(e){
+          // Если не удалось сохранить — используем dataURL напрямую (запасной вариант)
+          m.videoData=env.videoData;
+          m.videoMime=env.videoMime||'video/webm';
+        }
+      } else if(env.videoBlobId){
+        m.videoBlobId=env.videoBlobId;
+        m.videoMime=env.videoMime||'video/webm';
+      }
+    }
     const ct=loadContacts().find(c=>c.id===from);await getOrCreateChat(from,ct?.name,ct?.avatar);
     // ── Дедупликация: проверяем нет ли уже такого сообщения в базе ──
     const _existingMsgs=await loadMsgs(from);
@@ -2386,7 +2645,7 @@ async function handleEnvelope(from,env){
       return;
     }
     await upsertMsg(from,m);
-    const lastPreview=env.type==='voice'?'🎙 Голосовое':env.type==='media'?'📷 Фото':(env.text||'').slice(0,28);
+    const lastPreview=env.type==='voice'?'🎙 Голосовое':env.type==='video_note'?'📹 Видео-кружок':env.type==='media'?'📷 Фото':(env.text||'').slice(0,28);
     await updateChat(from,{lastMsg:lastPreview,lastMsgTime:new Date(m.time).getTime()});
     if(currentScreen==='scr-chat'&&activePid===from){
       appendOrReloadMsg(from,m);
@@ -2658,7 +2917,7 @@ function updateSendBtn(){if(!activePid){$('sendBtn').disabled=true;return;}if(is
 async function getOrCreateChat(pid,peerName,avatar){let chats=await loadChats();let c=chats.find(c=>c.peerId===pid);if(!c){c={peerId:pid,peerName:peerName||(pid===MY_ID?'⭐ Избранное':pid),avatar:avatar||(pid===MY_ID?'⭐':'👤'),lastMsg:null,lastMsgTime:null,unread:0};chats.push(c);}else{if(peerName)c.peerName=peerName;if(avatar)c.avatar=avatar;}await saveChats(chats);return c;}
 async function updateChat(pid,upd){let c=await loadChats();const i=c.findIndex(x=>x.peerId===pid);if(i!==-1){c[i]={...c[i],...upd};await saveChats(c);}renderChatList();}
 async function deleteChatData(pid){await saveChats((await loadChats()).filter(c=>c.peerId!==pid));renderChatList();}
-window.clearAllData=()=>{ showConfirm({icon:'🧹',title:'Стереть все данные?',text:'Все чаты, история, контакты и ключи шифрования будут удалены навсегда.',yesLabel:'🧹 Да, стереть всё',onYes:()=>{localStorage.clear();indexedDB.deleteDatabase(DB_NAME);setTimeout(()=>location.reload(),200);}});};
+window.clearAllData=()=>{ showConfirm({icon:'🧹',title:'Стереть все данные?',text:'Все чаты, история, контакты и ключи шифрования будут удалены навсегда.',yesLabel:'🧹 Да, стереть всё',onYes:()=>{_chatsCache=null;localStorage.clear();indexedDB.deleteDatabase(DB_NAME);setTimeout(()=>location.reload(),200);}});};
 
 // ── TABS / FAB ──
 let currentTab='chats';
@@ -3218,6 +3477,7 @@ function openDangerConfirmDialog(){
     yesBtn.onclick = () => {
       const input2 = document.getElementById('dangerConfirmInput');
       if(input2.value.trim().toUpperCase() !== 'УДАЛИТЬ') return;
+      _chatsCache=null;
       localStorage.clear();
       indexedDB.deleteDatabase(DB_NAME);
       setTimeout(() => location.reload(), 200);
@@ -3312,13 +3572,15 @@ async function importAllData(e){
     // Импортируем сообщения (объединяем, старые не затираем)
     if(data.messages){
       for(const [pid,msgs] of Object.entries(data.messages)){
-        const existing=await loadMsgs(pid);
-        const existingIds=new Set(existing.map(m=>m.id));
-        const newMsgs=msgs.filter(m=>!existingIds.has(m.id));
-        if(newMsgs.length){
-          const merged=[...existing,...newMsgs].sort((a,b)=>new Date(a.time)-new Date(b.time));
-          await saveMsgs(pid,merged);
-        }
+        await withChatLock(pid,async()=>{
+          const existing=await loadMsgs(pid);
+          const existingIds=new Set(existing.map(m=>m.id));
+          const newMsgs=msgs.filter(m=>!existingIds.has(m.id));
+          if(newMsgs.length){
+            const merged=[...existing,...newMsgs].sort((a,b)=>new Date(a.time)-new Date(b.time));
+            await saveMsgs(pid,merged);
+          }
+        });
       }
     }
     
@@ -3948,7 +4210,31 @@ function handleTyping(isTyping){
 }
 
 // ── REACTIONS ──
-async function toggleReaction(msgId,emoji){const msgs=await loadMsgs(activePid);const m=msgs.find(m=>m.id===msgId);if(!m)return;if(!m.reactions)m.reactions={};const cur=Object.keys(m.reactions).filter(k=>m.reactions[k].includes(MY_ID)).length;if(cur>=MAX_REACTIONS_PER_MSG&&!m.reactions[emoji]?.includes(MY_ID)){toast(`Нельзя поставить больше ${MAX_REACTIONS_PER_MSG} реакций`,'warn');return;}_vib('tick');if(!m.reactions[emoji])m.reactions[emoji]=[];const idx=m.reactions[emoji].indexOf(MY_ID);if(idx===-1)m.reactions[emoji].push(MY_ID);else m.reactions[emoji].splice(idx,1);if(!m.reactions[emoji].length)delete m.reactions[emoji];await saveMsgs(activePid,msgs);reRenderReactions(document.querySelector(`.msg-row[data-msgid="${msgId}"]`),m.reactions,msgId);if(activePid===MY_ID)return;const key=keyCache[activePid];if(!key)return;const enc=await encData(ENC.encode(JSON.stringify({type:'reaction',msgId,emoji,ts:Date.now()})),key);wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:payloadToB64(enc)});}
+async function toggleReaction(msgId,emoji){
+  let limitReached=false,resultReactions=null,notFound=false;
+  await withChatLock(activePid,async()=>{
+    const msgs=await loadMsgs(activePid);
+    const m=msgs.find(m=>m.id===msgId);
+    if(!m){notFound=true;return;}
+    if(!m.reactions)m.reactions={};
+    const cur=Object.keys(m.reactions).filter(k=>m.reactions[k].includes(MY_ID)).length;
+    if(cur>=MAX_REACTIONS_PER_MSG&&!m.reactions[emoji]?.includes(MY_ID)){limitReached=true;return;}
+    if(!m.reactions[emoji])m.reactions[emoji]=[];
+    const idx=m.reactions[emoji].indexOf(MY_ID);
+    if(idx===-1)m.reactions[emoji].push(MY_ID);else m.reactions[emoji].splice(idx,1);
+    if(!m.reactions[emoji].length)delete m.reactions[emoji];
+    await saveMsgs(activePid,msgs);
+    resultReactions=m.reactions;
+  });
+  if(notFound)return;
+  if(limitReached){toast(`Нельзя поставить больше ${MAX_REACTIONS_PER_MSG} реакций`,'warn');return;}
+  _vib('tick');
+  reRenderReactions(document.querySelector(`.msg-row[data-msgid="${msgId}"]`),resultReactions,msgId);
+  if(activePid===MY_ID)return;
+  const key=keyCache[activePid];if(!key)return;
+  const enc=await encData(ENC.encode(JSON.stringify({type:'reaction',msgId,emoji,ts:Date.now()})),key);
+  wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:payloadToB64(enc)});
+}
 async function handleInReaction(from,msgId,emoji){await withChatLock(from,async()=>{const msgs=await loadMsgs(from);const m=msgs.find(m=>m.id===msgId);if(!m)return;if(!m.reactions)m.reactions={};if(!m.reactions[emoji])m.reactions[emoji]=[];const idx=m.reactions[emoji].indexOf(from);if(idx===-1)m.reactions[emoji].push(from);else m.reactions[emoji].splice(idx,1);if(!m.reactions[emoji].length)delete m.reactions[emoji];await saveMsgs(from,msgs);});if(activePid===from){const msgs=await loadMsgs(from);const m=msgs.find(m=>m.id===msgId);if(m)reRenderReactions(document.querySelector(`.msg-row[data-msgid="${msgId}"]`),m.reactions,msgId);}}
 function reRenderReactions(row,reactions,msgId){if(!row)return;const os=row.querySelector('.reactions-strip');if(os)os.remove();if(!reactions||!Object.keys(reactions).some(k=>reactions[k].length>0))return;const strip=document.createElement('div');strip.className='reactions-strip';Object.entries(reactions).filter(([,v])=>v.length>0).forEach(([em,users])=>{const chip=document.createElement('div');chip.className='reaction-chip'+(users.includes(MY_ID)?' mine':'');chip.innerHTML=`${em}<span class="rc-count">${users.length}</span>`;chip.onclick=e=>{e.stopPropagation();toggleReaction(msgId,em);};strip.appendChild(chip);});row.appendChild(strip);}
 
@@ -4810,6 +5096,11 @@ function buildRow(m){
       if(m.text){const tn=document.createElement('span');tn.className='bubble-text';tn.style.cssText='display:block;margin-top:4px;padding:6px 8px;background:rgba(255,255,255,.05);border-radius:12px;font-size:13px';tn.innerHTML=formatText(m.text);bubble.appendChild(tn);}
     }
 
+  }else if(m.videoNote){
+    // ── ВИДЕО-КРУЖОК ──
+    bubble.style.cssText='padding:0;background:transparent;border:none;box-shadow:none;overflow:visible;';
+    bubble.appendChild(buildVideoNoteBubble(m,isSent));
+
   }else if(m.voice?.data||m.voice?.blobId){
     bubble.style.cssText='padding:0;overflow:visible;background:transparent;border:none';
     const vb=buildVoiceBubble(m,isSent);
@@ -5227,16 +5518,23 @@ function deleteSelectedMessages(){
     yesLabel:'🗑 Удалить',
     noLabel:'Отмена',
     onYes: async ()=>{
-      const msgs=await loadMsgs(activePid);
-      // Удаляем blobs выбранных сообщений
-      for(const m of msgs){
-        if(selectedMessages.has(m.id)){
-          if(m.media?.blobId)deleteBlob(m.media.blobId);
-          if(m.voice?.blobId)deleteBlob(m.voice.blobId);
-          if(m.file?.blobId)deleteBlob(m.file.blobId);
+      const pidForLock=activePid;
+      let newMsgs=null;
+      await withChatLock(pidForLock,async()=>{
+        const msgs=await loadMsgs(pidForLock);
+        // Удаляем blobs выбранных сообщений
+        for(const m of msgs){
+          if(selectedMessages.has(m.id)){
+            if(m.media?.blobId)deleteBlob(m.media.blobId);
+            if(m.voice?.blobId)deleteBlob(m.voice.blobId);
+            if(m.file?.blobId)deleteBlob(m.file.blobId);
+          }
         }
-      }
-      const newMsgs=msgs.filter(m=>!selectedMessages.has(m.id));await saveMsgs(activePid,newMsgs);for(const id of selectedMessages){const row=document.querySelector(`.msg-row[data-msgid="${id}"]`);if(row)(row.closest('.msg-row-outer')||row).remove();if(activePid!==MY_ID){const key=keyCache[activePid];if(key){const enc=await encData(ENC.encode(JSON.stringify({type:'delete',msgId:id,ts:Date.now()})),key);wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:payloadToB64(enc)});}}}const last=newMsgs[newMsgs.length-1];await updateChat(activePid,{lastMsg:last?.text||(last?.voice?'🎙 Голосовое':last?.media?'📷 Фото':last?.file?`📁 ${last.file.name}`:''),lastMsgTime:last?.time?new Date(last.time).getTime():null});exitSelectionMode();toast('Сообщения удалены');
+        newMsgs=msgs.filter(m=>!selectedMessages.has(m.id));
+        await saveMsgs(pidForLock,newMsgs);
+      });
+      for(const id of selectedMessages){const row=document.querySelector(`.msg-row[data-msgid="${id}"]`);if(row)(row.closest('.msg-row-outer')||row).remove();if(activePid!==MY_ID){const key=keyCache[activePid];if(key){const enc=await encData(ENC.encode(JSON.stringify({type:'delete',msgId:id,ts:Date.now()})),key);wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:payloadToB64(enc)});}}}
+      const last=newMsgs[newMsgs.length-1];await updateChat(activePid,{lastMsg:last?.text||(last?.voice?'🎙 Голосовое':last?.media?'📷 Фото':last?.file?`📁 ${last.file.name}`:''),lastMsgTime:last?.time?new Date(last.time).getTime():null});exitSelectionMode();toast('Сообщения удалены');
     }
   });
 }
@@ -5762,12 +6060,12 @@ function updateRecTimer(){const el=Date.now()-recStartTime;const s=Math.floor(el
 window.toggleRecording=async function(){
   if(processingFiles)return;if(isRecording){stopRecordingForPreview();return;}
   try{
-    const stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,sampleRate:24000,echoCancellation:true,noiseSuppression:true}});micStream=stream;
+    const stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,sampleRate:48000,echoCancellation:true,noiseSuppression:true,autoGainControl:true}});micStream=stream;
     try{audioCtx=new(window.AudioContext||window.webkitAudioContext)();analyser=audioCtx.createAnalyser();analyser.fftSize=64;audioCtx.createMediaStreamSource(stream).connect(analyser);}catch(e){analyser=null;}
-    let mime='audio/webm;codecs=opus',bitrate=24000;
-    if(!MediaRecorder.isTypeSupported(mime)){mime='audio/webm';bitrate=32000;}
-    if(!MediaRecorder.isTypeSupported(mime)){mime='audio/ogg;codecs=opus';bitrate=24000;}
-    if(!MediaRecorder.isTypeSupported(mime)){mime='';bitrate=32000;}
+    let mime='audio/webm;codecs=opus',bitrate=40000;
+    if(!MediaRecorder.isTypeSupported(mime)){mime='audio/webm';bitrate=48000;}
+    if(!MediaRecorder.isTypeSupported(mime)){mime='audio/ogg;codecs=opus';bitrate=40000;}
+    if(!MediaRecorder.isTypeSupported(mime)){mime='';bitrate=48000;}
     mediaRecorder=new MediaRecorder(stream,mime?{mimeType:mime,audioBitsPerSecond:bitrate}:{audioBitsPerSecond:bitrate});
     audioChunks=[];mediaRecorder.ondataavailable=e=>{if(e.data?.size>0)audioChunks.push(e.data);};mediaRecorder.start(100);
     isRecording=true;recStartTime=Date.now();initRecWaveform();
@@ -5863,12 +6161,12 @@ window.resumeRecording=async function(){
   clearInterval(_recActivityHb);_recActivityHb=null;
   _stopPreviewAudio();$('voicePreviewBar').classList.remove('active');const oldChunks=[...audioChunks];
   try{
-    const stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,sampleRate:24000,echoCancellation:true,noiseSuppression:true}});micStream=stream;
+    const stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,sampleRate:48000,echoCancellation:true,noiseSuppression:true,autoGainControl:true}});micStream=stream;
     try{audioCtx=new(window.AudioContext||window.webkitAudioContext)();analyser=audioCtx.createAnalyser();analyser.fftSize=64;audioCtx.createMediaStreamSource(stream).connect(analyser);}catch(e){analyser=null;}
-    let mime='audio/webm;codecs=opus',bitrate=24000;
-    if(!MediaRecorder.isTypeSupported(mime)){mime='audio/webm';bitrate=32000;}
-    if(!MediaRecorder.isTypeSupported(mime)){mime='audio/ogg;codecs=opus';bitrate=24000;}
-    if(!MediaRecorder.isTypeSupported(mime)){mime='';bitrate=32000;}
+    let mime='audio/webm;codecs=opus',bitrate=40000;
+    if(!MediaRecorder.isTypeSupported(mime)){mime='audio/webm';bitrate=48000;}
+    if(!MediaRecorder.isTypeSupported(mime)){mime='audio/ogg;codecs=opus';bitrate=40000;}
+    if(!MediaRecorder.isTypeSupported(mime)){mime='';bitrate=48000;}
     mediaRecorder=new MediaRecorder(stream,mime?{mimeType:mime,audioBitsPerSecond:bitrate}:{audioBitsPerSecond:bitrate});
     audioChunks=oldChunks;mediaRecorder.ondataavailable=e=>{if(e.data?.size>0)audioChunks.push(e.data);};mediaRecorder.start(100);
     isRecording=true;recStartTime=Date.now()-previewDur*1000;initRecWaveform();
@@ -5915,6 +6213,589 @@ async function sendVoiceMessage(dataURL,duration,waveform){
     _sendActivityStop(activePid); // сбрасываем статус у получателя
   }catch(e){toast('Ошибка отправки голосового','err');}
 }
+
+
+// ══════════════════════════════════════════════════════════════════════
+// ── ВИДЕО-КРУЖКИ (Video Notes) — Telegram-style ──
+// ══════════════════════════════════════════════════════════════════════
+
+// ── МИК-КНОПКА: РЕЖИМ + LONG-PRESS ──
+let _micMode=lsGet('bc_mic_mode','voice'); // 'voice' | 'video'
+let _micLongTimer=null;
+let _micLongFired=false;
+const MAX_VN_SEC=60;
+const VN_CIRCUMFERENCE=2*Math.PI*120; // r=120 → ≈753.98
+
+function _applyMicMode(animate){
+  const btn=$('micBtn');
+  if(!btn)return;
+  const isVideo=_micMode==='video';
+  if(animate){
+    btn.classList.add('switch-anim');
+    setTimeout(()=>{
+      btn.textContent=isVideo?'📷':'🎙';
+      btn.classList.toggle('mode-video',isVideo);
+    },120);
+    setTimeout(()=>btn.classList.remove('switch-anim'),300);
+  }else{
+    btn.textContent=isVideo?'📷':'🎙';
+    btn.classList.toggle('mode-video',isVideo);
+  }
+}
+
+function _toggleMicMode(){
+  if(isRecording||_vnRecording)return;
+  _micMode=(_micMode==='voice')?'video':'voice';
+  lsSet('bc_mic_mode',_micMode);
+  _applyMicMode(true);
+  if(typeof _vib==='function')_vib('tick');
+}
+
+function _initMicBtn(){
+  const btn=$('micBtn');
+  if(!btn)return;
+  _applyMicMode(false);
+
+  function onDown(e){
+    if(isRecording){return;}
+    if(_vnRecording)return;
+    if(processingFiles)return;
+    e.preventDefault();
+    _micLongFired=false;
+    _micLongTimer=setTimeout(()=>{
+      _micLongFired=true;
+      if(_micMode==='video'){
+        startVideoNote();
+      }else{
+        toggleRecording();
+      }
+    },300);
+  }
+
+  function onUp(e){
+    if(_micLongTimer){clearTimeout(_micLongTimer);_micLongTimer=null;}
+    if(_micLongFired)return;
+    if(isRecording){stopRecordingForPreview();return;}
+    if(_vnRecording){stopAndSendVideoNote();return;}
+    _toggleMicMode();
+  }
+
+  btn.addEventListener('pointerdown',onDown,{passive:false});
+  btn.addEventListener('pointerup',onUp);
+  btn.addEventListener('pointercancel',()=>{if(_micLongTimer){clearTimeout(_micLongTimer);_micLongTimer=null;}});
+  btn.addEventListener('contextmenu',e=>e.preventDefault());
+}
+
+// ── ЗАПИСЬ ВИДЕО-КРУЖКА ──
+let _vnRecording=false;
+let _vnStream=null;
+let _vnMediaRecorder=null;
+let _vnChunks=[];
+let _vnStartTime=0;
+let _vnTimerIv=null;
+let _vnFacingMode='user';
+let _vnActivityHb=null;
+
+async function startVideoNote(){
+  if(_vnRecording||isRecording||processingFiles)return;
+  try{
+    _vnStream=await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:_vnFacingMode,width:{ideal:480},height:{ideal:480},frameRate:{ideal:30}},
+      audio:true
+    });
+  }catch(e){
+    if(e.name==='NotAllowedError'||e.name==='PermissionDeniedError')toast('Нет доступа к камере/микрофону','err');
+    else toast('Ошибка камеры','err');
+    return;
+  }
+  const preview=$('vnPreview');
+  preview.srcObject=_vnStream;
+  preview.style.transform=_vnFacingMode==='user'?'scaleX(-1)':'scaleX(1)';
+  try{await preview.play();}catch(e){}
+
+  let mime='video/webm;codecs=vp9,opus';
+  if(!MediaRecorder.isTypeSupported(mime))mime='video/webm;codecs=vp8,opus';
+  if(!MediaRecorder.isTypeSupported(mime))mime='video/webm';
+  if(!MediaRecorder.isTypeSupported(mime))mime='video/mp4';
+  if(!MediaRecorder.isTypeSupported(mime))mime='';
+  _vnChunks=[];
+  _vnMediaRecorder=new MediaRecorder(_vnStream,mime?{mimeType:mime}:{});
+  _vnMediaRecorder.ondataavailable=e=>{if(e.data&&e.data.size>0)_vnChunks.push(e.data);};
+  _vnMediaRecorder.start(100);
+  _vnRecording=true;
+  _vnStartTime=Date.now();
+
+  const ov=$('vnRecordOverlay');
+  ov.classList.add('active');
+  const ring=$('vnRingProg');
+  ring.style.strokeDashoffset=VN_CIRCUMFERENCE;
+  if(typeof _vib==='function')_vib('impactMedium');
+
+  _vnTimerIv=setInterval(()=>{
+    const elapsed=Date.now()-_vnStartTime;
+    const sec=Math.floor(elapsed/1000);
+    $('vnRecTime').textContent=fmtDur(sec);
+    const pct=Math.min(elapsed/(MAX_VN_SEC*1000),1);
+    ring.style.strokeDashoffset=(VN_CIRCUMFERENCE*(1-pct)).toFixed(2);
+    if(elapsed>=MAX_VN_SEC*1000){stopAndSendVideoNote();}
+  },80);
+
+  if(activePid&&activePid!==MY_ID){
+    _sendActivitySignal(activePid,'recording');
+    _vnActivityHb=setInterval(()=>{if(activePid&&_vnRecording)_sendActivitySignal(activePid,'recording');},3000);
+  }
+}
+
+function _stopVnInternal(){
+  return new Promise(resolve=>{
+    clearInterval(_vnTimerIv);_vnTimerIv=null;
+    clearInterval(_vnActivityHb);_vnActivityHb=null;
+    _vnRecording=false;
+    const ov=$('vnRecordOverlay');
+    ov.classList.remove('active');
+    $('vnRecTime').textContent='0:00';
+    $('vnRingProg').style.strokeDashoffset=VN_CIRCUMFERENCE;
+    const preview=$('vnPreview');
+    preview.srcObject=null;
+    if(_vnStream){_vnStream.getTracks().forEach(t=>t.stop());_vnStream=null;}
+    if(_vnMediaRecorder&&_vnMediaRecorder.state!=='inactive'){
+      _vnMediaRecorder.addEventListener('stop',()=>resolve(_vnChunks),{once:true});
+      _vnMediaRecorder.stop();
+    }else{resolve(_vnChunks);}
+  });
+}
+
+window.cancelVideoNote=async function(){
+  if(!_vnRecording)return;
+  await _stopVnInternal();
+  _vnChunks=[];
+  if(activePid)_sendActivityStop(activePid);
+  if(typeof _vib==='function')_vib('notificationWarning');
+  toast('Запись отменена');
+};
+
+window.stopAndSendVideoNote=async function(){
+  if(!_vnRecording)return;
+  const capturedStart=_vnStartTime;
+  const chunks=await _stopVnInternal();
+  const durSec=Math.max(1,Math.round((Date.now()-capturedStart)/1000));
+  if(!chunks||!chunks.length){toast('Пустая запись','warn');return;}
+  const mimeType=chunks[0]?.type||'video/webm';
+  const blob=new Blob(chunks,{type:mimeType});
+  if(!blob.size){toast('Пустая запись','warn');return;}
+  if(activePid)_sendActivityStop(activePid);
+  if(typeof _vib==='function')_vib('notificationSuccess');
+  try{
+    // blob.arrayBuffer() — прямо без FileReader+base64 (надёжнее на Android WebView)
+    const fileBuffer=await blob.arrayBuffer();
+    await sendVideoNoteMessageBuffer(fileBuffer,durSec,mimeType,blob);
+  }catch(e){
+    toast('Ошибка подготовки видео-кружка','err');
+    console.error('vn send error',e);
+  }
+};
+
+window.flipVideoCamera=async function(){
+  if(!_vnRecording)return;
+  _vnFacingMode=_vnFacingMode==='user'?'environment':'user';
+  try{
+    const newStream=await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:_vnFacingMode,width:{ideal:480},height:{ideal:480},frameRate:{ideal:30}},
+      audio:false
+    });
+    const newVideoTrack=newStream.getVideoTracks()[0];
+    if(newVideoTrack&&_vnStream){
+      const oldVideoTrack=_vnStream.getVideoTracks()[0];
+      if(oldVideoTrack)oldVideoTrack.stop();
+      _vnStream.removeTrack(oldVideoTrack);
+      _vnStream.addTrack(newVideoTrack);
+    }
+    const preview=$('vnPreview');
+    preview.srcObject=_vnStream;
+    preview.style.transform=_vnFacingMode==='user'?'scaleX(-1)':'scaleX(1)';
+  }catch(e){toast('Ошибка переключения камеры','err');}
+};
+
+// ── ОТПРАВКА ВИДЕО-КРУЖКА ЧЕРЕЗ ЧАНКОВЫЙ ПРОТОКОЛ ──────────────────────────
+// Проблема: base64 видео в одном зашифрованном WS-сообщении → слишком большой
+// payload, WebView/сервер молча дропает или получатель видит чёрный кружок.
+// Решение: используем тот же store-file-header / store-chunks / file-available
+// протокол что и для обычных файлов. Имя файла — «__vnote__<msgId>»,
+// по которому получатель распознаёт видео-кружок и рендерит его правильно.
+const VN_FILE_PREFIX = '__vnote__';
+
+async function sendVideoNoteMessageBuffer(fileBuffer, durSec, mimeType, blob) {
+  const msgId = uid();
+  const ts = Date.now();
+
+  // Сохраняем blob локально
+  try { await saveBlob(msgId + '_vnote', fileBuffer); } catch(e) {}
+
+  // ObjectURL для немедленного рендера у отправителя
+  let previewURL = null;
+  try { previewURL = URL.createObjectURL(blob || new Blob([fileBuffer],{type:mimeType})); } catch(e) {}
+
+  // Режим "Избранное"
+  if (activePid === MY_ID) {
+    const m = {
+      id: msgId, text: '', type: 'sent',
+      time: new Date(ts).toISOString(),
+      reactions: {}, edited: false, replyTo: replyTo || null,
+      delivered: true, forwarded: false,
+      videoNote: true, voiceDuration: durSec, voiceListened: true,
+      videoBlobId: msgId + '_vnote', videoMime: mimeType
+    };
+    await upsertMsg(MY_ID, m);
+    await updateChat(MY_ID, { lastMsg: '📹 Видео-кружок', lastMsgTime: ts });
+    appendOrReloadMsg(MY_ID, { ...m, videoData: previewURL, _previewURL: previewURL });
+    cancelReply();
+    return;
+  }
+
+  if (!wsUp) { toast('Нет связи с сервером', 'err'); return; }
+
+  const mSender = {
+    id: msgId, text: '', type: 'sent',
+    time: new Date(ts).toISOString(),
+    reactions: {}, edited: false, replyTo: replyTo || null,
+    delivered: false, forwarded: false,
+    videoNote: true, voiceDuration: durSec, voiceListened: true,
+    videoBlobId: msgId + '_vnote', videoMime: mimeType
+  };
+  await upsertMsg(activePid, mSender);
+  await updateChat(activePid, { lastMsg: '📹 Видео-кружок', lastMsgTime: ts });
+  appendOrReloadMsg(activePid, { ...mSender, videoData: previewURL, _previewURL: previewURL });
+  cancelReply();
+  _sendActivityStop(activePid);
+
+  const vnMeta = JSON.stringify({ durSec, videoMime: mimeType, replyTo: replyTo || null, ts });
+  const totalChunks = Math.ceil(fileBuffer.byteLength / CHUNK_SIZE);
+  const fileId = msgId;
+
+  wsSend({
+    type: 'store-file-header',
+    fileId,
+    recipientId: activePid,
+    name: VN_FILE_PREFIX + msgId,
+    size: fileBuffer.byteLength,
+    mimeType: mimeType || 'video/webm',
+    totalChunks,
+    caption: vnMeta,
+    ts
+  });
+
+  // Ждём ACK от сервера (max 4с)
+  await new Promise(resolve => {
+    const timer = setTimeout(resolve, 4000);
+    storeAckWaiters.set(fileId, { resolve: () => { clearTimeout(timer); resolve(); }, timer });
+  });
+  storeAckWaiters.delete(fileId);
+
+  // Чанки батчами — шифруем каждый чанк ключом получателя (как обычные файлы)
+  let vnKey = null;
+  try { vnKey = await getKey(activePid); } catch(e) {}
+  const BATCH = STORE_BATCH;
+  for (let i = 0; i < totalChunks; i += BATCH) {
+    const batch = [];
+    for (let j = i; j < Math.min(i + BATCH, totalChunks); j++) {
+      const start = j * CHUNK_SIZE;
+      const slice = fileBuffer.slice(start, Math.min(start + CHUNK_SIZE, fileBuffer.byteLength));
+      let chunkData;
+      if (vnKey) {
+        const encBuf = await encData(slice, vnKey);
+        chunkData = arrayBufferToBase64(encBuf);
+      } else {
+        chunkData = arrayBufferToBase64(slice);
+      }
+      batch.push({ index: j, data: chunkData });
+    }
+    wsSend({ type: 'store-chunks', fileId, chunks: batch });
+    await new Promise(r => setTimeout(r, 30));
+  }
+}
+
+// Старая функция оставлена как fallback (dataURL → buffer)
+async function sendVideoNoteMessage(dataURL, durSec, mimeType) {
+  let fileBuffer;
+  try {
+    const b64 = dataURL.replace(/^data:[^,]+,/, '');
+    fileBuffer = base64ToArrayBuffer(b64);
+  } catch(e) {
+    toast('Ошибка подготовки видео-кружка', 'err');
+    return;
+  }
+  const blob = new Blob([fileBuffer], { type: mimeType });
+  await sendVideoNoteMessageBuffer(fileBuffer, durSec, mimeType, blob);
+}
+
+// ── ОТОБРАЖЕНИЕ ВИДЕО-КРУЖКА В ЧАТЕ ──
+let _currentVnVideo=null;
+let _currentVnReset=null;
+const VN_SMALL=152;
+const VN_BIG=268;
+
+function buildVideoNoteBubble(m,isSent){
+  const totalSec=m.voiceDuration||0;
+  const dotHidden=!!m.voiceListened;
+  const wrap=document.createElement('div');
+  wrap.className='vn-bubble-wrap '+(isSent?'sent':'recv');
+  const circleWrap=document.createElement('div');
+  circleWrap.className='vn-thumb-circle';
+  circleWrap.style.cssText=`width:${VN_SMALL}px;height:${VN_SMALL}px;position:relative;`;
+  const vid=document.createElement('video');
+  vid.className='vn-thumb-video';
+  vid.playsInline=true;
+  vid.preload='metadata';
+  vid.loop=false;
+  vid.muted=false;
+  vid.style.cssText=`width:${VN_SMALL}px;height:${VN_SMALL}px;border-radius:50%;object-fit:cover;display:block;transition:width .28s cubic-bezier(.4,0,.2,1),height .28s cubic-bezier(.4,0,.2,1);`;
+
+  // ── FIX: загрузка видео с правильным управлением ObjectURL ──
+  let _activeObjectURL=null;
+  function _revokeObjectURL(){if(_activeObjectURL){URL.revokeObjectURL(_activeObjectURL);_activeObjectURL=null;}}
+
+  // ── FIX чёрного кружка ──────────────────────────────────────────────────
+  // На многих Android WebView (включая Median.co) <video> с preload="metadata"
+  // не рисует первый кадр пока не начнётся воспроизведение — элемент остаётся
+  // полностью чёрным. Решение: после loadeddata принудительно "перематываем"
+  // на крошечный таймкод (0.001с) — это форсирует декодирование и отрисовку
+  // кадра без видимого воспроизведения. Применяется один раз при первой загрузке.
+  let _posterExtracted=false;
+  function _extractPosterFrame(){
+    if(_posterExtracted)return;
+    _posterExtracted=true;
+    try{
+      if(vid.currentTime===0){
+        // Сикаем на крошечный сдвиг — браузер декодирует и отрисует кадр
+        vid.currentTime=0.001;
+      }
+    }catch(e){}
+  }
+  vid.addEventListener('loadeddata',_extractPosterFrame);
+  vid.addEventListener('loadedmetadata',_extractPosterFrame);
+  // На случай если события не сработали (некоторые WebView) — фоллбек по таймауту
+  vid.addEventListener('canplay',_extractPosterFrame);
+
+  function _setVideoSrc(src){
+    _revokeObjectURL();
+    _posterExtracted=false;
+    vid.src=src;
+    vid.load();
+  }
+
+  if(m._videoDataForRender && (m._videoDataForRender.startsWith('data:')||m._videoDataForRender.startsWith('blob:'))){
+    // Временное поле для рендера — blob уже сохранён, используем dataURL/objectURL для немедленного показа
+    _setVideoSrc(m._videoDataForRender);
+  } else if(m.videoData && (m.videoData.startsWith('data:')||m.videoData.startsWith('blob:')||m.videoData.startsWith('http'))){
+    // dataURL или ObjectURL доступен напрямую (свежее сообщение отправителя)
+    _setVideoSrc(m.videoData);
+  } else if(m.videoBlobId){
+    // Загружаем из IndexedDB — создаём ObjectURL и держим его живым
+    (async()=>{
+      try{
+        const buf=await loadBlob(m.videoBlobId);
+        if(!buf){console.warn('vn blob not found:',m.videoBlobId);return;}
+        const mime=m.videoMime||'video/webm';
+        const blob=new Blob([buf],{type:mime});
+        _activeObjectURL=URL.createObjectURL(blob);
+        _setVideoSrc(_activeObjectURL);
+      }catch(e){console.error('vn blob load error',e);}
+    })();
+  }
+
+  // Освобождаем ObjectURL когда элемент убирается из DOM
+  const observer=new MutationObserver(()=>{
+    if(!document.contains(wrap)){_revokeObjectURL();observer.disconnect();}
+  });
+  observer.observe(document.body,{childList:true,subtree:true});
+
+  function makeSvgRing(sz){
+    const r=sz/2;
+    const circ=2*Math.PI*r;
+    const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svg.setAttribute('viewBox',`0 0 ${sz+8} ${sz+8}`);
+    svg.style.cssText=`position:absolute;top:-4px;left:-4px;width:${sz+8}px;height:${sz+8}px;pointer-events:none;transition:width .28s cubic-bezier(.4,0,.2,1),height .28s cubic-bezier(.4,0,.2,1);`;
+    const track=document.createElementNS('http://www.w3.org/2000/svg','circle');
+    track.setAttribute('cx',(sz+8)/2+'');track.setAttribute('cy',(sz+8)/2+'');track.setAttribute('r',r+'');
+    track.setAttribute('fill','none');track.setAttribute('stroke','rgba(255,255,255,.2)');track.setAttribute('stroke-width','3.5');
+    const prog=document.createElementNS('http://www.w3.org/2000/svg','circle');
+    prog.setAttribute('cx',(sz+8)/2+'');prog.setAttribute('cy',(sz+8)/2+'');prog.setAttribute('r',r+'');
+    prog.setAttribute('fill','none');prog.setAttribute('stroke','var(--g)');prog.setAttribute('stroke-width','3.5');
+    prog.setAttribute('stroke-linecap','round');
+    prog.style.cssText='transform:rotate(-90deg);transform-origin:50% 50%;';
+    prog.setAttribute('stroke-dasharray',circ+'');
+    prog.setAttribute('stroke-dashoffset',circ+'');
+    svg.appendChild(track);svg.appendChild(prog);
+    return{svg,prog,circ,r};
+  }
+
+  let curSz=VN_SMALL;
+  let svgObj=makeSvgRing(curSz);
+  circleWrap.appendChild(vid);
+  circleWrap.appendChild(svgObj.svg);
+
+  const pauseDot=document.createElement('div');
+  pauseDot.className='vn-pause-dot';
+  circleWrap.appendChild(pauseDot);
+
+  const metaRow=document.createElement('div');
+  metaRow.className='vn-meta-row';
+  const timerEl=document.createElement('span');
+  timerEl.className='voice-timer';
+  timerEl.textContent=fmtDur(totalSec);
+  const dot=document.createElement('span');
+  dot.className='vn-unread-dot'+(dotHidden?' hidden':'');
+  const metaWrap=document.createElement('span');
+  metaWrap.className='voice-meta-inline';
+  const timeEl=document.createElement('span');
+  timeEl.className='msg-time-inline';
+  timeEl.textContent=new Date(m.time).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});
+  metaWrap.appendChild(timeEl);
+  if(isSent){const tk=document.createElement('span');tk.className='msg-ticks'+(m.delivered?' double':' single');tk.textContent=m.delivered?'✔✔':'✔';metaWrap.appendChild(tk);}
+  metaRow.appendChild(timerEl);
+  if(!isSent)metaRow.appendChild(dot);
+  metaRow.appendChild(metaWrap);
+  wrap.appendChild(circleWrap);
+  wrap.appendChild(metaRow);
+
+  let expanded=false,playing=false,rafId=null;
+
+  function _getEffDur(){if(totalSec>0)return totalSec;const d=vid.duration;return(d&&isFinite(d)&&d>0)?d:0;}
+
+  function _updateRing(){
+    const dur=_getEffDur();
+    const cur=vid.currentTime||0;
+    const pct=dur>0?Math.min(cur/dur,1):0;
+    svgObj.prog.setAttribute('stroke-dashoffset',(svgObj.circ*(1-pct)).toFixed(2));
+    timerEl.textContent=dur>0?fmtDur(Math.floor(cur))+' / '+fmtDur(Math.round(dur)):fmtDur(Math.floor(cur));
+    if(!playing&&expanded&&cur>0){
+      const angle=pct*2*Math.PI-Math.PI/2;
+      const cx=(curSz+8)/2,cy=(curSz+8)/2,pr=svgObj.r;
+      const px=cx+pr*Math.cos(angle)-5.5;
+      const py=cy+pr*Math.sin(angle)-5.5;
+      pauseDot.style.left=px+'px';
+      pauseDot.style.top=py+'px';
+      pauseDot.style.opacity='1';
+    }else{pauseDot.style.opacity='0';}
+  }
+
+  function rafTick(){if(!playing){rafId=null;return;}_updateRing();rafId=requestAnimationFrame(rafTick);}
+
+  function _rebuildRing(sz){
+    if(svgObj.svg.parentNode)svgObj.svg.parentNode.removeChild(svgObj.svg);
+    curSz=sz;svgObj=makeSvgRing(sz);
+    const dur=_getEffDur(),cur=vid.currentTime||0,pct=dur>0?Math.min(cur/dur,1):0;
+    svgObj.prog.setAttribute('stroke-dashoffset',(svgObj.circ*(1-pct)).toFixed(2));
+    circleWrap.appendChild(svgObj.svg);
+    circleWrap.appendChild(pauseDot);
+  }
+
+  function _doReset(){
+    if(playing)vid.pause();
+    playing=false;
+    if(rafId){cancelAnimationFrame(rafId);rafId=null;}
+    if(expanded)_collapse();
+  }
+
+  function _expand(){
+    expanded=true;curSz=VN_BIG;
+    circleWrap.style.width=VN_BIG+'px';circleWrap.style.height=VN_BIG+'px';
+    vid.style.width=VN_BIG+'px';vid.style.height=VN_BIG+'px';
+    _rebuildRing(VN_BIG);
+  }
+
+  function _collapse(){
+    expanded=false;curSz=VN_SMALL;
+    circleWrap.style.width=VN_SMALL+'px';circleWrap.style.height=VN_SMALL+'px';
+    vid.style.width=VN_SMALL+'px';vid.style.height=VN_SMALL+'px';
+    _rebuildRing(VN_SMALL);
+    svgObj.prog.setAttribute('stroke-dashoffset',svgObj.circ+'');
+    pauseDot.style.opacity='0';
+    timerEl.textContent=fmtDur(totalSec);
+  }
+
+  function _startPlay(){
+    if(_currentVnReset&&_currentVnReset!==_doReset)_currentVnReset();
+    _currentVnReset=_doReset;
+    if(_currentVnVideo&&_currentVnVideo!==vid&&!_currentVnVideo.paused)_currentVnVideo.pause();
+    if(typeof currentAudio!=='undefined'&&currentAudio&&!currentAudio.paused)currentAudio.pause();
+    _currentVnVideo=vid;
+
+    // Ждём пока видео готово перед play()
+    const doPlay=()=>{
+      // Сбрасываем currentTime если он был смещён только для извлечения poster-кадра
+      if(vid.currentTime>0&&vid.currentTime<0.05&&!playing){
+        try{vid.currentTime=0;}catch(e){}
+      }
+      vid.play().then(()=>{
+        playing=true;pauseDot.style.opacity='0';
+        if(rafId)cancelAnimationFrame(rafId);
+        rafTick();
+        if(!isSent&&!m.voiceListened){
+          m.voiceListened=true;dot.classList.add('hidden');
+          const _pid=activePid;
+          withChatLock(_pid,async()=>{const msgs=await loadMsgs(_pid);const mm=msgs.find(x=>x.id===m.id);if(mm){mm.voiceListened=true;await saveMsgs(_pid,msgs);}}).catch(()=>{});
+        }
+      }).catch(e=>{
+        console.error('vn play error',e);
+        // Если src не загружен — пробуем перезагрузить
+        if(!vid.src&&m.videoBlobId){
+          (async()=>{
+            const buf=await loadBlob(m.videoBlobId);
+            if(!buf)return;
+            _revokeObjectURL();
+            const blob=new Blob([buf],{type:m.videoMime||'video/webm'});
+            _activeObjectURL=URL.createObjectURL(blob);
+            vid.src=_activeObjectURL;
+            vid.load();
+            vid.addEventListener('canplay',()=>vid.play().catch(()=>{}),{once:true});
+          })();
+        }
+      });
+    };
+
+    if(vid.readyState>=2){doPlay();}
+    else{vid.addEventListener('canplay',doPlay,{once:true});}
+  }
+
+  vid.addEventListener('ended',()=>{
+    playing=false;if(rafId){cancelAnimationFrame(rafId);rafId=null;}
+    pauseDot.style.opacity='0';vid.currentTime=0;
+    svgObj.prog.setAttribute('stroke-dashoffset',svgObj.circ+'');
+    timerEl.textContent=fmtDur(totalSec);
+    setTimeout(()=>{if(!playing)_collapse();},500);
+    if(_currentVnReset===_doReset)_currentVnReset=null;
+    if(_currentVnVideo===vid)_currentVnVideo=null;
+  });
+
+  vid.addEventListener('error',e=>{
+    // При ошибке загрузки — пробуем перечитать blob
+    if(m.videoBlobId&&!_activeObjectURL){
+      (async()=>{
+        try{
+          const buf=await loadBlob(m.videoBlobId);
+          if(!buf)return;
+          const blob=new Blob([buf],{type:m.videoMime||'video/webm'});
+          _activeObjectURL=URL.createObjectURL(blob);
+          vid.src=_activeObjectURL;
+          vid.load();
+        }catch(err){}
+      })();
+    }
+  });
+
+  circleWrap.addEventListener('click',e=>{
+    e.stopPropagation();
+    if(!expanded){_expand();_startPlay();}
+    else if(playing){vid.pause();playing=false;if(rafId){cancelAnimationFrame(rafId);rafId=null;}_updateRing();}
+    else{pauseDot.style.opacity='0';if(vid.ended||vid.currentTime===0)vid.currentTime=0;_startPlay();}
+  });
+
+  return wrap;
+}
+
+// ── ИНИЦИАЛИЗАЦИЯ МИК-КНОПКИ ──
+document.addEventListener('DOMContentLoaded',()=>setTimeout(_initMicBtn,0));
 
 // ── VOICE PLAYBACK ──
 let currentAudio=null;
@@ -6465,9 +7346,12 @@ function buildVoiceBubble(m,isSent){
       rafTick();
       if(!isSent&&!m.voiceListened){
         m.voiceListened=true;
-        const msgs=await loadMsgs(activePid);
-        const mm=msgs.find(x=>x.id===m.id);
-        if(mm){mm.voiceListened=true;await saveMsgs(activePid,msgs);}
+        const pidForLock=activePid;
+        await withChatLock(pidForLock,async()=>{
+          const msgs=await loadMsgs(pidForLock);
+          const mm=msgs.find(x=>x.id===m.id);
+          if(mm){mm.voiceListened=true;await saveMsgs(pidForLock,msgs);}
+        });
         dot.classList.add('hidden');
         if(activePid!==MY_ID)wsSend({type:'voice-listened',target:activePid,voiceMsgId:m.id});
       }
@@ -6787,29 +7671,44 @@ initFavoritesChat().then(async()=>{
   initAvt();goScreen('scr-home');renderChatList();renderContacts();ensureWS();
 });
 
-// ── МИГРАЦИЯ: переносим сообщения из localStorage в IndexedDB ──
-// Старый клиент мог сохранять сообщения в localStorage как bc_msgs_* если IndexedDB не работал
+// ── МИГРАЦИЯ: переносим данные из localStorage в IndexedDB v3 ──
+// 1. Сообщения из bc_msgs_* → IDB 'messages' (если IDB пуст)
+// 2. Чаты из bc_chats → IDB 'meta' (если IDB 'meta' пуст)
 async function migrateLocalStorageMessages(){
   try{
-    const keys=Object.keys(localStorage).filter(k=>k.startsWith('bc_msgs_'));
-    if(!keys.length)return;
     const d=await openMessagesDB();
+
+    // ── Миграция чатов ──
+    try{
+      const existingChats=await _metaGet(CHATS_META_KEY);
+      if(!existingChats||!existingChats.length){
+        const lsChats=lsGet('bc_chats',null);
+        if(lsChats&&lsChats.length){
+          await _metaPut(CHATS_META_KEY,lsChats);
+          console.log(`[migrate] Chats (${lsChats.length}) → IDB meta`);
+        }
+      }
+    }catch(e){ console.warn('[migrate] chats error',e); }
+
+    // ── Миграция сообщений ──
+    const keys=Object.keys(localStorage).filter(k=>k.startsWith('bc_msgs_'));
     for(const k of keys){
       const pid=k.replace('bc_msgs_','');
       try{
-        // Проверяем есть ли уже в IndexedDB
-        const existing=await new Promise((res,rej)=>{const req=d.transaction(STORE_NAME,'readonly').objectStore(STORE_NAME).get(pid);req.onsuccess=()=>res(req.result);req.onerror=()=>rej(req.error);});
+        const existing=await new Promise((res,rej)=>{
+          const req=d.transaction(STORE_NAME,'readonly').objectStore(STORE_NAME).get(pid);
+          req.onsuccess=()=>res(req.result);req.onerror=()=>rej(req.error);
+        });
         if(!existing||!existing.messages||!existing.messages.length){
-          // Переносим из localStorage
           const msgs=JSON.parse(localStorage.getItem(k)||'[]');
           if(msgs.length){
             await saveMsgs(pid,msgs);
-            console.log(`Migrated ${msgs.length} messages for ${pid} from localStorage to IndexedDB`);
+            console.log(`[migrate] ${msgs.length} msgs for ${pid} → IDB`);
           }
         }
-      }catch(e){console.warn('Migration error for',pid,e);}
+      }catch(e){ console.warn('[migrate] msgs error for',pid,e); }
     }
-  }catch(e){console.warn('Migration failed',e);}
+  }catch(e){ console.warn('[migrate] failed',e); }
 }
 
 // ══════════════════════════════════════════════════════════════════
