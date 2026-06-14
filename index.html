@@ -667,6 +667,16 @@
     .vn-bubble-wrap.recv{align-self:flex-start}
     .vn-thumb-circle{border-radius:50%;overflow:hidden;display:block;position:relative;transition:width .28s cubic-bezier(.4,0,.2,1),height .28s cubic-bezier(.4,0,.2,1);flex-shrink:0}
     .vn-thumb-video{width:100%;height:100%;object-fit:cover;display:block;border-radius:50%;transition:border-radius .28s cubic-bezier(.4,0,.2,1)}
+    /* ── Кнопка/спиннер скачивания видео-кружка (по центру) ── */
+    .vn-dl-wrap{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45);border-radius:50%;z-index:3}
+    .vn-dl-btn{width:42px;height:42px;border-radius:50%;background:rgba(0,217,255,.16);border:2px solid rgba(0,217,255,.4);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .2s,transform .15s;font-size:16px;color:#fff}
+    .vn-dl-btn:hover{background:rgba(0,217,255,.26);transform:scale(1.06)}
+    .vn-dl-btn:active{transform:scale(.92)}
+    .vn-dl-spinner{width:42px;height:42px;position:relative}
+    .vn-dl-spinner svg{width:42px;height:42px;transform:rotate(-90deg)}
+    .vn-dl-spinner-track{fill:none;stroke:rgba(255,255,255,.18);stroke-width:3}
+    .vn-dl-spinner-fill{fill:none;stroke:var(--g);stroke-width:3;stroke-linecap:round;stroke-dasharray:122;stroke-dashoffset:122;transition:stroke-dashoffset .25s ease}
+    .vn-dl-spinner-icon{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff}
     .vn-ring-svg-play{position:absolute;top:-4px;left:-4px;pointer-events:none;transition:width .28s cubic-bezier(.4,0,.2,1),height .28s cubic-bezier(.4,0,.2,1)}
     .vn-ring-track-play{fill:none;stroke:rgba(255,255,255,.2);stroke-width:3.5}
     .vn-ring-prog-play{fill:none;stroke:var(--g);stroke-width:3.5;stroke-linecap:round;transform:rotate(-90deg);transform-origin:50% 50%}
@@ -2142,7 +2152,7 @@ async function handleFileAvailable(msg){
   if(name&&name.startsWith(VN_FILE_PREFIX)){
     let vnMeta={durSec:0,videoMime:mimeType||'video/webm',replyTo:null};
     try{ if(caption) vnMeta={...vnMeta,...JSON.parse(caption)}; }catch(e){}
-    // Автоматически скачиваем кружок, не спрашивая пользователя (файл <50МБ обычно)
+    // НЕ скачиваем автоматически — показываем кнопку скачивания (как у файлов)
     const vnMsg={
       id:fileId,text:'',type:'recv',
       time:new Date(ts||Date.now()).toISOString(),
@@ -2152,6 +2162,7 @@ async function handleFileAvailable(msg){
       videoMime:vnMeta.videoMime||mimeType||'video/webm',
       // videoBlobId будет установлен после скачивания
       _vnPending:true,_vnFileId:fileId,_vnSenderId:senderId,
+      _vnSize:size,_vnTotalChunks:totalChunks,
     };
     await upsertMsg(senderId,vnMsg);
     await updateChat(senderId,{lastMsg:'📹 Видео-кружок',lastMsgTime:new Date(vnMsg.time).getTime()});
@@ -2163,8 +2174,6 @@ async function handleFileAvailable(msg){
       await updateChat(senderId,{unread:(chat?.unread||0)+1});
       toast(`📹 ${chat?.peerName||senderId}: Видео-кружок`);
     }
-    // Немедленно запускаем скачивание кружка в фоне
-    _downloadVideoNote(fileId,senderId,vnMeta.videoMime||mimeType||'video/webm').catch(()=>{});
     return;
   }
 
@@ -2187,7 +2196,7 @@ async function _downloadVideoNote(fileId, senderId, videoMime){
     // Используем существующий механизм скачивания файлов
     const key=await getKey(senderId);
     if(!key){console.warn('[vnote] no key for',senderId);return;}
-    fileTransfers.set(fileId,{state:'downloading',chunks:[],total:0,received:0,key,senderId,retries:0,maxRetries:3,_isVideoNote:true,_vnMime:videoMime});
+    fileTransfers.set(fileId,{state:'downloading',chunks:[],total:0,received:0,key,senderId,retries:0,maxRetries:6,_isVideoNote:true,_vnMime:videoMime});
     wsSend({type:'fetch-file',fileId});
     const ft=fileTransfers.get(fileId);
     ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId),60000);
@@ -2347,7 +2356,19 @@ async function assembleFile(fileId){
   }catch(e){console.error('assembleFile error',e);toast('Ошибка сборки файла','err');const spinner=document.querySelector(`.tg-spinner[data-fileid="${fileId}"]`);if(spinner)resetSpinnerToDownload(spinner,fileId,ft.senderId);}
 }
 
-function updateSpinnerProgress(fileId,pct){const spinner=document.querySelector(`.tg-spinner[data-fileid="${fileId}"]`);if(!spinner)return;const fill=spinner.querySelector('.tg-spinner-fill');if(fill)fill.style.strokeDashoffset=Math.max(0,122-122*pct/100);const icon=spinner.querySelector('.tg-spinner-icon');if(icon&&pct>=100){icon.textContent='✓';icon.style.color='var(--g)';}}
+function updateSpinnerProgress(fileId,pct){
+  const spinner=document.querySelector(`.tg-spinner[data-fileid="${fileId}"]`);
+  if(spinner){
+    const fill=spinner.querySelector('.tg-spinner-fill');if(fill)fill.style.strokeDashoffset=Math.max(0,122-122*pct/100);
+    const icon=spinner.querySelector('.tg-spinner-icon');if(icon&&pct>=100){icon.textContent='✓';icon.style.color='var(--g)';}
+  }
+  // Видео-кружок: спиннер по центру кружка
+  const vnSpinner=document.querySelector(`.vn-dl-spinner[data-fileid="${fileId}"]`);
+  if(vnSpinner){
+    const fill=vnSpinner.querySelector('.vn-dl-spinner-fill');if(fill)fill.style.strokeDashoffset=Math.max(0,122-122*pct/100);
+    const icon=vnSpinner.querySelector('.vn-dl-spinner-icon');if(icon&&pct>=100){icon.textContent='✓';icon.style.color='var(--g)';}
+  }
+}
 function resetSpinnerToDownload(spinner,fileId,fromId){
   const iconWrap=document.createElement('div');
   // Поддерживаем и старый .file-card и новый .tg-file-wrap
@@ -6583,7 +6604,54 @@ function buildVideoNoteBubble(m,isSent){
     vid.load();
   }
 
-  if(m._videoDataForRender && (m._videoDataForRender.startsWith('data:')||m._videoDataForRender.startsWith('blob:'))){
+  // ── PENDING: видео-кружок ещё не скачан — показываем кнопку скачивания ──
+  // (как у файловых миниатюр), вместо автоматической загрузки в фоне.
+  const isPending=!!m._vnPending;
+  let dlOverlay=null;
+
+  function _buildDownloadOverlay(){
+    const ov=document.createElement('div');
+    ov.className='vn-dl-wrap';
+    const btn=document.createElement('div');
+    btn.className='vn-dl-btn';
+    btn.textContent='⬇';
+    btn.title='Скачать видео-кружок';
+    btn.onclick=e=>{
+      e.stopPropagation();
+      _startVnoteDownload();
+    };
+    ov.appendChild(btn);
+    return ov;
+  }
+
+  function _buildSpinnerOverlay(){
+    const ov=document.createElement('div');
+    ov.className='vn-dl-wrap';
+    const spinner=document.createElement('div');
+    spinner.className='vn-dl-spinner';
+    spinner.dataset.fileid=m.id;
+    spinner.innerHTML=`<svg viewBox="0 0 42 42"><circle class="vn-dl-spinner-track" cx="21" cy="21" r="19"/><circle class="vn-dl-spinner-fill" cx="21" cy="21" r="19" stroke-dasharray="122" stroke-dashoffset="122"/></svg><div class="vn-dl-spinner-icon">⬇</div>`;
+    ov.appendChild(spinner);
+    return ov;
+  }
+
+  function _startVnoteDownload(){
+    if(!dlOverlay)return;
+    const spinnerOv=_buildSpinnerOverlay();
+    dlOverlay.replaceWith(spinnerOv);
+    dlOverlay=spinnerOv;
+    const videoMime=m.videoMime||'video/webm';
+    _downloadVideoNote(m.id,m._vnSenderId||(isSent?activePid:m._vnSenderId)||activePid,videoMime).catch(()=>{
+      toast('Ошибка загрузки видео-кружка','err');
+      const dlOv=_buildDownloadOverlay();
+      dlOverlay.replaceWith(dlOv);
+      dlOverlay=dlOv;
+    });
+  }
+
+  if(isPending){
+    dlOverlay=_buildDownloadOverlay();
+  } else if(m._videoDataForRender && (m._videoDataForRender.startsWith('data:')||m._videoDataForRender.startsWith('blob:'))){
     // Временное поле для рендера — blob уже сохранён, используем dataURL/objectURL для немедленного показа
     _setVideoSrc(m._videoDataForRender);
   } else if(m.videoData && (m.videoData.startsWith('data:')||m.videoData.startsWith('blob:')||m.videoData.startsWith('http'))){
@@ -6637,6 +6705,9 @@ function buildVideoNoteBubble(m,isSent){
   const pauseDot=document.createElement('div');
   pauseDot.className='vn-pause-dot';
   circleWrap.appendChild(pauseDot);
+
+  // Кнопка/спиннер скачивания (если кружок ещё не загружен)
+  if(dlOverlay)circleWrap.appendChild(dlOverlay);
 
   const metaRow=document.createElement('div');
   metaRow.className='vn-meta-row';
@@ -6786,6 +6857,7 @@ function buildVideoNoteBubble(m,isSent){
 
   circleWrap.addEventListener('click',e=>{
     e.stopPropagation();
+    if(isPending)return; // ждём скачивания — клик обрабатывает кнопка ⬇ внутри overlay
     if(!expanded){_expand();_startPlay();}
     else if(playing){vid.pause();playing=false;if(rafId){cancelAnimationFrame(rafId);rafId=null;}_updateRing();}
     else{pauseDot.style.opacity='0';if(vid.ended||vid.currentTime===0)vid.currentTime=0;_startPlay();}
