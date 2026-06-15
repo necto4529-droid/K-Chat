@@ -2536,19 +2536,23 @@ async function markVoiceListened(voiceMsgId,senderPid){if(!senderPid)return;awai
 // ── Получатель посмотрел видео-кружок — скрываем dot у отправителя ──
 async function markVnWatched(vnMsgId,fromPid){
   if(!fromPid)return;
-  // Скрываем индикатор в DOM немедленно
+  // Скрываем ОБА индикатора в DOM немедленно:
+  // 1) .vn-unread-dot — точка в мета-строке под кружком
+  // 2) .vn-circle-unread-badge — бейдж прямо на кружке (снизу по центру)
   if(activePid===fromPid){
-    for(let i=0;i<20;i++){
+    for(let i=0;i<30;i++){
       const row=document.querySelector(`.msg-row[data-msgid="${vnMsgId}"]`);
       if(row){
         const dot=row.querySelector('.vn-unread-dot');
+        const badge=row.querySelector('.vn-circle-unread-badge');
         if(dot)dot.classList.add('hidden');
+        if(badge)badge.classList.add('hidden');
         break;
       }
       await new Promise(r=>setTimeout(r,100));
     }
   }
-  // Сохраняем в IDB
+  // Сохраняем в IDB — помечаем как просмотренное
   await withChatLock(fromPid,async()=>{
     const msgs=await loadMsgs(fromPid);
     const m=msgs.find(m=>m.id===vnMsgId);
@@ -2634,7 +2638,7 @@ function sendVoiceListened(targetPid, voiceMsgId){
     try{lsSet(VOICE_LISTENED_QUEUE_KEY, filtered);}catch(e){}
   }
 }
-async function syncDeliveredStatuses(){if(!activePid)return;const msgs=await loadMsgs(activePid);for(const m of msgs){if(m.type==='sent'&&m.delivered){const row=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);if(row){const tk=row.querySelector('.msg-ticks');if(tk&&tk.textContent!=='✔✔'){tk.textContent='✔✔';tk.className='msg-ticks double';}}}if(m.type==='sent'&&m.voice&&m.voiceListened){const row=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);if(row){const dot=row.querySelector('.voice-unread-dot');if(dot)dot.classList.add('hidden');}}if(m.type==='sent'&&m.videoNote&&m.voiceListened){const row=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);if(row){const dot=row.querySelector('.vn-unread-dot');if(dot)dot.classList.add('hidden');}}if(m.type==='recv'&&m.videoNote&&m.voiceListened){const row=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);if(row){const dot=row.querySelector('.vn-unread-dot');if(dot)dot.classList.add('hidden');}}}}
+async function syncDeliveredStatuses(){if(!activePid)return;const msgs=await loadMsgs(activePid);for(const m of msgs){if(m.type==='sent'&&m.delivered){const row=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);if(row){const tk=row.querySelector('.msg-ticks');if(tk&&tk.textContent!=='✔✔'){tk.textContent='✔✔';tk.className='msg-ticks double';}}}if(m.type==='sent'&&m.voice&&m.voiceListened){const row=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);if(row){const dot=row.querySelector('.voice-unread-dot');if(dot)dot.classList.add('hidden');}}if(m.type==='sent'&&m.videoNote&&m.voiceListened){const row=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);if(row){const dot=row.querySelector('.vn-unread-dot');if(dot)dot.classList.add('hidden');const badge=row.querySelector('.vn-circle-unread-badge');if(badge)badge.classList.add('hidden');}}if(m.type==='recv'&&m.videoNote&&m.voiceListened){const row=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);if(row){const dot=row.querySelector('.vn-unread-dot');if(dot)dot.classList.add('hidden');const badge=row.querySelector('.vn-circle-unread-badge');if(badge)badge.classList.add('hidden');}}}}
 
 const online={};
 
@@ -6493,20 +6497,59 @@ function _initMicBtn(){
 
 // ── ЗАПИСЬ ВИДЕО-КРУЖКА ──
 let _vnRecording=false;
-let _vnStopping=false; // защита от повторного вызова cancel/stop во время анимации закрытия
+let _vnStopping=false;
+let _vnFlipping=false; // блокировка от закликивания
 let _vnStream=null;
 let _vnMediaRecorder=null;
 let _vnChunks=[];
 let _vnStartTime=0;
 let _vnTimerIv=null;
-let _vnFacingMode='user';
+let _vnFacingMode='user'; // только для первого старта и сброса
 let _vnActivityHb=null;
+// Список доступных видеокамер и текущий индекс
+let _vnCameraDevices=[];
+let _vnCameraIndex=0;
+// Текущий mime-тип записи
+let _vnMime='';
+
+// Определяем mime один раз
+function _vnPickMime(){
+  const candidates=['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm','video/mp4',''];
+  for(const m of candidates){if(!m||MediaRecorder.isTypeSupported(m))return m;}
+  return '';
+}
+
+// Создаём MediaRecorder на текущем _vnStream
+function _vnCreateRecorder(){
+  const rec=new MediaRecorder(_vnStream,_vnMime?{mimeType:_vnMime}:{});
+  rec.ondataavailable=e=>{if(e.data&&e.data.size>0)_vnChunks.push(e.data);};
+  return rec;
+}
+
+// Является ли текущая камера фронтальной (для зеркала)
+function _isFrontCamera(){
+  if(_vnFacingMode==='environment')return false;
+  if(_vnFacingMode==='user')return true;
+  // По label если facingMode неизвестен
+  const dev=_vnCameraDevices[_vnCameraIndex];
+  if(!dev)return true;
+  const lbl=(dev.label||'').toLowerCase();
+  if(lbl.includes('back')||lbl.includes('rear')||lbl.includes('environment')||lbl.includes('задн'))return false;
+  return true;
+}
 
 async function startVideoNote(){
   if(_vnRecording||isRecording||processingFiles)return;
+
+  // Всегда начинаем с фронтальной
+  _vnFacingMode='user';
+  _vnCameraIndex=0;
+  _vnCameraDevices=[];
+
+  // Получаем стрим через facingMode (работает на всех мобильных браузерах)
   try{
     _vnStream=await navigator.mediaDevices.getUserMedia({
-      video:{facingMode:_vnFacingMode,width:{ideal:480},height:{ideal:480},frameRate:{ideal:30}},
+      video:{facingMode:'user',width:{ideal:480},height:{ideal:480},frameRate:{ideal:30}},
       audio:true
     });
   }catch(e){
@@ -6514,21 +6557,28 @@ async function startVideoNote(){
     else toast('Ошибка камеры','err');
     return;
   }
+
+  // После получения стрима — перечисляем устройства (теперь deviceId заполнен)
+  try{
+    const allDevices=await navigator.mediaDevices.enumerateDevices();
+    _vnCameraDevices=allDevices.filter(d=>d.kind==='videoinput'&&d.deviceId&&d.deviceId!=='');
+  }catch(e){_vnCameraDevices=[];}
+
+  // Скрываем кнопку флипа если только одна камера
+  const flipBtn=$('vnFlipBtn');
+  if(flipBtn)flipBtn.style.visibility=_vnCameraDevices.length>1?'visible':'hidden';
+
   const preview=$('vnPreview');
   preview.srcObject=_vnStream;
-  preview.style.transform=_vnFacingMode==='user'?'scaleX(-1)':'scaleX(1)';
+  preview.style.transform='scaleX(-1)'; // фронтальная — зеркало
   try{await preview.play();}catch(e){}
 
-  let mime='video/webm;codecs=vp9,opus';
-  if(!MediaRecorder.isTypeSupported(mime))mime='video/webm;codecs=vp8,opus';
-  if(!MediaRecorder.isTypeSupported(mime))mime='video/webm';
-  if(!MediaRecorder.isTypeSupported(mime))mime='video/mp4';
-  if(!MediaRecorder.isTypeSupported(mime))mime='';
+  _vnMime=_vnPickMime();
   _vnChunks=[];
-  _vnMediaRecorder=new MediaRecorder(_vnStream,mime?{mimeType:mime}:{});
-  _vnMediaRecorder.ondataavailable=e=>{if(e.data&&e.data.size>0)_vnChunks.push(e.data);};
+  _vnMediaRecorder=_vnCreateRecorder();
   _vnMediaRecorder.start(100);
   _vnRecording=true;
+  _vnFlipping=false;
   _vnStartTime=Date.now();
 
   const ov=$('vnRecordOverlay');
@@ -6544,7 +6594,6 @@ async function startVideoNote(){
     timeEl.textContent=fmtDur(sec);
     const pct=Math.min(elapsed/(MAX_VN_SEC*1000),1);
     ring.style.strokeDashoffset=(VN_CIRCUMFERENCE*(1-pct)).toFixed(2);
-    // Последние 5 секунд — тревожная индикация (цвет кольца, таймер, пульс кружка)
     const remainingSec=MAX_VN_SEC-sec;
     const isUrgent=remainingSec<=5&&remainingSec>=0;
     ring.classList.toggle('urgent',isUrgent);
@@ -6564,6 +6613,12 @@ function _stopVnInternal(){
     clearInterval(_vnTimerIv);_vnTimerIv=null;
     clearInterval(_vnActivityHb);_vnActivityHb=null;
     _vnRecording=false;
+    _vnFlipping=false;
+    // Сброс: следующая запись всегда начнётся с фронтальной камеры
+    _vnFacingMode='user';
+    _vnCameraIndex=0;
+    _vnCameraDevices=[];
+    _vnMime='';
     const ov=$('vnRecordOverlay');
     ov.classList.remove('active');
     $('vnRecTime').textContent='0:00';
@@ -6573,6 +6628,9 @@ function _stopVnInternal(){
     $('vnCircleWrap').classList.remove('urgent','cancelling');
     const preview=$('vnPreview');
     preview.srcObject=null;
+    // Восстанавливаем видимость кнопки флипа
+    const flipBtn=$('vnFlipBtn');
+    if(flipBtn)flipBtn.style.visibility='visible';
     if(_vnStream){_vnStream.getTracks().forEach(t=>t.stop());_vnStream=null;}
     if(_vnMediaRecorder&&_vnMediaRecorder.state!=='inactive'){
       _vnMediaRecorder.addEventListener('stop',()=>resolve(_vnChunks),{once:true});
@@ -6636,26 +6694,133 @@ window.stopAndSendVideoNote=async function(){
 };
 
 window.flipVideoCamera=async function(){
-  if(!_vnRecording)return;
-  _vnFacingMode=_vnFacingMode==='user'?'environment':'user';
+  if(!_vnRecording||_vnStopping||_vnFlipping)return;
+  _vnFlipping=true;
+
   const preview=$('vnPreview');
+  const flipBtn=$('vnFlipBtn');
+  if(flipBtn)flipBtn.disabled=true;
   preview.classList.add('flipping');
-  try{
-    const newStream=await navigator.mediaDevices.getUserMedia({
-      video:{facingMode:_vnFacingMode,width:{ideal:480},height:{ideal:480},frameRate:{ideal:30}},
-      audio:false
-    });
-    const newVideoTrack=newStream.getVideoTracks()[0];
-    if(newVideoTrack&&_vnStream){
-      const oldVideoTrack=_vnStream.getVideoTracks()[0];
-      if(oldVideoTrack)oldVideoTrack.stop();
-      _vnStream.removeTrack(oldVideoTrack);
-      _vnStream.addTrack(newVideoTrack);
+  if(typeof _vib==='function')_vib('impactLight');
+
+  const newFacing=_vnFacingMode==='user'?'environment':'user';
+
+  // ── Запрашиваем ТОЛЬКО видео (аудиотрек берём из существующего стрима) ──
+  // audio:true при уже занятом микрофоне вызывает NotReadableError на Android
+  let newVideoStream=null;
+
+  // Стратегия 1: deviceId (надёжнее на Android после enumerateDevices)
+  if(_vnCameraDevices.length>1){
+    const nextIndex=(_vnCameraIndex+1)%_vnCameraDevices.length;
+    const nextDev=_vnCameraDevices[nextIndex];
+    if(nextDev&&nextDev.deviceId){
+      try{
+        newVideoStream=await navigator.mediaDevices.getUserMedia({
+          video:{deviceId:{exact:nextDev.deviceId},width:{ideal:480},height:{ideal:480},frameRate:{ideal:30}},
+          audio:false
+        });
+        _vnCameraIndex=nextIndex;
+      }catch(e){newVideoStream=null;}
     }
-    preview.srcObject=_vnStream;
-    preview.style.transform=_vnFacingMode==='user'?'scaleX(-1)':'scaleX(1)';
-  }catch(e){toast('Ошибка переключения камеры','err');}
-  setTimeout(()=>preview.classList.remove('flipping'),120);
+  }
+
+  // Стратегия 2: facingMode exact
+  if(!newVideoStream){
+    try{
+      newVideoStream=await navigator.mediaDevices.getUserMedia({
+        video:{facingMode:{exact:newFacing},width:{ideal:480},height:{ideal:480},frameRate:{ideal:30}},
+        audio:false
+      });
+    }catch(e){newVideoStream=null;}
+  }
+
+  // Стратегия 3: facingMode ideal (самый мягкий — работает везде)
+  if(!newVideoStream){
+    try{
+      newVideoStream=await navigator.mediaDevices.getUserMedia({
+        video:{facingMode:newFacing,width:{ideal:480},height:{ideal:480},frameRate:{ideal:30}},
+        audio:false
+      });
+    }catch(e){newVideoStream=null;}
+  }
+
+  // Стратегия 4: без каких-либо constraints (любая свободная камера)
+  if(!newVideoStream){
+    try{
+      newVideoStream=await navigator.mediaDevices.getUserMedia({video:true,audio:false});
+    }catch(e){newVideoStream=null;}
+  }
+
+  // Совсем ничего не получилось — только зеркалим превью визуально
+  if(!newVideoStream){
+    _vnFacingMode=newFacing;
+    preview.style.transform=newFacing==='user'?'scaleX(-1)':'scaleX(1)';
+    preview.classList.remove('flipping');
+    if(flipBtn)flipBtn.disabled=false;
+    _vnFlipping=false;
+    return;
+  }
+
+  // ── Успешно получили новый видеотрек ──
+  _vnFacingMode=newFacing;
+  const newVideoTrack=newVideoStream.getVideoTracks()[0];
+
+  // Сохраняем аудиотрек из старого стрима
+  const existingAudioTrack=_vnStream?_vnStream.getAudioTracks()[0]:null;
+
+  // Сохраняем накопленные чанки
+  const savedChunks=await new Promise(resolve=>{
+    if(_vnMediaRecorder&&_vnMediaRecorder.state!=='inactive'){
+      try{_vnMediaRecorder.requestData();}catch(e){}
+      _vnMediaRecorder.addEventListener('stop',()=>resolve([..._vnChunks]),{once:true});
+      _vnMediaRecorder.stop();
+    }else{
+      resolve([..._vnChunks]);
+    }
+  });
+
+  // Останавливаем только видеотрек старого стрима (аудио оставляем)
+  if(_vnStream){
+    _vnStream.getVideoTracks().forEach(t=>t.stop());
+  }
+
+  // Собираем новый комбинированный стрим: новое видео + старое аудио
+  const combinedStream=new MediaStream();
+  combinedStream.addTrack(newVideoTrack);
+  if(existingAudioTrack)combinedStream.addTrack(existingAudioTrack);
+
+  // Останавливаем старый стрим (треки уже перенесены или остановлены)
+  if(_vnStream){
+    _vnStream.getAudioTracks().forEach(t=>{
+      // не останавливаем аудио — оно теперь в combinedStream
+    });
+    _vnStream=null;
+  }
+  // Очищаем вспомогательный видеострим (трек уже в combinedStream)
+  newVideoStream.getVideoTracks(); // трек уже добавлен, поток не нужен
+
+  _vnStream=combinedStream;
+  preview.srcObject=combinedStream;
+  preview.style.transform=newFacing==='user'?'scaleX(-1)':'scaleX(1)';
+  try{await preview.play();}catch(e){}
+
+  // Обновляем список устройств
+  try{
+    const all=await navigator.mediaDevices.enumerateDevices();
+    _vnCameraDevices=all.filter(d=>d.kind==='videoinput'&&d.deviceId&&d.deviceId!=='');
+  }catch(e){}
+
+  // Пересоздаём MediaRecorder на новом комбинированном стриме
+  _vnMime=_vnPickMime();
+  _vnChunks=savedChunks;
+  _vnMediaRecorder=_vnCreateRecorder();
+  _vnMediaRecorder.start(100);
+
+  setTimeout(()=>{
+    preview.classList.remove('flipping');
+    if(flipBtn)flipBtn.disabled=false;
+    _vnFlipping=false;
+  },200);
 };
 
 // ── ОТПРАВКА ВИДЕО-КРУЖКА ЧЕРЕЗ ЧАНКОВЫЙ ПРОТОКОЛ ──────────────────────────
