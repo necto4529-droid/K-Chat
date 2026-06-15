@@ -275,11 +275,11 @@
     body.power-save .vn-record-overlay.active .vn-circle-wrap{transform:none!important}
     body.power-save .vn-circle-wrap.urgent .vn-preview{animation:none!important}
     body.power-save .vn-preview{transition:filter .1s!important}
-    body.power-save .vn-rec-timer-wrap{transition:opacity .1s ease!important;transform:none!important}
-    body.power-save .vn-record-overlay.active .vn-rec-timer-wrap{transform:none!important}
-    body.power-save .vn-rec-bar>div{transition:opacity .1s ease!important;transform:none!important}
-    body.power-save .vn-record-overlay.active .vn-rec-bar>div{transform:none!important}
+    body.power-save .vn-control-capsule{transition:opacity .1s ease!important;transform:translate(-50%,0)!important}
     body.power-save .vn-send-btn.launching{animation:none!important;opacity:0}
+    /* Состояние паузы видео-кружка */
+    .vn-rec-time.paused{color:var(--b)!important;animation:none!important}
+    .vn-circle-wrap.paused .vn-ring-prog{stroke:var(--b)!important}
     body.power-save .vn-circle-wrap.cancelling{animation:none!important;opacity:0}
     body.power-save .vn-backdrop{transition:opacity .1s ease!important}
     body.power-save .toast.processing::before{animation:none!important;opacity:1}
@@ -684,21 +684,128 @@
     @keyframes vnUrgentPulse{0%,100%{box-shadow:0 0 0 0 rgba(255,79,106,.55)}50%{box-shadow:0 0 0 10px rgba(255,79,106,0)}}
     .vn-circle-wrap.urgent .vn-preview{animation:vnUrgentPulse 1s ease-out infinite}
     /* Таймер под кружком */
-    .vn-rec-timer-wrap{position:relative;z-index:2;margin-top:20px;display:flex;align-items:center;gap:8px;transform:translateY(10px);opacity:0;transition:transform .35s cubic-bezier(.34,1.56,.64,1) .08s,opacity .3s ease .08s}
-    .vn-record-overlay.active .vn-rec-timer-wrap{transform:translateY(0);opacity:1}
-    .vn-rec-dot{width:8px;height:8px;border-radius:50%;background:var(--err);animation:recpulse 1s ease-in-out infinite;flex-shrink:0}
-    .vn-rec-time{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;color:#fff;letter-spacing:3px;min-width:60px;text-align:center;transition:color .25s}
+    /* ══════════════════════════════════════════════════════
+       📎 ATTACH SHEET — панель выбора медиа (Telegram-стиль)
+    ══════════════════════════════════════════════════════ */
+    .attach-backdrop{
+      position:fixed;inset:0;z-index:198;
+      background:rgba(4,4,16,.5);
+      backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+      opacity:0;pointer-events:none;
+      transition:opacity .28s ease;
+    }
+    .attach-backdrop.open{opacity:1;pointer-events:all}
+
+    .attach-sheet{
+      position:fixed;bottom:0;left:0;right:0;z-index:199;
+      background:rgba(8,8,18,.98);
+      backdrop-filter:blur(32px);-webkit-backdrop-filter:blur(32px);
+      border-top:1px solid var(--g-18);
+      border-radius:22px 22px 0 0;
+      box-shadow:0 -12px 60px rgba(0,0,0,.8),0 -1px 0 var(--g-08);
+      transform:translateY(100%);
+      transition:transform .34s cubic-bezier(.32,.72,0,1);
+      padding:0 0 max(20px,env(safe-area-inset-bottom));
+      will-change:transform;
+    }
+    .attach-sheet.open{transform:translateY(0)}
+    .attach-sheet.dragging{transition:none}
+
+    .attach-sheet-drag{
+      width:36px;height:4px;border-radius:3px;
+      background:rgba(255,255,255,.18);
+      margin:10px auto 4px;cursor:grab;
+      touch-action:none;
+    }
+    .attach-sheet-handle-area{padding:8px 0 4px;touch-action:none}
+
+    .attach-grid{
+      display:grid;grid-template-columns:repeat(4,1fr);
+      gap:4px;padding:18px 10px 6px;
+    }
+    .attach-item{
+      display:flex;flex-direction:column;align-items:center;gap:9px;
+      padding:10px 4px 12px;border-radius:16px;cursor:pointer;
+      transition:background .15s,transform .12s;
+    }
+    .attach-item:active{transform:scale(.93);background:rgba(255,255,255,.05)}
+    .attach-item-icon{
+      width:52px;height:52px;border-radius:15px;
+      display:flex;align-items:center;justify-content:center;
+      font-size:24px;flex-shrink:0;
+      box-shadow:0 4px 16px rgba(0,0,0,.3);
+    }
+    .attach-item-label{
+      font-size:12.5px;font-weight:600;color:rgba(255,255,255,.88);
+      font-family:-apple-system,sans-serif;text-align:center;
+    }
+    /* Цвета иконок — в стиле приложения */
+    .attach-item-icon.photo{background:linear-gradient(135deg,rgba(0,255,136,.22),rgba(0,255,136,.08))}
+    .attach-item-icon.video{background:linear-gradient(135deg,rgba(0,217,255,.22),rgba(0,217,255,.08))}
+    .attach-item-icon.file{background:linear-gradient(135deg,rgba(255,166,43,.22),rgba(255,166,43,.08))}
+    .attach-item-icon.sticker{background:linear-gradient(135deg,rgba(139,92,246,.26),rgba(139,92,246,.1))}
+
+    /* Скрытие input-bar при открытой панели — анимация как у sticker-mode */
+    .chat-input-bar.attach-mode .attach-btn,
+    .chat-input-bar.attach-mode .msg-input-wrap,
+    .chat-input-bar.attach-mode .mic-btn,
+    .chat-input-bar.attach-mode #sendBtn{
+      opacity:0;pointer-events:none;transition:opacity .2s;
+    }
+
+    /* power-save: упрощаем анимации */
+    body.power-save .attach-backdrop{transition:opacity .1s ease!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+    body.power-save .attach-sheet{transition:transform .15s ease!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+    .vn-control-capsule{
+      position:absolute;bottom:max(28px,env(safe-area-inset-bottom));left:50%;
+      transform:translate(-50%,30px);
+      z-index:2;display:flex;align-items:center;gap:14px;
+      padding:10px 14px;border-radius:40px;
+      background:rgba(10,10,22,.78);
+      border:1px solid rgba(255,255,255,.08);
+      backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+      box-shadow:0 8px 32px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.04);
+      opacity:0;transition:transform .4s cubic-bezier(.34,1.56,.64,1),opacity .3s ease;
+    }
+    .vn-record-overlay.active .vn-control-capsule{transform:translate(-50%,0);opacity:1}
+
+    .vn-rec-timer-wrap{display:flex;align-items:center;gap:8px;padding:0 4px}
+    .vn-rec-dot{width:8px;height:8px;border-radius:50%;background:var(--err);animation:recpulse 1s ease-in-out infinite;flex-shrink:0;box-shadow:0 0 8px rgba(255,79,106,.5)}
+    .vn-rec-time{font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:700;color:#fff;letter-spacing:2.5px;min-width:54px;text-align:center;transition:color .25s}
     .vn-rec-time.urgent{color:var(--err)}
-    /* Панель кнопок — абсолютно прибита к низу, не участвует в flex-центровке */
-    .vn-rec-bar{position:absolute;bottom:0;left:0;right:0;z-index:2;display:flex;align-items:center;justify-content:center;gap:28px;padding:20px 32px max(28px,env(safe-area-inset-bottom));background:linear-gradient(to top,rgba(4,4,16,.97) 55%,transparent 100%)}
-    .vn-rec-bar>div{transform:translateY(30px);opacity:0;transition:transform .4s cubic-bezier(.34,1.56,.64,1),opacity .3s ease}
-    .vn-record-overlay.active .vn-rec-bar>div{transform:translateY(0);opacity:1}
-    .vn-record-overlay.active .vn-cancel-btn{transition-delay:.06s}
-    .vn-record-overlay.active .vn-send-btn{transition-delay:.12s}
-    .vn-record-overlay.active .vn-flip-btn{transition-delay:.18s}
-    .vn-cancel-btn{width:58px;height:58px;border-radius:50%;background:rgba(255,79,106,.16);border:1.5px solid rgba(255,79,106,.45);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:22px;color:var(--err);transition:background .18s,transform .15s;flex-shrink:0}
-    .vn-cancel-btn:active{transform:scale(.88);background:rgba(255,79,106,.3)}
-    .vn-send-btn{width:70px;height:70px;border-radius:50%;background:linear-gradient(135deg,var(--g),var(--b));border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:28px;color:#000;box-shadow:0 4px 24px var(--g-40);transition:box-shadow .18s,transform .15s;flex-shrink:0}
+    /* Кнопка отмены ✕ — слева в капсуле */
+    .vn-cancel-btn{
+      width:46px;height:46px;border-radius:50%;flex-shrink:0;
+      background:rgba(255,79,106,.14);border:1.5px solid rgba(255,79,106,.4);
+      display:flex;align-items:center;justify-content:center;
+      cursor:pointer;font-size:18px;color:var(--err);
+      transition:background .18s,transform .15s,border-color .18s;
+    }
+    .vn-cancel-btn:active{transform:scale(.88);background:rgba(255,79,106,.28)}
+    .vn-cancel-btn.fading-out{transform:scale(.5);opacity:0;transition:transform .25s ease,opacity .25s ease}
+
+    /* Кнопка паузы ⏸/▶ — между таймером и отправкой */
+    .vn-pause-btn{
+      width:44px;height:44px;border-radius:50%;flex-shrink:0;
+      background:rgba(0,217,255,.1);border:1.5px solid rgba(0,217,255,.32);
+      display:flex;align-items:center;justify-content:center;
+      cursor:pointer;font-size:17px;color:var(--b);
+      transition:background .18s,transform .15s,border-color .18s;
+    }
+    .vn-pause-btn:active{transform:scale(.88);background:rgba(0,217,255,.22)}
+    .vn-pause-btn.paused{background:rgba(0,255,136,.12);border-color:rgba(0,255,136,.35);color:var(--g)}
+    .vn-pause-btn.paused:active{background:rgba(0,255,136,.22)}
+    .vn-pause-btn.fading-out{transform:scale(.5);opacity:0;transition:transform .25s ease,opacity .25s ease}
+
+    /* Кнопка отправки ➤ — справа, акцентная, крупнее остальных */
+    .vn-send-btn{
+      width:54px;height:54px;border-radius:50%;flex-shrink:0;
+      background:linear-gradient(135deg,var(--g),var(--b));border:none;
+      display:flex;align-items:center;justify-content:center;
+      cursor:pointer;font-size:22px;color:#000;
+      box-shadow:0 4px 18px var(--g-40);
+      transition:box-shadow .18s,transform .15s;
+    }
     .vn-send-btn:active{transform:scale(.9)}
     @keyframes vnSendLaunch{
       0%{transform:scale(1);opacity:1}
@@ -706,9 +813,6 @@
       100%{transform:scale(.3) translateY(40px);opacity:0}
     }
     .vn-send-btn.launching{animation:vnSendLaunch .38s cubic-bezier(.4,0,.2,1) forwards}
-    .vn-cancel-btn.fading-out,.vn-flip-btn.fading-out{transition:transform .25s ease,opacity .25s ease;transform:scale(.6);opacity:0}
-    .vn-flip-btn{width:54px;height:54px;border-radius:50%;background:rgba(255,255,255,.1);border:1.5px solid rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:22px;transition:background .18s,transform .35s cubic-bezier(.34,1.56,.64,1);flex-shrink:0}
-    .vn-flip-btn:active{transform:scale(.88) rotate(180deg);background:rgba(255,255,255,.18)}
     /* VIDEO NOTE BUBBLE */
     @keyframes vnBubbleIn{
       0%{opacity:0;transform:scale(.5) rotate(-12deg)}
@@ -719,10 +823,10 @@
     .vn-bubble-wrap.sent{align-self:flex-end}
     .vn-bubble-wrap.recv{align-self:flex-start}
     /* Внешний контейнер: без overflow:hidden — SVG кольцо выходит за края */
-    .vn-thumb-outer{position:relative;flex-shrink:0;transition:width .38s cubic-bezier(.34,1.56,.64,1),height .38s cubic-bezier(.34,1.56,.64,1),filter .38s ease}
+    .vn-thumb-outer{position:relative;flex-shrink:0;transition:width .42s cubic-bezier(.22,1.12,.36,1),height .42s cubic-bezier(.22,1.12,.36,1),filter .42s ease}
     .vn-bubble-wrap.expanded .vn-thumb-outer{filter:drop-shadow(0 8px 24px rgba(0,0,0,.45)) drop-shadow(0 0 3px var(--g-25))}
     /* Круг с overflow:hidden только для видео — вписан внутрь outer с отступом под кольцо */
-    .vn-thumb-circle{border-radius:50%;overflow:hidden;position:absolute;top:4px;left:4px;right:4px;bottom:4px;background:#111;transition:transform .12s cubic-bezier(.34,1.56,.64,1)}
+    .vn-thumb-circle{border-radius:50%;overflow:hidden;position:absolute;top:4px;left:4px;right:4px;bottom:4px;background:#111;transition:transform .15s cubic-bezier(.34,1.56,.64,1)}
     .vn-bubble-wrap:not(.expanded):active .vn-thumb-circle{transform:scale(.94)}
     /* Видео заполняет круг через transform:scale — единственный надёжный способ
        в Android WebView без субпиксельных зазоров по любому краю */
@@ -1350,16 +1454,15 @@
       <circle class="vn-ring-prog" id="vnRingProg" cx="124" cy="124" r="120" stroke-dasharray="753.98" stroke-dashoffset="753.98"/>
     </svg>
   </div>
-  <!-- Таймер под кружком -->
-  <div class="vn-rec-timer-wrap">
-    <div class="vn-rec-dot"></div>
-    <div class="vn-rec-time" id="vnRecTime">0:00</div>
-  </div>
-  <!-- Кнопки — прибиты к низу экрана как в Telegram -->
-  <div class="vn-rec-bar">
+  <!-- Единая капсула: таймер + кнопки управления, как в Telegram (но лучше) -->
+  <div class="vn-control-capsule">
     <div class="vn-cancel-btn" id="vnCancelBtn" onclick="cancelVideoNote()" title="Отмена">✕</div>
+    <div class="vn-rec-timer-wrap">
+      <div class="vn-rec-dot"></div>
+      <div class="vn-rec-time" id="vnRecTime">0:00</div>
+    </div>
+    <div class="vn-pause-btn" id="vnPauseBtn" onclick="togglePauseVideoNote()" title="Пауза">⏸</div>
     <div class="vn-send-btn" id="vnSendBtn" onclick="stopAndSendVideoNote()" title="Отправить">➤</div>
-    <div class="vn-flip-btn" id="vnFlipBtn" onclick="flipVideoCamera()" title="Перевернуть камеру">🔄</div>
   </div>
 </div>
 
@@ -4340,8 +4443,145 @@ window.clearMediaPreview=()=>{pendingFiles=[];$('mediaPreviewContainer').style.d
 let processingFiles=false,queueInProgress=false,sendQueue=[];
 function setInputsDisabled(d){const a=document.querySelector('.attach-btn'),m=$('micBtn'),s=$('sendBtn');if(a){a.style.pointerEvents=d?'none':'';a.style.opacity=d?'0.5':'';}if(m){m.style.pointerEvents=d?'none':'';m.style.opacity=d?'0.5':'';}if(s)s.disabled=d||!activePid||!wsUp;}
 
-window.triggerFileSelect=()=>{if(processingFiles)return;showAttachMenu();};
-function showAttachMenu(){const existing=document.getElementById('attachMenu');if(existing){existing.remove();return;}const menu=document.createElement('div');menu.id='attachMenu';menu.style.cssText='position:absolute;bottom:calc(100% + 12px);left:4px;background:rgba(13,13,31,.98);border:1px solid var(--g-20);border-radius:20px;padding:6px;display:flex;flex-direction:column;gap:2px;box-shadow:0 12px 48px rgba(0,0,0,.85);z-index:60;min-width:170px;backdrop-filter:blur(20px);animation:menuPop .18s cubic-bezier(.34,1.56,.64,1)';if(!document.getElementById('attachMenuStyle')){const s=document.createElement('style');s.id='attachMenuStyle';s.textContent='@keyframes menuPop{from{opacity:0;transform:translateY(8px) scale(.95)}to{opacity:1;transform:translateY(0) scale(1)}}';document.head.appendChild(s);}const items=[{icon:'🖼️',label:'Фото',color:'rgba(0,255,136,.12)',action:()=>{menu.remove();ignoreNextVisibilityReturn=true;$('mediaInput').click();}},{icon:'🎬',label:'Видео',color:'rgba(0,217,255,.12)',action:()=>{menu.remove();ignoreNextVisibilityReturn=true;$('videoInput').click();}},{icon:'📁',label:'Файл',color:'rgba(255,166,43,.1)',action:()=>{menu.remove();ignoreNextVisibilityReturn=true;$('fileInput').click();}},{icon:'🗿',label:'Стикер',color:'rgba(139,92,246,.18)',action:()=>{menu.remove();openStickerPanel();}}];items.forEach(({icon,label,color,action})=>{const btn=document.createElement('div');btn.style.cssText='display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:14px;cursor:pointer;font-size:14px;font-weight:600;transition:background .15s;color:rgba(255,255,255,.9)';const iw=document.createElement('div');iw.style.cssText=`width:36px;height:36px;border-radius:10px;background:${color};display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0`;iw.textContent=icon;const lb=document.createElement('span');lb.textContent=label;btn.appendChild(iw);btn.appendChild(lb);btn.onmouseenter=()=>btn.style.background='rgba(255,255,255,.05)';btn.onmouseleave=()=>btn.style.background='';btn.onclick=e=>{e.stopPropagation();action();};menu.appendChild(btn);});$('chatInputBar').appendChild(menu);setTimeout(()=>{document.addEventListener('click',function close(e){if(!menu.contains(e.target)){menu.remove();document.removeEventListener('click',close);}});},0);}
+window.triggerFileSelect=()=>{if(processingFiles)return;openAttachSheet();};
+
+// ══════════════════════════════════════════════════════
+// 📎 ATTACH SHEET — панель выбора медиа
+// ══════════════════════════════════════════════════════
+let _attachDragStartY=0;
+let _attachDragCurrentY=0;
+let _attachDragging=false;
+let _attachSheetInited=false;
+
+function openAttachSheet(){
+  if(!activePid||isContactBlocked(activePid))return;
+  // Если открыта панель стикеров — закрываем её первой
+  const sp=$('stickerPanel');
+  if(sp&&sp.classList.contains('open')){closeStickerPanel();}
+
+  const sheet=$('attachSheet');
+  const backdrop=$('attachBackdrop');
+  const inputBar=$('chatInputBar');
+  if(!sheet||!backdrop)return;
+
+  $('messageInput').blur();
+  sheet.style.transform='';
+  sheet.classList.remove('dragging');
+  sheet.classList.add('open');
+  backdrop.classList.add('open');
+  if(inputBar)inputBar.classList.add('attach-mode');
+
+  _initAttachSheetHandlers();
+
+  setTimeout(()=>{document.addEventListener('click',_attachOutsideClick);},80);
+}
+
+function closeAttachSheet(){
+  const sheet=$('attachSheet');
+  const backdrop=$('attachBackdrop');
+  const inputBar=$('chatInputBar');
+  if(!sheet)return Promise.resolve();
+  if(!sheet.classList.contains('open'))return Promise.resolve();
+
+  sheet.classList.remove('open','dragging');
+  sheet.style.transform='';
+  if(backdrop)backdrop.classList.remove('open');
+  if(inputBar)inputBar.classList.remove('attach-mode');
+  document.removeEventListener('click',_attachOutsideClick);
+
+  return new Promise(res=>setTimeout(res,340));
+}
+
+function _attachOutsideClick(e){
+  const sheet=$('attachSheet');
+  if(!sheet)return;
+  if(!sheet.contains(e.target)){
+    const ab=document.querySelector('.attach-btn');
+    if(ab&&ab.contains(e.target))return;
+    closeAttachSheet();
+  }
+}
+
+function _initAttachSheetHandlers(){
+  if(_attachSheetInited)return;
+  _attachSheetInited=true;
+
+  const sheet=$('attachSheet');
+  const backdrop=$('attachBackdrop');
+  const handle=$('attachSheetHandle');
+
+  // ── Тап на фон закрывает панель ──
+  if(backdrop){
+    backdrop.addEventListener('click',()=>closeAttachSheet());
+  }
+
+  // ── Свайп вниз для закрытия (drag-to-close) ──
+  function onDragStart(clientY){
+    _attachDragStartY=clientY;
+    _attachDragCurrentY=clientY;
+    _attachDragging=true;
+    sheet.classList.add('dragging');
+  }
+  function onDragMove(clientY){
+    if(!_attachDragging)return;
+    _attachDragCurrentY=clientY;
+    const dy=Math.max(0,clientY-_attachDragStartY);
+    sheet.style.transform=`translateY(${dy}px)`;
+    // Затемнение фона уменьшается пропорционально свайпу
+    const sheetH=sheet.offsetHeight||300;
+    const ratio=Math.min(1,dy/sheetH);
+    if(backdrop)backdrop.style.opacity=String(1-ratio);
+  }
+  function onDragEnd(){
+    if(!_attachDragging)return;
+    _attachDragging=false;
+    sheet.classList.remove('dragging');
+    const dy=Math.max(0,_attachDragCurrentY-_attachDragStartY);
+    const sheetH=sheet.offsetHeight||300;
+    if(backdrop)backdrop.style.opacity='';
+    if(dy>sheetH*0.28){
+      // Достаточно далеко — закрываем
+      closeAttachSheet();
+    }else{
+      // Возвращаем на место
+      sheet.style.transform='';
+    }
+  }
+
+  // Touch
+  handle.addEventListener('touchstart',e=>{onDragStart(e.touches[0].clientY);},{passive:true});
+  handle.addEventListener('touchmove',e=>{onDragMove(e.touches[0].clientY);},{passive:true});
+  handle.addEventListener('touchend',onDragEnd,{passive:true});
+  // Mouse (desktop)
+  handle.addEventListener('mousedown',e=>{
+    onDragStart(e.clientY);
+    const mm=ev=>onDragMove(ev.clientY);
+    const mu=()=>{onDragEnd();document.removeEventListener('mousemove',mm);document.removeEventListener('mouseup',mu);};
+    document.addEventListener('mousemove',mm);
+    document.addEventListener('mouseup',mu);
+  });
+
+  // ── Также позволяем тянуть весь sheet за свободную область сверху ──
+  // (handle уже покрывает это; доп. зона не нужна — handle достаточно широкая)
+
+  // ── Кнопки выбора ──
+  $('attachItemPhoto').onclick=()=>{
+    closeAttachSheet();
+    ignoreNextVisibilityReturn=true;$('mediaInput').click();
+  };
+  $('attachItemVideo').onclick=()=>{
+    closeAttachSheet();
+    ignoreNextVisibilityReturn=true;$('videoInput').click();
+  };
+  $('attachItemFile').onclick=()=>{
+    closeAttachSheet();
+    ignoreNextVisibilityReturn=true;$('fileInput').click();
+  };
+  $('attachItemSticker').onclick=async()=>{
+    await closeAttachSheet();
+    openStickerPanel();
+  };
+}
 
 window.handleMediaSelect=async e=>{if(processingFiles)return;const files=Array.from(e.target.files);if(!files.length)return;$('mediaInput').value='';processingFiles=true;setInputsDisabled(true);showProcessingToast('Обработка фото…');try{for(const f of files){if(f.size>MAX_FILE_SIZE){toast('Файл слишком большой','err');continue;}if(f.type.startsWith('image/')){const c=await compressImage(f);pendingFiles.push({name:c.name,type:c.type,data:c.dataURL,size:f.size,blob:f,isMedia:true});}}}finally{processingFiles=false;setInputsDisabled(false);hideProgressToast();if(pendingFiles.length)updateFilePreview();}};
 window.handleVideoSelect=async e=>{if(processingFiles)return;const files=Array.from(e.target.files);if(!files.length)return;$('videoInput').value='';processingFiles=true;setInputsDisabled(true);showProcessingToast('Подготовка видео…');try{for(const f of files){if(f.size>MAX_FILE_SIZE){toast('Файл слишком большой','err');continue;}pendingFiles.push({name:f.name,type:f.type,data:null,size:f.size,blob:f,isMedia:false,isVideo:true});}}finally{processingFiles=false;setInputsDisabled(false);hideProgressToast();if(pendingFiles.length)updateFilePreview();}};
@@ -6105,8 +6345,12 @@ window.leaveChat=async()=>{
   // Мгновенно скрываем панель стикеров (position:fixed — висит поверх всех экранов)
   const sp=$('stickerPanel');
   if(sp){sp.classList.remove('open','frozen');document.removeEventListener('click',_stickerOutsideClick);}
-  const ib=$('chatInputBar');if(ib)ib.classList.remove('sticker-mode');
+  const ib=$('chatInputBar');if(ib)ib.classList.remove('sticker-mode','attach-mode');
   window._stickerNavLock=false;
+  // Мгновенно скрываем панель вложений
+  const asheet=$('attachSheet'),abackdrop=$('attachBackdrop');
+  if(asheet){asheet.classList.remove('open','dragging');asheet.style.transform='';document.removeEventListener('click',_attachOutsideClick);}
+  if(abackdrop){abackdrop.classList.remove('open');abackdrop.style.opacity='';}
   // Убираем оверлей подсветки строки если остался
   document.querySelectorAll('.msg-row.row-highlighted').forEach(r=>{
     r.style.removeProperty('--hl-top');
@@ -6498,7 +6742,8 @@ function _initMicBtn(){
 // ── ЗАПИСЬ ВИДЕО-КРУЖКА ──
 let _vnRecording=false;
 let _vnStopping=false;
-let _vnFlipping=false; // блокировка от закликивания
+let _vnFlipping=false; // блокировка от закликивания (оставлено для совместимости)
+let _vnPaused=false;   // запись на паузе
 let _vnStream=null;
 let _vnMediaRecorder=null;
 let _vnChunks=[];
@@ -6564,9 +6809,9 @@ async function startVideoNote(){
     _vnCameraDevices=allDevices.filter(d=>d.kind==='videoinput'&&d.deviceId&&d.deviceId!=='');
   }catch(e){_vnCameraDevices=[];}
 
-  // Скрываем кнопку флипа если только одна камера
-  const flipBtn=$('vnFlipBtn');
-  if(flipBtn)flipBtn.style.visibility=_vnCameraDevices.length>1?'visible':'hidden';
+  // Инициализируем кнопку паузы в исходное состояние
+  const pauseBtnInit=$('vnPauseBtn');
+  if(pauseBtnInit){pauseBtnInit.classList.remove('paused');pauseBtnInit.textContent='⏸';pauseBtnInit.title='Пауза';}
 
   const preview=$('vnPreview');
   preview.srcObject=_vnStream;
@@ -6614,6 +6859,7 @@ function _stopVnInternal(){
     clearInterval(_vnActivityHb);_vnActivityHb=null;
     _vnRecording=false;
     _vnFlipping=false;
+    _vnPaused=false;
     // Сброс: следующая запись всегда начнётся с фронтальной камеры
     _vnFacingMode='user';
     _vnCameraIndex=0;
@@ -6628,9 +6874,9 @@ function _stopVnInternal(){
     $('vnCircleWrap').classList.remove('urgent','cancelling');
     const preview=$('vnPreview');
     preview.srcObject=null;
-    // Восстанавливаем видимость кнопки флипа
-    const flipBtn=$('vnFlipBtn');
-    if(flipBtn)flipBtn.style.visibility='visible';
+    // Сбрасываем состояние кнопки паузы
+    const pauseBtn=$('vnPauseBtn');
+    if(pauseBtn){pauseBtn.classList.remove('paused');pauseBtn.textContent='⏸';pauseBtn.title='Пауза';}
     if(_vnStream){_vnStream.getTracks().forEach(t=>t.stop());_vnStream=null;}
     if(_vnMediaRecorder&&_vnMediaRecorder.state!=='inactive'){
       _vnMediaRecorder.addEventListener('stop',()=>resolve(_vnChunks),{once:true});
@@ -6642,19 +6888,23 @@ function _stopVnInternal(){
 window.cancelVideoNote=async function(){
   if(!_vnRecording||_vnStopping)return;
   _vnStopping=true;
-  // Анимация "схлопывания" кружка перед закрытием оверлея
+  // Если на паузе — возобновляем внутреннее состояние для корректной остановки
+  if(_vnPaused){
+    try{_vnMediaRecorder&&_vnMediaRecorder.state==='paused'&&_vnMediaRecorder.resume();}catch(e){}
+    _vnPaused=false;
+  }
   const circleWrap=$('vnCircleWrap');
-  const cancelBtn=$('vnCancelBtn'),flipBtn=$('vnFlipBtn');
+  const cancelBtn=$('vnCancelBtn'),pauseBtn=$('vnPauseBtn');
   circleWrap.classList.remove('urgent');
   circleWrap.classList.add('cancelling');
   cancelBtn.classList.add('fading-out');
-  flipBtn.classList.add('fading-out');
+  if(pauseBtn)pauseBtn.classList.add('fading-out');
   if(typeof _vib==='function')_vib('notificationWarning');
   await new Promise(r=>setTimeout(r,220));
   await _stopVnInternal();
   circleWrap.classList.remove('cancelling');
   cancelBtn.classList.remove('fading-out');
-  flipBtn.classList.remove('fading-out');
+  if(pauseBtn)pauseBtn.classList.remove('fading-out');
   _vnChunks=[];
   if(activePid)_sendActivityStop(activePid);
   toast('Запись отменена');
@@ -6665,17 +6915,22 @@ window.stopAndSendVideoNote=async function(){
   if(!_vnRecording||_vnStopping)return;
   _vnStopping=true;
   const capturedStart=_vnStartTime;
-  // Анимация "запуска" кнопки отправки перед закрытием оверлея
-  const sendBtn=$('vnSendBtn'),cancelBtn=$('vnCancelBtn'),flipBtn=$('vnFlipBtn');
+  // Если на паузе — возобновляем перед финальной остановкой (чтобы собрать все чанки)
+  if(_vnPaused){
+    try{_vnMediaRecorder&&_vnMediaRecorder.state==='paused'&&_vnMediaRecorder.resume();}catch(e){}
+    _vnPaused=false;
+    await new Promise(r=>setTimeout(r,80));
+  }
+  const sendBtn=$('vnSendBtn'),cancelBtn=$('vnCancelBtn'),pauseBtn=$('vnPauseBtn');
   sendBtn.classList.add('launching');
   cancelBtn.classList.add('fading-out');
-  flipBtn.classList.add('fading-out');
+  if(pauseBtn)pauseBtn.classList.add('fading-out');
   if(typeof _vib==='function')_vib('notificationSuccess');
   await new Promise(r=>setTimeout(r,180));
   const chunks=await _stopVnInternal();
   sendBtn.classList.remove('launching');
   cancelBtn.classList.remove('fading-out');
-  flipBtn.classList.remove('fading-out');
+  if(pauseBtn)pauseBtn.classList.remove('fading-out');
   _vnStopping=false;
   const durSec=Math.max(1,Math.round((Date.now()-capturedStart)/1000));
   if(!chunks||!chunks.length){toast('Пустая запись','warn');return;}
@@ -6684,7 +6939,6 @@ window.stopAndSendVideoNote=async function(){
   if(!blob.size){toast('Пустая запись','warn');return;}
   if(activePid)_sendActivityStop(activePid);
   try{
-    // blob.arrayBuffer() — прямо без FileReader+base64 (надёжнее на Android WebView)
     const fileBuffer=await blob.arrayBuffer();
     await sendVideoNoteMessageBuffer(fileBuffer,durSec,mimeType,blob);
   }catch(e){
@@ -6693,134 +6947,73 @@ window.stopAndSendVideoNote=async function(){
   }
 };
 
-window.flipVideoCamera=async function(){
-  if(!_vnRecording||_vnStopping||_vnFlipping)return;
-  _vnFlipping=true;
-
-  const preview=$('vnPreview');
-  const flipBtn=$('vnFlipBtn');
-  if(flipBtn)flipBtn.disabled=true;
-  preview.classList.add('flipping');
-  if(typeof _vib==='function')_vib('impactLight');
-
-  const newFacing=_vnFacingMode==='user'?'environment':'user';
-
-  // ── Запрашиваем ТОЛЬКО видео (аудиотрек берём из существующего стрима) ──
-  // audio:true при уже занятом микрофоне вызывает NotReadableError на Android
-  let newVideoStream=null;
-
-  // Стратегия 1: deviceId (надёжнее на Android после enumerateDevices)
-  if(_vnCameraDevices.length>1){
-    const nextIndex=(_vnCameraIndex+1)%_vnCameraDevices.length;
-    const nextDev=_vnCameraDevices[nextIndex];
-    if(nextDev&&nextDev.deviceId){
-      try{
-        newVideoStream=await navigator.mediaDevices.getUserMedia({
-          video:{deviceId:{exact:nextDev.deviceId},width:{ideal:480},height:{ideal:480},frameRate:{ideal:30}},
-          audio:false
-        });
-        _vnCameraIndex=nextIndex;
-      }catch(e){newVideoStream=null;}
+// ── ПАУЗА / ПРОДОЛЖЕНИЕ ЗАПИСИ ВИДЕО-КРУЖКА ─────────────────────────────────
+// Аналог resumeRecording() у голосовых — та же логика паузы MediaRecorder.
+// ⏸ → ▶ (пауза) ; ▶ → ⏸ (продолжить запись)
+window.togglePauseVideoNote=function(){
+  if(!_vnRecording||_vnStopping)return;
+  const pauseBtn=$('vnPauseBtn');
+  const timeEl=$('vnRecTime');
+  const circleWrap=$('vnCircleWrap');
+  if(!_vnPaused){
+    // ── Ставим на паузу ──
+    try{
+      if(_vnMediaRecorder&&_vnMediaRecorder.state==='recording'){
+        _vnMediaRecorder.pause();
+      }
+    }catch(e){console.warn('vn pause err',e);}
+    // Останавливаем таймер и кольцо
+    clearInterval(_vnTimerIv);_vnTimerIv=null;
+    // Замораживаем превью — ставим видеотрек на паузу
+    const preview=$('vnPreview');
+    if(preview&&!preview.paused)preview.pause();
+    // Останавливаем activity heartbeat
+    clearInterval(_vnActivityHb);_vnActivityHb=null;
+    _vnPaused=true;
+    // Визуальная обратная связь
+    if(pauseBtn){pauseBtn.classList.add('paused');pauseBtn.textContent='▶';pauseBtn.title='Продолжить запись';}
+    if(timeEl)timeEl.classList.add('paused');
+    if(circleWrap)circleWrap.classList.add('paused');
+    if(typeof _vib==='function')_vib('impactLight');
+    if(activePid)_sendActivityStop(activePid);
+  }else{
+    // ── Продолжаем запись ──
+    try{
+      if(_vnMediaRecorder&&_vnMediaRecorder.state==='paused'){
+        _vnMediaRecorder.resume();
+      }
+    }catch(e){console.warn('vn resume err',e);}
+    // Возобновляем превью
+    const preview=$('vnPreview');
+    if(preview&&preview.paused)preview.play().catch(()=>{});
+    _vnPaused=false;
+    // Перезапускаем таймер от текущей позиции кольца
+    // (_vnStartTime остаётся неизменным — отсчёт ведётся от начала записи)
+    const ring=$('vnRingProg');
+    _vnTimerIv=setInterval(()=>{
+      const elapsed=Date.now()-_vnStartTime;
+      const sec=Math.floor(elapsed/1000);
+      if(timeEl)timeEl.textContent=fmtDur(sec);
+      const pct=Math.min(elapsed/(MAX_VN_SEC*1000),1);
+      if(ring)ring.style.strokeDashoffset=(VN_CIRCUMFERENCE*(1-pct)).toFixed(2);
+      const remainingSec=MAX_VN_SEC-sec;
+      const isUrgent=remainingSec<=5&&remainingSec>=0;
+      if(ring)ring.classList.toggle('urgent',isUrgent);
+      if(timeEl)timeEl.classList.toggle('urgent',isUrgent);
+      if(circleWrap)circleWrap.classList.toggle('urgent',isUrgent);
+      if(elapsed>=MAX_VN_SEC*1000){clearInterval(_vnTimerIv);_vnTimerIv=null;stopAndSendVideoNote();}
+    },80);
+    // Возобновляем activity heartbeat
+    if(activePid&&activePid!==MY_ID){
+      _sendActivitySignal(activePid,'recording');
+      _vnActivityHb=setInterval(()=>{if(activePid&&_vnRecording&&!_vnPaused)_sendActivitySignal(activePid,'recording');},3000);
     }
+    // Визуальная обратная связь
+    if(pauseBtn){pauseBtn.classList.remove('paused');pauseBtn.textContent='⏸';pauseBtn.title='Пауза';}
+    if(timeEl)timeEl.classList.remove('paused');
+    if(circleWrap)circleWrap.classList.remove('paused');
+    if(typeof _vib==='function')_vib('impactLight');
   }
-
-  // Стратегия 2: facingMode exact
-  if(!newVideoStream){
-    try{
-      newVideoStream=await navigator.mediaDevices.getUserMedia({
-        video:{facingMode:{exact:newFacing},width:{ideal:480},height:{ideal:480},frameRate:{ideal:30}},
-        audio:false
-      });
-    }catch(e){newVideoStream=null;}
-  }
-
-  // Стратегия 3: facingMode ideal (самый мягкий — работает везде)
-  if(!newVideoStream){
-    try{
-      newVideoStream=await navigator.mediaDevices.getUserMedia({
-        video:{facingMode:newFacing,width:{ideal:480},height:{ideal:480},frameRate:{ideal:30}},
-        audio:false
-      });
-    }catch(e){newVideoStream=null;}
-  }
-
-  // Стратегия 4: без каких-либо constraints (любая свободная камера)
-  if(!newVideoStream){
-    try{
-      newVideoStream=await navigator.mediaDevices.getUserMedia({video:true,audio:false});
-    }catch(e){newVideoStream=null;}
-  }
-
-  // Совсем ничего не получилось — только зеркалим превью визуально
-  if(!newVideoStream){
-    _vnFacingMode=newFacing;
-    preview.style.transform=newFacing==='user'?'scaleX(-1)':'scaleX(1)';
-    preview.classList.remove('flipping');
-    if(flipBtn)flipBtn.disabled=false;
-    _vnFlipping=false;
-    return;
-  }
-
-  // ── Успешно получили новый видеотрек ──
-  _vnFacingMode=newFacing;
-  const newVideoTrack=newVideoStream.getVideoTracks()[0];
-
-  // Сохраняем аудиотрек из старого стрима
-  const existingAudioTrack=_vnStream?_vnStream.getAudioTracks()[0]:null;
-
-  // Сохраняем накопленные чанки
-  const savedChunks=await new Promise(resolve=>{
-    if(_vnMediaRecorder&&_vnMediaRecorder.state!=='inactive'){
-      try{_vnMediaRecorder.requestData();}catch(e){}
-      _vnMediaRecorder.addEventListener('stop',()=>resolve([..._vnChunks]),{once:true});
-      _vnMediaRecorder.stop();
-    }else{
-      resolve([..._vnChunks]);
-    }
-  });
-
-  // Останавливаем только видеотрек старого стрима (аудио оставляем)
-  if(_vnStream){
-    _vnStream.getVideoTracks().forEach(t=>t.stop());
-  }
-
-  // Собираем новый комбинированный стрим: новое видео + старое аудио
-  const combinedStream=new MediaStream();
-  combinedStream.addTrack(newVideoTrack);
-  if(existingAudioTrack)combinedStream.addTrack(existingAudioTrack);
-
-  // Останавливаем старый стрим (треки уже перенесены или остановлены)
-  if(_vnStream){
-    _vnStream.getAudioTracks().forEach(t=>{
-      // не останавливаем аудио — оно теперь в combinedStream
-    });
-    _vnStream=null;
-  }
-  // Очищаем вспомогательный видеострим (трек уже в combinedStream)
-  newVideoStream.getVideoTracks(); // трек уже добавлен, поток не нужен
-
-  _vnStream=combinedStream;
-  preview.srcObject=combinedStream;
-  preview.style.transform=newFacing==='user'?'scaleX(-1)':'scaleX(1)';
-  try{await preview.play();}catch(e){}
-
-  // Обновляем список устройств
-  try{
-    const all=await navigator.mediaDevices.enumerateDevices();
-    _vnCameraDevices=all.filter(d=>d.kind==='videoinput'&&d.deviceId&&d.deviceId!=='');
-  }catch(e){}
-
-  // Пересоздаём MediaRecorder на новом комбинированном стриме
-  _vnMime=_vnPickMime();
-  _vnChunks=savedChunks;
-  _vnMediaRecorder=_vnCreateRecorder();
-  _vnMediaRecorder.start(100);
-
-  setTimeout(()=>{
-    preview.classList.remove('flipping');
-    if(flipBtn)flipBtn.disabled=false;
-    _vnFlipping=false;
-  },200);
 };
 
 // ── ОТПРАВКА ВИДЕО-КРУЖКА ЧЕРЕЗ ЧАНКОВЫЙ ПРОТОКОЛ ──────────────────────────
@@ -7150,6 +7343,7 @@ function buildVideoNoteBubble(m,isSent){
   wrap.appendChild(outer);
 
   let expanded=false,playing=false,rafId=null;
+  let _ringReady=false; // true когда кольцо разрешено показывать (после завершения разворота)
   function _setPlaying(v){playing=v;wrap.classList.toggle('vn-playing',v);}
   // Обработчик клика вне кружка для сворачивания
   let _outsideClickHandler=null;
@@ -7221,21 +7415,41 @@ function buildVideoNoteBubble(m,isSent){
     if(rafId){cancelAnimationFrame(rafId);rafId=null;}
     pauseDotEl.style.opacity='0';
     svgObj.svg.style.opacity='0';
+    // Сворачивание по тапу СНАРУЖИ кружка — это не "пауза", а явный выход
+    // из просмотра. При следующем открытии видео должно начаться сначала
+    // (в отличие от паузы тапом по самому кружку, где позиция сохраняется).
+    try{vid.currentTime=0;}catch(e){}
+    _updateRing();
     setTimeout(()=>{if(expanded)_collapse();},300);
   }
 
   function _expand(){
-    expanded=true;curSz=VN_BIG;
+    expanded=true;curSz=VN_BIG;_ringReady=false;
     wrap.classList.add('expanded');
     // Меняем размер outer — inner (circleWrap) тянется через CSS inset
     outer.style.width=(VN_BIG+8)+'px';outer.style.height=(VN_BIG+8)+'px';
     _rebuildRing(VN_BIG,false);
-    requestAnimationFrame(()=>{ svgObj.svg.style.opacity='1'; });
+    // Кольцо появляется ТОЛЬКО когда кружок уже полностью развернулся —
+    // иначе оно мгновенно отрисовывается в финальном (большом) размере
+    // и "плывёт" отдельно от ещё увеличивающегося бабла.
+    let _ringRevealed=false;
+    const onResized=(e)=>{
+      if(e&&e.propertyName!=='width')return;
+      if(_ringRevealed)return;
+      _ringRevealed=true;
+      outer.removeEventListener('transitionend',onResized);
+      _ringReady=true;
+      svgObj.svg.style.opacity='1';
+    };
+    outer.addEventListener('transitionend',onResized);
+    // Фоллбэк на случай если transitionend не сработает (например, если
+    // изменение размера было отменено очень коротким тапом)
+    setTimeout(onResized,420);
     _attachOutsideClick();
   }
 
   function _collapse(){
-    expanded=false;curSz=VN_SMALL;
+    expanded=false;curSz=VN_SMALL;_ringReady=false;
     wrap.classList.remove('expanded');
     outer.style.width=(VN_SMALL+8)+'px';outer.style.height=(VN_SMALL+8)+'px';
     _rebuildRing(VN_SMALL,false);
@@ -7260,8 +7474,10 @@ function buildVideoNoteBubble(m,isSent){
       }
       vid.play().then(()=>{
         _setPlaying(true);pauseDotEl.style.opacity='0';
-        // Кольцо появляется при начале воспроизведения
-        svgObj.svg.style.opacity='1';
+        // Кольцо появляется при начале воспроизведения — но только если
+        // разворот уже завершён (иначе кольцо покажет onResized из _expand,
+        // чтобы не "мигало" в финальном размере посреди анимации разворота)
+        if(_ringReady)svgObj.svg.style.opacity='1';
         if(rafId)cancelAnimationFrame(rafId);
         rafTick();
         // ── Помечаем просмотренным (только для получателя) ──
@@ -7865,6 +8081,9 @@ function buildVoiceBubble(m,isSent){
           timerEl.textContent=fmtDur(totalSec);
           // Сбрасываем волну — сообщение уже прослушано, заливка исчезает
           updateProgress(0);
+          // По окончании — следующее нажатие Play должно начинать СНАЧАЛА,
+          // а не с конца дорожки. Пауза (см. onpause) позицию не трогает.
+          try{audio.currentTime=0;}catch(e){}
           if(currentVoiceReset===resetWave) currentVoiceReset=null;
         };
         audio.onpause=()=>{
@@ -8272,6 +8491,9 @@ function openStickerPanel(){
   if(!activePid||isContactBlocked(activePid))return;
   // Блокируем открытие если сейчас идёт навигация к сообщению
   if(window._stickerNavLock)return;
+  // Закрываем панель вложений если открыта
+  const asheet=$('attachSheet');
+  if(asheet&&asheet.classList.contains('open'))closeAttachSheet();
   const panel=$('stickerPanel');
   if(!panel)return;
   // Если есть недавние — показываем их, иначе смайлики
@@ -8578,6 +8800,34 @@ setTimeout(function(){ bioInit(); }, 600);
 
 })();
 </script>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     ATTACH SHEET — панель выбора медиа (Фото/Видео/Файл/Стикер)
+     ═══════════════════════════════════════════════════════════════════ -->
+<div class="attach-backdrop" id="attachBackdrop"></div>
+<div class="attach-sheet" id="attachSheet">
+  <div class="attach-sheet-handle-area" id="attachSheetHandle">
+    <div class="attach-sheet-drag"></div>
+  </div>
+  <div class="attach-grid">
+    <div class="attach-item" id="attachItemPhoto">
+      <div class="attach-item-icon photo">🖼️</div>
+      <div class="attach-item-label">Фото</div>
+    </div>
+    <div class="attach-item" id="attachItemVideo">
+      <div class="attach-item-icon video">🎬</div>
+      <div class="attach-item-label">Видео</div>
+    </div>
+    <div class="attach-item" id="attachItemFile">
+      <div class="attach-item-icon file">📁</div>
+      <div class="attach-item-label">Файл</div>
+    </div>
+    <div class="attach-item" id="attachItemSticker">
+      <div class="attach-item-icon sticker">🗿</div>
+      <div class="attach-item-label">Стикер</div>
+    </div>
+  </div>
+</div>
 
 <!-- ═══════════════════════════════════════════════════════════════════
      STICKER PANEL — на уровне body с position:fixed
