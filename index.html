@@ -724,7 +724,9 @@
     /* Круг с overflow:hidden только для видео — вписан внутрь outer с отступом под кольцо */
     .vn-thumb-circle{border-radius:50%;overflow:hidden;position:absolute;top:4px;left:4px;right:4px;bottom:4px;background:#111;transition:transform .12s cubic-bezier(.34,1.56,.64,1)}
     .vn-bubble-wrap:not(.expanded):active .vn-thumb-circle{transform:scale(.94)}
-    .vn-thumb-video{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;object-position:center center;display:block}
+    /* Видео заполняет круг через transform:scale — единственный надёжный способ
+       в Android WebView без субпиксельных зазоров по любому краю */
+    .vn-thumb-video{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:block;transform:scale(1.06);transform-origin:center center}
     /* SVG кольцо поверх — занимает весь outer, не обрезается */
     .vn-ring-svg-play{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;transition:opacity .28s}
     .vn-ring-track-play{fill:none;stroke:rgba(255,255,255,.2);stroke-width:3.5}
@@ -2553,6 +2555,85 @@ async function markVnWatched(vnMsgId,fromPid){
     if(m&&m.videoNote&&!m.voiceListened){m.voiceListened=true;await saveMsgs(fromPid,msgs);}
   }).catch(()=>{});
 }
+
+// ── Надёжная отправка vn-watched (работает офлайн) ──────────────────────────
+// Если WS недоступен — сигнал сохраняется в localStorage и
+// автоматически отправляется при следующем подключении.
+const VN_WATCHED_QUEUE_KEY = 'bc_pending_vn_watched';
+const VOICE_LISTENED_QUEUE_KEY = 'bc_pending_voice_listened';
+
+function _enqueueVnWatched(targetPid, vnMsgId){
+  const q = lsGet(VN_WATCHED_QUEUE_KEY, []);
+  // Не дублируем одинаковые записи
+  if(!q.find(x=>x.targetPid===targetPid&&x.vnMsgId===vnMsgId)){
+    q.push({targetPid, vnMsgId, ts:Date.now()});
+    try{lsSet(VN_WATCHED_QUEUE_KEY, q);}catch(e){}
+  }
+}
+
+function _enqueueVoiceListened(targetPid, voiceMsgId){
+  const q = lsGet(VOICE_LISTENED_QUEUE_KEY, []);
+  if(!q.find(x=>x.targetPid===targetPid&&x.voiceMsgId===voiceMsgId)){
+    q.push({targetPid, voiceMsgId, ts:Date.now()});
+    try{lsSet(VOICE_LISTENED_QUEUE_KEY, q);}catch(e){}
+  }
+}
+
+// Дренируем очереди — вызывается при каждом 'registered' (ws.onopen)
+function _drainWatchedQueues(){
+  // vn-watched
+  const vnQ = lsGet(VN_WATCHED_QUEUE_KEY, []);
+  if(vnQ.length){
+    const remaining = [];
+    for(const item of vnQ){
+      if(wsUp && item.targetPid && item.vnMsgId){
+        wsSend({type:'vn-watched', target:item.targetPid, vnMsgId:item.vnMsgId});
+      } else {
+        remaining.push(item);
+      }
+    }
+    try{lsSet(VN_WATCHED_QUEUE_KEY, remaining);}catch(e){}
+  }
+  // voice-listened
+  const vlQ = lsGet(VOICE_LISTENED_QUEUE_KEY, []);
+  if(vlQ.length){
+    const remaining = [];
+    for(const item of vlQ){
+      if(wsUp && item.targetPid && item.voiceMsgId){
+        wsSend({type:'voice-listened', target:item.targetPid, voiceMsgId:item.voiceMsgId});
+      } else {
+        remaining.push(item);
+      }
+    }
+    try{lsSet(VOICE_LISTENED_QUEUE_KEY, remaining);}catch(e){}
+  }
+}
+
+// Главная функция: отправить vn-watched (с offline-гарантией)
+function sendVnWatched(targetPid, vnMsgId){
+  if(!targetPid || targetPid === MY_ID) return;
+  // Всегда ставим в очередь (защита от потери при закрытии вкладки сразу после отправки)
+  _enqueueVnWatched(targetPid, vnMsgId);
+  if(wsUp){
+    wsSend({type:'vn-watched', target:targetPid, vnMsgId});
+    // Если WS работает — убираем из очереди сразу (оптимизация)
+    const q = lsGet(VN_WATCHED_QUEUE_KEY, []);
+    const filtered = q.filter(x=>!(x.targetPid===targetPid&&x.vnMsgId===vnMsgId));
+    try{lsSet(VN_WATCHED_QUEUE_KEY, filtered);}catch(e){}
+  }
+}
+
+// Главная функция: отправить voice-listened (с offline-гарантией)
+function sendVoiceListened(targetPid, voiceMsgId){
+  if(!targetPid || targetPid === MY_ID) return;
+  _enqueueVoiceListened(targetPid, voiceMsgId);
+  if(wsUp){
+    wsSend({type:'voice-listened', target:targetPid, voiceMsgId});
+    const q = lsGet(VOICE_LISTENED_QUEUE_KEY, []);
+    const filtered = q.filter(x=>!(x.targetPid===targetPid&&x.voiceMsgId===voiceMsgId));
+    try{lsSet(VOICE_LISTENED_QUEUE_KEY, filtered);}catch(e){}
+  }
+}
 async function syncDeliveredStatuses(){if(!activePid)return;const msgs=await loadMsgs(activePid);for(const m of msgs){if(m.type==='sent'&&m.delivered){const row=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);if(row){const tk=row.querySelector('.msg-ticks');if(tk&&tk.textContent!=='✔✔'){tk.textContent='✔✔';tk.className='msg-ticks double';}}}if(m.type==='sent'&&m.voice&&m.voiceListened){const row=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);if(row){const dot=row.querySelector('.voice-unread-dot');if(dot)dot.classList.add('hidden');}}if(m.type==='sent'&&m.videoNote&&m.voiceListened){const row=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);if(row){const dot=row.querySelector('.vn-unread-dot');if(dot)dot.classList.add('hidden');}}if(m.type==='recv'&&m.videoNote&&m.voiceListened){const row=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);if(row){const dot=row.querySelector('.vn-unread-dot');if(dot)dot.classList.add('hidden');}}}}
 
 const online={};
@@ -2570,6 +2651,8 @@ async function onWS(msg){
       _drainAllPendingOnReconnect().catch(()=>{});
       // Flush pending acks для текущего открытого чата (если ws упал и поднялся)
       if(activePid && currentScreen==='scr-chat') _flushPendingAcks(activePid);
+      // Отправляем накопленные vn-watched и voice-listened (работа офлайн)
+      _drainWatchedQueues();
       break;
     case 'presence':setOnline(msg.peerId.toLowerCase(),!!msg.online,true);break;
     case 'presence-reply':setOnline((msg.target||'').toLowerCase(),!!msg.online,false);break;
@@ -6704,7 +6787,7 @@ function buildVideoNoteBubble(m,isSent){
   vid.preload='metadata';
   vid.loop=false;
   vid.muted=false;
-  vid.style.cssText=`position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;object-position:center center;display:block;`;
+  vid.style.cssText=`position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:block;transform:scale(1.06);transform-origin:center center;`;
 
   // ── FIX: загрузка видео с правильным управлением ObjectURL ──
   let _activeObjectURL=null;
@@ -6813,37 +6896,36 @@ function buildVideoNoteBubble(m,isSent){
   observer.observe(document.body,{childList:true,subtree:true});
 
   function makeSvgRing(sz){
-    // sz = размер viewBox (совпадает с VN_SMALL изначально).
-    // SVG: width/height=100% чтобы растянуться вместе с circleWrap.
-    // stroke centre на расстоянии strokeW/2 от края viewBox → не выходит за overflow:hidden.
-    const strokeW=5;
-    const inset=strokeW/2;
-    const r=sz/2-inset;
-    const cx=sz/2;
-    const cy=sz/2;
-    const circ=2*Math.PI*r;
-    const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
-    svg.setAttribute('viewBox',`0 0 ${sz} ${sz}`);
-    svg.setAttribute('width','100%');
-    svg.setAttribute('height','100%');
+    // sz = размер внутреннего кружка (circleWrap).
+    // SVG живёт в outer (sz+8) → viewBox и пиксели тоже sz+8.
+    // Кольцо: cx=cy=(sz+8)/2, r=(sz+8)/2 - strokeW/2 → чётко по краю outer.
+    const outerSz = sz + 8;
+    const strokeW = 5;
+    const cx = outerSz / 2;
+    const cy = outerSz / 2;
+    const r  = cx - strokeW / 2;
+    const circ = 2 * Math.PI * r;
+    const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svg.setAttribute('viewBox', `0 0 ${outerSz} ${outerSz}`);
+    svg.style.cssText = `position:absolute;top:0;left:0;width:${outerSz}px;height:${outerSz}px;pointer-events:none;overflow:visible;`;
     svg.classList.add('vn-ring-svg-play');
-    svg.style.opacity='0';
-    const track=document.createElementNS('http://www.w3.org/2000/svg','circle');
-    track.setAttribute('cx',cx+'');track.setAttribute('cy',cy+'');track.setAttribute('r',r+'');
+    svg.style.opacity = '0';
+    const track = document.createElementNS('http://www.w3.org/2000/svg','circle');
+    track.setAttribute('cx', cx+''); track.setAttribute('cy', cy+''); track.setAttribute('r', r+'');
     track.setAttribute('fill','none');
     track.setAttribute('stroke','rgba(255,255,255,.25)');
-    track.setAttribute('stroke-width',strokeW+'');
-    const prog=document.createElementNS('http://www.w3.org/2000/svg','circle');
-    prog.setAttribute('cx',cx+'');prog.setAttribute('cy',cy+'');prog.setAttribute('r',r+'');
+    track.setAttribute('stroke-width', strokeW+'');
+    const prog = document.createElementNS('http://www.w3.org/2000/svg','circle');
+    prog.setAttribute('cx', cx+''); prog.setAttribute('cy', cy+''); prog.setAttribute('r', r+'');
     prog.setAttribute('fill','none');
     prog.setAttribute('stroke','var(--g)');
-    prog.setAttribute('stroke-width',strokeW+'');
+    prog.setAttribute('stroke-width', strokeW+'');
     prog.setAttribute('stroke-linecap','round');
-    prog.style.cssText=`transform:rotate(-90deg);transform-origin:${cx}px ${cy}px;`;
-    prog.setAttribute('stroke-dasharray',circ.toFixed(2));
-    prog.setAttribute('stroke-dashoffset',circ.toFixed(2));
-    svg.appendChild(track);svg.appendChild(prog);
-    return{svg,prog,circ,r,cx,cy,sz};
+    prog.style.cssText = `transform:rotate(-90deg);transform-origin:${cx}px ${cy}px;`;
+    prog.setAttribute('stroke-dasharray', circ.toFixed(2));
+    prog.setAttribute('stroke-dashoffset', circ.toFixed(2));
+    svg.appendChild(track); svg.appendChild(prog);
+    return {svg, prog, circ, r, cx, cy, sz, outerSz};
   }
 
   let curSz=VN_SMALL;
@@ -6952,20 +7034,19 @@ function buildVideoNoteBubble(m,isSent){
   function rafTick(){if(!playing){rafId=null;return;}_updateRing();rafId=requestAnimationFrame(rafTick);}
 
   function _rebuildRing(sz,keepOpacity){
-    const prevOpacity=svgObj.svg.style.opacity||'0';
-    if(svgObj.svg.parentNode)svgObj.svg.parentNode.removeChild(svgObj.svg);
-    curSz=sz;svgObj=makeSvgRing(sz);
-    const dur=_getEffDur(),cur=vid.currentTime||0,pct=dur>0?Math.min(cur/dur,1):0;
-    svgObj.prog.setAttribute('stroke-dashoffset',(svgObj.circ*(1-pct)).toFixed(2));
-    if(keepOpacity)svgObj.svg.style.opacity=prevOpacity;
-    pauseDotEl=document.createElementNS('http://www.w3.org/2000/svg','circle');
+    const prevOpacity = svgObj.svg.style.opacity || '0';
+    if(svgObj.svg.parentNode) svgObj.svg.parentNode.removeChild(svgObj.svg);
+    curSz = sz; svgObj = makeSvgRing(sz);
+    const dur = _getEffDur(), cur = vid.currentTime||0, pct = dur>0 ? Math.min(cur/dur,1) : 0;
+    svgObj.prog.setAttribute('stroke-dashoffset', (svgObj.circ*(1-pct)).toFixed(2));
+    svgObj.svg.style.opacity = keepOpacity ? prevOpacity : '0';
+    pauseDotEl = document.createElementNS('http://www.w3.org/2000/svg','circle');
     pauseDotEl.setAttribute('r','6');
     pauseDotEl.setAttribute('fill','#fff');
     pauseDotEl.setAttribute('stroke','rgba(0,0,0,.25)');
     pauseDotEl.setAttribute('stroke-width','1');
-    pauseDotEl.style.cssText='opacity:0;transition:opacity .18s;';
+    pauseDotEl.style.cssText = 'opacity:0;transition:opacity .18s;';
     svgObj.svg.appendChild(pauseDotEl);
-    // SVG кольцо — в outer, поверх всего, но под кнопкой скачивания (если есть)
     outer.insertBefore(svgObj.svg, dlOverlay||null);
   }
 
@@ -7028,7 +7109,7 @@ function buildVideoNoteBubble(m,isSent){
           const _pid=activePid;
           withChatLock(_pid,async()=>{const msgs=await loadMsgs(_pid);const mm=msgs.find(x=>x.id===m.id);if(mm){mm.voiceListened=true;await saveMsgs(_pid,msgs);}}).catch(()=>{});
           // Сигнал отправителю что видео просмотрено
-          if(activePid&&activePid!==MY_ID)wsSend({type:'vn-watched',target:activePid,vnMsgId:m.id});
+          if(activePid&&activePid!==MY_ID)sendVnWatched(activePid,m.id);
         }
       }).catch(e=>{
         console.error('vn play error',e);
@@ -7654,7 +7735,7 @@ function buildVoiceBubble(m,isSent){
           if(mm){mm.voiceListened=true;await saveMsgs(pidForLock,msgs);}
         });
         dot.classList.add('hidden');
-        if(activePid!==MY_ID)wsSend({type:'voice-listened',target:activePid,voiceMsgId:m.id});
+        if(activePid!==MY_ID)sendVoiceListened(activePid,m.id);
       }
     }).catch(e=>console.error(e));
   }
