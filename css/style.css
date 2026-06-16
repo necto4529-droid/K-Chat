@@ -355,8 +355,11 @@
       background:radial-gradient(ellipse 70% 50% at 50% 0%,var(--g-06) 0%,transparent 60%);
     }
     .msg-row{display:flex;flex-direction:column;max-width:80%;animation:mpop .32s cubic-bezier(.34,1.3,.4,1);position:relative}
-    /* Увеличенный отступ при смене отправителя (как в Telegram) */
-    .msg-row.recv+.msg-row.sent,.msg-row.sent+.msg-row.recv{margin-top:6px}
+    /* Отступ при смене отправителя — применяем на msg-row-outer т.к. msg-row обёрнут в него */
+    /* gap:3px на messages-area даёт базовый отступ между сообщениями одного отправителя */
+    /* :has() добавляет ещё 3px → итого 6px при смене отправителя */
+    .msg-row-outer:has(.msg-row.sent)+.msg-row-outer:has(.msg-row.recv),
+    .msg-row-outer:has(.msg-row.recv)+.msg-row-outer:has(.msg-row.sent){margin-top:4px}
     /* Дата-сепаратор тоже чуть отделяем */
     .date-separator+.msg-row{margin-top:2px}
     @keyframes mpop{from{opacity:0;transform:translateY(14px) scale(.92)}60%{opacity:1}to{opacity:1;transform:translateY(0) scale(1)}}
@@ -749,19 +752,20 @@
       background:rgba(4,4,16,.5);
       backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
       opacity:0;pointer-events:none;
-      transition:opacity .28s ease;
+      transition:opacity .32s ease;
+      will-change:opacity;
     }
     .attach-backdrop.open{opacity:1;pointer-events:all}
 
     .attach-sheet{
       position:fixed;bottom:0;left:0;right:0;z-index:199;
-      background:rgba(8,8,18,.98);
-      backdrop-filter:blur(32px);-webkit-backdrop-filter:blur(32px);
+      background:rgba(8,8,18,.99);
+      /* backdrop-filter убран — фон полностью непрозрачный, blur только грузит GPU при старте анимации */
       border-top:1px solid var(--g-18);
       border-radius:22px 22px 0 0;
       box-shadow:0 -12px 60px rgba(0,0,0,.8),0 -1px 0 var(--g-08);
       transform:translateY(100%);
-      transition:transform .34s cubic-bezier(.32,.72,0,1);
+      transition:transform .38s cubic-bezier(.25,.46,.45,.94);
       padding:0 0 max(20px,env(safe-area-inset-bottom));
       will-change:transform;
     }
@@ -784,6 +788,21 @@
       display:flex;flex-direction:column;align-items:center;gap:9px;
       padding:10px 4px 12px;border-radius:16px;cursor:pointer;
       transition:background .15s,transform .12s;
+      opacity:0;transform:translateY(10px) scale(.95);
+    }
+    .attach-sheet.open .attach-item{
+      animation:attachItemIn .32s cubic-bezier(.34,1.3,.4,1) forwards;
+    }
+    .attach-sheet.open .attach-item:nth-child(1){animation-delay:.04s}
+    .attach-sheet.open .attach-item:nth-child(2){animation-delay:.08s}
+    .attach-sheet.open .attach-item:nth-child(3){animation-delay:.12s}
+    .attach-sheet.open .attach-item:nth-child(4){animation-delay:.16s}
+    .attach-sheet.open .attach-item:nth-child(5){animation-delay:.20s}
+    .attach-sheet.open .attach-item:nth-child(6){animation-delay:.24s}
+    .attach-sheet.open .attach-item:nth-child(7){animation-delay:.28s}
+    .attach-sheet.open .attach-item:nth-child(8){animation-delay:.32s}
+    @keyframes attachItemIn{
+      to{opacity:1;transform:translateY(0) scale(1)}
     }
     .attach-item:active{transform:scale(.93);background:rgba(255,255,255,.05)}
     .attach-item-icon{
@@ -812,7 +831,8 @@
 
     /* power-save: упрощаем анимации */
     body.power-save .attach-backdrop{transition:opacity .1s ease!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
-    body.power-save .attach-sheet{transition:transform .15s ease!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+    body.power-save .attach-sheet{transition:transform .15s ease!important}
+    body.power-save .attach-item{animation:none!important;opacity:1!important;transform:none!important}
     .vn-control-capsule{
       position:absolute;bottom:max(28px,env(safe-area-inset-bottom));left:50%;
       transform:translate(-50%,30px);
@@ -1317,7 +1337,9 @@
     .sticker-panel.open{transform:translateY(0)}
     .sticker-panel.frozen{pointer-events:none;transition:none}
     /* Ручка-драг */
-    .sticker-drag-handle{width:36px;height:4px;background:rgba(255,255,255,.18);border-radius:2px;margin:10px auto 0;flex-shrink:0}
+    .sticker-drag-handle{width:36px;height:4px;background:rgba(255,255,255,.18);border-radius:2px;margin:10px auto 0;flex-shrink:0;cursor:grab;touch-action:none}
+    /* Увеличенная зона захвата вокруг ручки (padding невидимый) */
+    .sticker-drag-handle::before{content:'';position:absolute;left:50%;transform:translateX(-50%);width:80px;height:20px;top:-8px}
     /* Шапка: поиск + кнопка закрыть */
     .sticker-panel-topbar{display:flex;align-items:center;gap:8px;padding:8px 12px 6px;flex-shrink:0}
     .sticker-search-wrap{flex:1}
