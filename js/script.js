@@ -7088,6 +7088,67 @@ function openStickerPanel(){
       searchInput.addEventListener('click',(e)=>e.stopPropagation());
       searchInput.addEventListener('focus',(e)=>e.stopPropagation());
     }
+
+    // ── Drag-to-close (свайп вниз за ручку / шапку панели) ──────────────────
+    // Аналог attach sheet: тянем вниз → панель следует за пальцем → закрывается
+    const dragHandle=panel.querySelector('.sticker-drag-handle');
+    const dragHeader=panel.querySelector('.sticker-panel-header');
+    // Зона перетаскивания — и ручка и вся шапка с табами
+    const dragZones=[dragHandle,dragHeader].filter(Boolean);
+
+    let _spDragStartY=0,_spDragCurrentY=0,_spDragging=false;
+
+    function _spDragStart(clientY){
+      _spDragStartY=clientY;
+      _spDragCurrentY=clientY;
+      _spDragging=true;
+      panel.style.transition='none'; // отключаем CSS-анимацию на время drag
+    }
+    function _spDragMove(clientY){
+      if(!_spDragging)return;
+      _spDragCurrentY=clientY;
+      const dy=Math.max(0,clientY-_spDragStartY); // только вниз
+      panel.style.transform=`translateY(${dy}px)`;
+    }
+    function _spDragEnd(){
+      if(!_spDragging)return;
+      _spDragging=false;
+      panel.style.transition=''; // возвращаем CSS-анимацию
+      const dy=Math.max(0,_spDragCurrentY-_spDragStartY);
+      const panelH=panel.offsetHeight||360;
+      if(dy>panelH*0.28){
+        // Достаточно далеко → закрываем
+        panel.style.transform=''; // closeStickerPanel сам поставит translateY(100%)
+        closeStickerPanel();
+      }else{
+        // Возвращаем на место
+        panel.style.transform='';
+      }
+    }
+
+    dragZones.forEach(zone=>{
+      // Touch
+      zone.addEventListener('touchstart',e=>{
+        // Не перехватываем если тап на таб (переключение пака)
+        if(e.target.closest('.sticker-pack-tab'))return;
+        _spDragStart(e.touches[0].clientY);
+      },{passive:true});
+      zone.addEventListener('touchmove',e=>{
+        if(!_spDragging)return;
+        e.stopPropagation();
+        _spDragMove(e.touches[0].clientY);
+      },{passive:true});
+      zone.addEventListener('touchend',_spDragEnd,{passive:true});
+      // Mouse (desktop)
+      zone.addEventListener('mousedown',e=>{
+        if(e.target.closest('.sticker-pack-tab,.sticker-panel-close'))return;
+        _spDragStart(e.clientY);
+        const mm=ev=>_spDragMove(ev.clientY);
+        const mu=()=>{_spDragEnd();document.removeEventListener('mousemove',mm);document.removeEventListener('mouseup',mu);};
+        document.addEventListener('mousemove',mm);
+        document.addEventListener('mouseup',mu);
+      });
+    });
   }
   // ── Отправляем статус "выбирает стикер..." собеседнику ──
   _startStickerActivity();
@@ -7110,6 +7171,8 @@ function closeStickerPanel(){
   const panel=$('stickerPanel');
   if(!panel)return Promise.resolve();
   if(!panel.classList.contains('open'))return Promise.resolve();
+  panel.style.transition=''; // восстанавливаем CSS-переход если был drag
+  panel.style.transform='';  // убираем inline transform от drag — CSS возьмёт управление
   panel.classList.remove('open');
   const inputBar=$('chatInputBar');
   if(inputBar)inputBar.classList.remove('sticker-mode');
