@@ -488,10 +488,51 @@
     .bubble-text .spoiler.revealed{background:transparent}
     .msg-edited{font-size:10px;color:rgba(255,255,255,.4);font-style:italic;margin-left:2px}
     .forwarded-label{display:block;font-size:11px;color:var(--g);margin-bottom:4px}
-    .reply-preview-inline{display:block;background:rgba(0,255,136,.07);border-left:3px solid var(--g);padding:6px 10px;margin-bottom:7px;border-radius:0 8px 8px 0;font-size:12px;color:rgba(255,255,255,.85);cursor:pointer;transition:background .18s}
-    .reply-preview-inline:hover{background:rgba(0,255,136,.12)}
-    .reply-preview-inline .rpl-name{font-weight:700;color:var(--g);font-size:11px;margin-bottom:2px;display:block}
-    .reply-preview-inline .rpl-text{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+    /* ── REPLY PREVIEW INLINE (Telegram-стиль) ── */
+    .reply-preview-inline{
+      display:block;
+      position:relative;
+      padding:5px 10px 5px 14px;
+      margin-bottom:7px;
+      border-radius:10px;
+      font-size:12px;
+      color:rgba(255,255,255,.85);
+      cursor:pointer;
+      overflow:hidden;
+      background:rgba(255,255,255,.08);
+      transition:background .18s,opacity .18s;
+    }
+    .reply-preview-inline:hover{
+      background:rgba(255,255,255,.14);
+    }
+    /* Акцентная полоса слева — всегда зеленая (var(--g)) и закруглённая */
+    .reply-preview-inline::before{
+      content:'';
+      position:absolute;
+      left:0;
+      top:0;
+      bottom:0;
+      width:3px;
+      border-radius:3px;
+      background:var(--g);
+    }
+    .reply-preview-inline .rpl-name{
+      font-weight:700;
+      color:var(--g);
+      font-size:11px;
+      margin-bottom:2px;
+      display:block;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .reply-preview-inline .rpl-text{
+      color:var(--muted);
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      display:block;
+    }
     .reactions-strip{display:flex;flex-wrap:wrap;gap:5px;margin-top:2px}
     .reaction-chip{display:flex;align-items:center;gap:4px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:30px;padding:4px 10px;font-size:13px;cursor:pointer;transition:all .2s cubic-bezier(.2,.9,.4,1.1);animation:rcIn .22s cubic-bezier(.34,1.56,.64,1) backwards}
     @keyframes rcIn{from{transform:scale(.5);opacity:0}to{transform:scale(1);opacity:1}}
@@ -968,8 +1009,8 @@
     .edit-bar,.reply-bar{display:none;align-items:center;gap:10px;padding:8px 16px;background:rgba(7,7,15,.95);border-top:1px solid var(--border);flex-shrink:0}
     .edit-bar.visible,.reply-bar.visible{display:flex;animation:barSlide .2s ease}
     @keyframes barSlide{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
-    .edit-bar{border-left:3px solid var(--warn);padding-left:14px}
-    .reply-bar{border-left:3px solid var(--g);padding-left:14px}
+    .edit-bar{border-left:3px solid var(--warn);padding-left:14px;border-radius:12px 12px 0 0}
+    .reply-bar{border-left:3px solid var(--g);padding-left:14px;border-radius:12px 12px 0 0}
     .edit-bar-text,.reply-bar-text{flex:1;min-width:0}
     .edit-bar-label{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--warn);font-weight:700;margin-bottom:2px}
     .reply-bar-label{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--g);font-weight:700;margin-bottom:2px}
