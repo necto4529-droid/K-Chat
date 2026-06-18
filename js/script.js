@@ -421,7 +421,7 @@ async function loadMsgs(peerId){
 
 async function saveMsgs(peerId,messages){
   // ls-backup: только структура БЕЗ binary data — не переполняет localStorage quota
-  const lsLimit=lsGet('bc_energy_save',false)?60:200;
+  const lsLimit=200;
   try{
     const stripped=_stripBinaryForBackup(messages.slice(-lsLimit));
     lsSet(`bc_msgs_${peerId}`,stripped);
@@ -1939,7 +1939,7 @@ function openSettingsModal(){
 
         <!-- Версия -->
         <div class="settings-version">
-          <span>v2.0</span>
+          <span>v1.0.5.0</span>
           <div class="settings-version-dot"></div>
           <span>K-Chat E2EE</span>
         </div>
@@ -2921,6 +2921,14 @@ function openAttachSheet(){
   const inputBar=$('chatInputBar');
   if(!sheet||!backdrop)return;
 
+  // Сбрасываем анимацию items перед открытием (на случай повторного открытия)
+  const grid=sheet.querySelector('.attach-grid');
+  if(grid){
+    grid.classList.remove('attach-items-animate');
+    // Принудительный reflow — гарантирует сброс animation-fill-mode
+    void grid.offsetWidth;
+  }
+
   $('messageInput').blur();
   sheet.style.transform='';
   sheet.classList.remove('dragging');
@@ -2929,6 +2937,25 @@ function openAttachSheet(){
   if(inputBar)inputBar.classList.add('attach-mode');
 
   _initAttachSheetHandlers();
+
+  // Запускаем анимацию items ПОСЛЕ завершения slide-in transition sheet-а.
+  // В power-save режиме transition=0.15s, в обычном=0.32s.
+  // Слушаем transitionend на sheet, с фоллбэком по таймауту.
+  let _itemAnimFired=false;
+  function _triggerItemAnim(){
+    if(_itemAnimFired)return;
+    _itemAnimFired=true;
+    if(grid)grid.classList.add('attach-items-animate');
+  }
+  function _onSheetTransitionEnd(e){
+    if(e.target!==sheet||e.propertyName!=='transform')return;
+    sheet.removeEventListener('transitionend',_onSheetTransitionEnd);
+    _triggerItemAnim();
+  }
+  sheet.addEventListener('transitionend',_onSheetTransitionEnd);
+  // Фоллбэк: если transitionend не сработал (power-save, очень быстро, или анимация отключена)
+  const _powerSave=document.body.classList.contains('power-save');
+  setTimeout(_triggerItemAnim,_powerSave?80:340);
 
   setTimeout(()=>{document.addEventListener('click',_attachOutsideClick);},80);
 }
@@ -2939,6 +2966,10 @@ function closeAttachSheet(){
   const inputBar=$('chatInputBar');
   if(!sheet)return Promise.resolve();
   if(!sheet.classList.contains('open'))return Promise.resolve();
+
+  // Сбрасываем класс анимации items перед закрытием
+  const grid=sheet.querySelector('.attach-grid');
+  if(grid)grid.classList.remove('attach-items-animate');
 
   sheet.classList.remove('open','dragging');
   sheet.style.transform='';
@@ -4449,9 +4480,7 @@ window.deleteSelectedMessages=deleteSelectedMessages;window.exitSelectionMode=ex
 // ── HISTORY ──
 async function loadChatHistory(pid,reset=false){
   const area=$('messagesArea');const msgs=await loadMsgs(pid);const total=msgs.length;
-  // В режиме энергосбережения ограничиваем кол-во сообщений в DOM
-  const PS=lsGet('bc_energy_save',false);
-  const DOM_LIMIT = PS ? 60 : 200;
+  const INITIAL_BATCH=50;
   if(reset){
     // Очищаем область сообщений (floatingDate теперь снаружи — не трогаем)
     area.innerHTML='';
@@ -4459,15 +4488,12 @@ async function loadChatHistory(pid,reset=false){
     if(!total){
       const ec=document.createElement('div');ec.className='empty-chat';ec.innerHTML=`<div class="empty-chat-icon">💬</div><div class="empty-chat-text">Нет сообщений<br><span style="font-size:11px;font-family:'JetBrains Mono',monospace;opacity:.6">Напишите первое сообщение</span></div>`;area.appendChild(ec);
     }else{
-      // Рендерим последние DOM_LIMIT сообщений сразу
-      const INITIAL_BATCH=Math.min(50, DOM_LIMIT);
+      // Рендерим последние INITIAL_BATCH сообщений сразу
       const frag=document.createDocumentFragment();
       let prevTs=null;
-      // В power-save грузим только DOM_LIMIT последних, в обычном — все
-      const msgsToRender = PS ? msgs.slice(-DOM_LIMIT) : msgs;
-      const startIdx=Math.max(0,msgsToRender.length-INITIAL_BATCH);
-      for(let i=startIdx;i<msgsToRender.length;i++){
-        const m=msgsToRender[i];
+      const startIdx=Math.max(0,msgs.length-INITIAL_BATCH);
+      for(let i=startIdx;i<msgs.length;i++){
+        const m=msgs[i];
         const ts=new Date(m.time).getTime();
         if(prevTs===null||!isSameDay(prevTs,ts)){
           frag.appendChild(buildDateSeparator(ts));
@@ -4477,13 +4503,13 @@ async function loadChatHistory(pid,reset=false){
       }
       area.appendChild(frag);
       renderedCount=total;
-      // Предпендим старые батчи (только если не power-save)
-      if(!PS && startIdx>0){
+      // Предпендим оставшиеся старые сообщения
+      if(startIdx>0){
         const scrollHeightBefore=area.scrollHeight;
         const prepFrag=document.createDocumentFragment();
         let prevTs2=null;
         for(let i=0;i<startIdx;i++){
-          const m=msgsToRender[i];
+          const m=msgs[i];
           const ts=new Date(m.time).getTime();
           if(prevTs2===null||!isSameDay(prevTs2,ts)){
             prepFrag.appendChild(buildDateSeparator(ts));
@@ -4493,13 +4519,6 @@ async function loadChatHistory(pid,reset=false){
         }
         area.insertBefore(prepFrag,area.firstChild);
         area.scrollTop=area.scrollHeight-scrollHeightBefore;
-      } else if(PS && msgsToRender.length < msgs.length){
-        // В power-save показываем подсказку что часть истории скрыта
-        const hint=document.createElement('div');
-        hint.className='ps-history-hint';
-        hint.style.cssText='text-align:center;padding:12px 16px;font-family:\'JetBrains Mono\',monospace;font-size:10px;color:rgba(255,255,255,.25);letter-spacing:.5px;';
-        hint.textContent=`⚡ Показаны последние ${DOM_LIMIT} из ${total} сообщений`;
-        area.insertBefore(hint,area.firstChild);
       }
     }
     area.scrollTop=area.scrollHeight;
@@ -4526,19 +4545,6 @@ async function loadChatHistory(pid,reset=false){
         }
         frag.appendChild(buildRow(m));
         prevTs=ts;
-        // В power-save обрезаем старые DOM-узлы если их слишком много
-        if(PS){
-          const rows=area.querySelectorAll('.msg-row');
-          if(rows.length > DOM_LIMIT + 20){
-            let removed=0;
-            while(removed<20 && area.firstChild){
-              const el=area.firstChild;
-              if(el.classList?.contains('ps-history-hint')){el.remove();continue;}
-              area.removeChild(el);
-              removed++;
-            }
-          }
-        }
       }
       area.appendChild(frag);
       renderedCount=total;
@@ -4822,7 +4828,12 @@ window.leaveChat=async()=>{
   window._stickerNavLock=false;
   // Мгновенно скрываем панель вложений
   const asheet=$('attachSheet'),abackdrop=$('attachBackdrop');
-  if(asheet){asheet.classList.remove('open','dragging');asheet.style.transform='';document.removeEventListener('click',_attachOutsideClick);}
+  if(asheet){
+    const agrid=asheet.querySelector('.attach-grid');
+    if(agrid)agrid.classList.remove('attach-items-animate');
+    asheet.classList.remove('open','dragging');asheet.style.transform='';
+    document.removeEventListener('click',_attachOutsideClick);
+  }
   if(abackdrop){abackdrop.classList.remove('open');abackdrop.style.opacity='';}
   // Убираем оверлей подсветки строки если остался
   document.querySelectorAll('.msg-row.row-highlighted').forEach(r=>{
@@ -4986,30 +4997,31 @@ function updateRecTimer(){const el=Date.now()-recStartTime;const s=Math.floor(el
 window.toggleRecording=async function(){
   if(processingFiles)return;if(isRecording){stopRecordingForPreview();return;}
   try{
-    // ── Оптимальные аудио-параметры (Telegram-уровень качества) ──
-    // sampleRate 48000 + channelCount 1 (mono) + Opus 64kbps = ~0.5MB/мин
-    // echoCancellation + noiseSuppression убирают фон
-    // autoGainControl нормализует громкость
+    // ── СТУДИЙНЫЕ аудио-параметры (Идеально чистый звук Float32 48kHz) ──
+    // Отключаем встроенную браузерную обработку, которая может "жевать" звук
     const stream=await navigator.mediaDevices.getUserMedia({audio:{
       channelCount:1,
       sampleRate:48000,
-      echoCancellation:true,
-      noiseSuppression:true,
-      autoGainControl:true,
-      // Уменьшаем буфер латентности — меньше блокировки потока
+      echoCancellation:false, // Отключаем для максимальной чистоты (если в наушниках) или ставим true только если нужен эхоподав
+      noiseSuppression:false, // Отключаем встроенный шумодав браузера (портит тембр)
+      autoGainControl:false,  // Отключаем прыжки громкости
       latency:0,
     }});micStream=stream;
-    try{audioCtx=new(window.AudioContext||window.webkitAudioContext)();analyser=audioCtx.createAnalyser();analyser.fftSize=64;audioCtx.createMediaStreamSource(stream).connect(analyser);}catch(e){analyser=null;}
-    // Выбираем лучший доступный формат в порядке приоритета:
-    // 1. webm/opus 64kbps — лучшее качество, поддерживается Chrome/Android
-    // 2. webm/opus 64kbps (без явного кодека) — fallback
-    // 3. ogg/opus 64kbps — Firefox
-    // 4. Без указания mime — браузер выберет сам
-    let mime='audio/webm;codecs=opus',bitrate=64000;
-    if(!MediaRecorder.isTypeSupported(mime)){mime='audio/webm';bitrate=64000;}
-    if(!MediaRecorder.isTypeSupported(mime)){mime='audio/ogg;codecs=opus';bitrate=64000;}
-    if(!MediaRecorder.isTypeSupported(mime)){mime='';bitrate=64000;}
-    mediaRecorder=new MediaRecorder(stream,mime?{mimeType:mime,audioBitsPerSecond:bitrate}:{audioBitsPerSecond:bitrate});
+    try{
+      audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+      analyser=audioCtx.createAnalyser();
+      analyser.fftSize=64;
+      // Применяем аудиофильтры к потоку и обновляем micStream
+      micStream = _applyAudioFiltersToStream(stream, audioCtx, analyser);
+      // Analyser уже подключен внутри _applyAudioFiltersToStream
+    }catch(e){analyser=null;}
+    
+    // Выбираем формат: Студийный битрейт Opus (192-256kbps)
+    let mime='audio/webm;codecs=opus',bitrate=192000;
+    if(!MediaRecorder.isTypeSupported(mime)){mime='audio/webm';bitrate=192000;}
+    if(!MediaRecorder.isTypeSupported(mime)){mime='audio/ogg;codecs=opus';bitrate=192000;}
+    if(!MediaRecorder.isTypeSupported(mime)){mime='';bitrate=192000;}
+    mediaRecorder=new MediaRecorder(micStream,mime?{mimeType:mime,audioBitsPerSecond:bitrate}:{audioBitsPerSecond:bitrate});
     audioChunks=[];mediaRecorder.ondataavailable=e=>{if(e.data?.size>0)audioChunks.push(e.data);};
     // timeslice 200ms — оптимальный баланс: не слишком часто (артефакты),
     // не слишком редко (потеря при обрыве). Telegram использует ~200-500ms.
@@ -5110,17 +5122,26 @@ window.resumeRecording=async function(){
     const stream=await navigator.mediaDevices.getUserMedia({audio:{
       channelCount:1,
       sampleRate:48000,
-      echoCancellation:true,
-      noiseSuppression:true,
-      autoGainControl:true,
+      echoCancellation:false,
+      noiseSuppression:false,
+      autoGainControl:false,
       latency:0,
     }});micStream=stream;
-    try{audioCtx=new(window.AudioContext||window.webkitAudioContext)();analyser=audioCtx.createAnalyser();analyser.fftSize=64;audioCtx.createMediaStreamSource(stream).connect(analyser);}catch(e){analyser=null;}
-    let mime='audio/webm;codecs=opus',bitrate=64000;
-    if(!MediaRecorder.isTypeSupported(mime)){mime='audio/webm';bitrate=64000;}
-    if(!MediaRecorder.isTypeSupported(mime)){mime='audio/ogg;codecs=opus';bitrate=64000;}
-    if(!MediaRecorder.isTypeSupported(mime)){mime='';bitrate=64000;}
-    mediaRecorder=new MediaRecorder(stream,mime?{mimeType:mime,audioBitsPerSecond:bitrate}:{audioBitsPerSecond:bitrate});
+    try{
+      audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+      analyser=audioCtx.createAnalyser();analyser.fftSize=64;
+      const source=audioCtx.createMediaStreamSource(stream);
+      const highPass=audioCtx.createBiquadFilter(); highPass.type='highpass'; highPass.frequency.value=60; highPass.Q.value=0.5;
+      const compressor=audioCtx.createDynamicsCompressor(); compressor.threshold.value=-24; compressor.knee.value=30; compressor.ratio.value=3; compressor.attack.value=0.005; compressor.release.value=0.1;
+      const gainNode=audioCtx.createGain(); gainNode.gain.value=1.2;
+      source.connect(highPass); highPass.connect(compressor); compressor.connect(gainNode); gainNode.connect(analyser);
+      const dest=audioCtx.createMediaStreamDestination(); gainNode.connect(dest); micStream=dest.stream;
+    }catch(e){analyser=null;}
+    let mime='audio/webm;codecs=opus',bitrate=192000;
+    if(!MediaRecorder.isTypeSupported(mime)){mime='audio/webm';bitrate=192000;}
+    if(!MediaRecorder.isTypeSupported(mime)){mime='audio/ogg;codecs=opus';bitrate=192000;}
+    if(!MediaRecorder.isTypeSupported(mime)){mime='';bitrate=192000;}
+    mediaRecorder=new MediaRecorder(micStream,mime?{mimeType:mime,audioBitsPerSecond:bitrate}:{audioBitsPerSecond:bitrate});
     audioChunks=oldChunks;mediaRecorder.ondataavailable=e=>{if(e.data?.size>0)audioChunks.push(e.data);};mediaRecorder.start(200);
     isRecording=true;recStartTime=Date.now()-previewDur*1000;initRecWaveform();
     $('voiceRecordOverlay').classList.add('active');$('micBtn').classList.add('recording');$('micBtn').textContent='⏹';
@@ -5139,6 +5160,52 @@ window.sendPreviewVoice=async function(){
   _vib('impactLight'); // тактильный отклик — голосовое отправляется
   const reader=new FileReader();reader.onload=async e=>{await sendVoiceMessage(e.target.result,dur,wf);};reader.readAsDataURL(blob);
 };
+
+function _applyAudioFiltersToStream(stream, existingAudioCtx = null, existingAnalyser = null) {
+  const audioCtx = existingAudioCtx || new (window.AudioContext || window.webkitAudioContext)();
+  const source = audioCtx.createMediaStreamSource(stream);
+
+  // 1. High-pass фильтр (убираем только инфразвук)
+  const highPass = audioCtx.createBiquadFilter();
+  highPass.type = 'highpass';
+  highPass.frequency.value = 20;
+  highPass.Q.value = 1.0;
+
+  // 2. High Shelf фильтр для подъема высоких частот (кристальность)
+  const highShelf = audioCtx.createBiquadFilter();
+  highShelf.type = 'highshelf';
+  highShelf.frequency.value = 5000;
+  highShelf.gain.value = 6;
+
+  // 3. Очень легкая компрессия для плотности без искажений
+  const compressor = audioCtx.createDynamicsCompressor();
+  compressor.threshold.value = -12;
+  compressor.knee.value = 8;
+  compressor.ratio.value = 1.2;
+  compressor.attack.value = 0.001;
+  compressor.release.value = 0.03;
+
+  // 4. Усиление (Gain)
+  const gainNode = audioCtx.createGain();
+  gainNode.gain.value = 1.0;
+
+  // Подключаем цепочку
+  source.connect(highPass);
+  highPass.connect(highShelf);
+  highShelf.connect(compressor);
+  compressor.connect(gainNode);
+
+  // Если есть анализатор, подключаем его
+  if (existingAnalyser) {
+    gainNode.connect(existingAnalyser);
+  }
+
+  // Создаем MediaStreamDestination для передачи обработанного звука
+  const dest = audioCtx.createMediaStreamDestination();
+  gainNode.connect(dest);
+
+  return dest.stream;
+}
 
 function _stopRecordingInternal(){return new Promise(resolve=>{clearInterval(recTimerInterval);cancelAnimationFrame(recAnimFrame);isRecording=false;$('voiceRecordOverlay').classList.remove('active');$('micBtn').classList.remove('recording');$('micBtn').textContent='🎙';$('recLimitBar').style.width='0%';$('recLimitBar').className='rec-limit-bar';if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null;}if(audioCtx){try{audioCtx.close();}catch(e){}audioCtx=null;analyser=null;}if(mediaRecorder&&mediaRecorder.state!=='inactive'){mediaRecorder.addEventListener('stop',()=>resolve(audioChunks),{once:true});mediaRecorder.stop();}else resolve(audioChunks);});}
 function generateWaveform(){const arr=[];for(let i=0;i<WF_BARS;i++)arr.push(Math.max(0.08,Math.min(1,Math.random()*0.9+0.08)));return arr;}
@@ -5275,15 +5342,19 @@ function _vnPickMime(){
 
 // Создаём MediaRecorder с оптимальным битрейтом
 function _vnCreateRecorder(){
-  // VP8 @ 1.2 Mbps — аппаратное кодирование на Android, стабильный fps без фризов.
-  // 1.2 Mbps для 720p @ 25fps даёт хорошее качество без перегрузки кодировщика.
+  // ── ПЛАВНОСТЬ TELEGRAM (Аппаратный VP8 + Высокий битрейт захвата) ──
+  // Захватываем в 2.5 Mbps, чтобы на сервер пришло максимум деталей.
+  // VP8 гарантирует аппаратное ускорение на большинстве Android/iOS WebView.
   const opts={};
   if(_vnMime)opts.mimeType=_vnMime;
-  opts.videoBitsPerSecond=1_200_000; // 1.2 Mbps — баланс качество/плавность для VP8
-  opts.audioBitsPerSecond=64_000;    // 64 kbps — как у голосовых
+  opts.videoBitsPerSecond=800_000; // 800 kbps — оптимальный битрейт для стабильного захвата на клиенте
+  opts.audioBitsPerSecond=128_000;   // 128 kbps для звука
+  opts.bitrateMode = 'constant'; // Попытка стабилизировать битрейт
   const rec=new MediaRecorder(_vnStream,opts);
   rec.ondataavailable=e=>{if(e.data&&e.data.size>0)_vnChunks.push(e.data);};
+  rec.start(500); // Выдавать данные каждые 500 мс для лучшей синхронизации и плавности
   return rec;
+
 }
 
 // Является ли текущая камера фронтальной (для зеркала)
@@ -5306,41 +5377,80 @@ async function startVideoNote(){
   _vnCameraIndex=0;
   _vnCameraDevices=[];
 
+  const ov=$('vnRecordOverlay');
+  ov.classList.add('active');
+
   try{
     _vnStream=await navigator.mediaDevices.getUserMedia({
       video:{
         facingMode:'user',
-        width: {ideal:720, max:1280},
-        height:{ideal:720, max:1280},
-        frameRate:{min:25, ideal:30, max:30},
-        resizeMode:'crop-and-scale', // браузер понижает разрешение если не тянет, вместо дропа кадров
+        width: {exact:640},
+        height:{exact:640},
+        frameRate:{exact:30}, // Жестко задаем 30 FPS для максимальной плавности
+        // resizeMode:'crop-and-scale', // Не нужен, если разрешение фиксировано
       },
       audio:{
         channelCount:1,
         sampleRate:48000,
-        echoCancellation:true,
-        noiseSuppression:true,
-        autoGainControl:true,
+        echoCancellation:false,
+        noiseSuppression:false,
+        autoGainControl:false,
+        latency:0,
       }
     });
+    // ── Разделяем аудио и видео, обрабатываем аудио и объединяем обратно ──
+    const originalVideoTrack = _vnStream.getVideoTracks()[0];
+    const originalAudioTrack = _vnStream.getAudioTracks()[0];
+    const originalAudioStream = new MediaStream([originalAudioTrack]);
+    const processedAudioStream = _applyAudioFiltersToStream(originalAudioStream);
+    const processedAudioTrack = processedAudioStream.getAudioTracks()[0];
+    
+    const combinedStream = new MediaStream();
+    combinedStream.addTrack(originalVideoTrack);
+    combinedStream.addTrack(processedAudioTrack);
+    _vnStream = combinedStream;
+
+    const preview=$('vnPreview');
+    preview.srcObject=_vnStream;
+    preview.style.transform='scaleX(-1)'; // фронтальная — зеркало
+    try{await preview.play();}catch(e){}
+
   }catch(e){
     // Fallback на 480p если устройство не тянет 720p
     try{
       _vnStream=await navigator.mediaDevices.getUserMedia({
         video:{
           facingMode:'user',
-          width: {ideal:480, max:640},
-          height:{ideal:480, max:640},
-          frameRate:{min:25, ideal:30, max:30},
+        width: {exact:480},
+        height:{exact:480},
+        frameRate:{exact:30},
         },
         audio:{
           channelCount:1,
           sampleRate:48000,
-          echoCancellation:true,
-          noiseSuppression:true,
-          autoGainControl:true,
+          echoCancellation:false,
+          noiseSuppression:false,
+          autoGainControl:false,
+          latency:0,
         }
       });
+      // ── Разделяем аудио и видео, обрабатываем аудио и объединяем обратно (fallback) ──
+      const originalVideoTrack = _vnStream.getVideoTracks()[0];
+      const originalAudioTrack = _vnStream.getAudioTracks()[0];
+      const originalAudioStream = new MediaStream([originalAudioTrack]);
+      const processedAudioStream = _applyAudioFiltersToStream(originalAudioStream);
+      const processedAudioTrack = processedAudioStream.getAudioTracks()[0];
+      
+      const combinedStream = new MediaStream();
+      combinedStream.addTrack(originalVideoTrack);
+      combinedStream.addTrack(processedAudioTrack);
+      _vnStream = combinedStream;
+
+      const preview=$('vnPreview');
+      preview.srcObject=_vnStream;
+      preview.style.transform='scaleX(-1)'; // фронтальная — зеркало
+      try{await preview.play();}catch(e){}
+
     }catch(e2){
       if(e2.name==='NotAllowedError'||e2.name==='PermissionDeniedError')toast('Нет доступа к камере/микрофону','err');
       else toast('Ошибка камеры','err');
@@ -5358,24 +5468,19 @@ async function startVideoNote(){
   const pauseBtnInit=$('vnPauseBtn');
   if(pauseBtnInit){pauseBtnInit.classList.remove('paused');pauseBtnInit.textContent='⏸';pauseBtnInit.title='Пауза';}
 
-  const preview=$('vnPreview');
-  preview.srcObject=_vnStream;
-  preview.style.transform='scaleX(-1)'; // фронтальная — зеркало
-  try{await preview.play();}catch(e){}
+  // const preview=$('vnPreview'); // Перемещено выше
+  // preview.srcObject=_vnStream; // Перемещено выше
+  // preview.style.transform='scaleX(-1)'; // Перемещено выше
+  // try{await preview.play();}catch(e){}
 
   _vnMime=_vnPickMime();
   _vnChunks=[];
   _vnMediaRecorder=_vnCreateRecorder();
-  // 250ms timeslice — оптимально для видео:
-  // слишком маленький (100ms) = много overhead на каждый chunk,
-  // браузер тратит время на финализацию вместо кодирования.
-  _vnMediaRecorder.start(150); // 150ms — меньше буфер в кодировщике, меньше задержка
   _vnRecording=true;
   _vnFlipping=false;
   _vnStartTime=Date.now();
 
-  const ov=$('vnRecordOverlay');
-  ov.classList.add('active');
+
   const ring=$('vnRingProg');
   ring.style.strokeDashoffset=VN_CIRCUMFERENCE;
   if(typeof _vib==='function')_vib('impactMedium');
