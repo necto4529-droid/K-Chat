@@ -618,17 +618,63 @@ let ws=null,wsUp=false,wsRetry=0,pingInterval=null;
 let lastHiddenTime=0,ignoreNextVisibilityReturn=false;
 const WS_DELAYS=[2000,3000,5000,8000,15000,30000];
 // ── PENDING ACKS — задержанные acks до открытия чата ──
-// Ключ: peerId, Значение: [{msgId, eventId}]
-const _pendingAcks = new Map();
-
-function _flushPendingAcks(pid){
-  const acks = _pendingAcks.get(pid);
-  if(!acks || !acks.length) return;
-  _pendingAcks.delete(pid);
-  for(const {msgId, eventId} of acks){
-    wsSend({type:'ack-msg', msgId});
-    if(eventId) wsSend({type:'ack-event', eventId});
+// Храним не только в памяти, но и в localStorage, чтобы reconnect /
+// уход со страницы / leaveChat не ломали read-receipts.
+// Ключ: peerId, Значение: [{msgId, eventId, ts}]
+const PENDING_ACKS_LS_KEY='bc_pending_read_acks_v1';
+function _loadPendingAcksMap(){
+  const raw=lsGet(PENDING_ACKS_LS_KEY,{});
+  const map=new Map();
+  if(raw&&typeof raw==='object'){
+    for(const [pid,list] of Object.entries(raw)){
+      const clean=(Array.isArray(list)?list:[]).filter(x=>x&&x.msgId).map(x=>({msgId:x.msgId,eventId:x.eventId||null,ts:x.ts||Date.now()}));
+      if(clean.length)map.set(pid.toLowerCase(),clean);
+    }
   }
+  return map;
+}
+function _savePendingAcks(){
+  const obj={};
+  for(const [pid,list] of _pendingAcks.entries()) if(list&&list.length) obj[pid]=list;
+  try{lsSet(PENDING_ACKS_LS_KEY,obj);}catch(e){}
+}
+const _pendingAcks = _loadPendingAcksMap();
+function _queuePendingAck(pid,msgId,eventId){
+  pid=(pid||'').toLowerCase();
+  if(!pid||!msgId)return;
+  const list=_pendingAcks.get(pid)||[];
+  const existing=list.find(x=>x.msgId===msgId);
+  if(existing){
+    if(eventId&&!existing.eventId)existing.eventId=eventId;
+  }else{
+    list.push({msgId,eventId:eventId||null,ts:Date.now()});
+  }
+  _pendingAcks.set(pid,list);
+  _savePendingAcks();
+}
+function _flushPendingAcks(pid){
+  pid=(pid||'').toLowerCase();
+  const acks=_pendingAcks.get(pid);
+  if(!acks||!acks.length)return false;
+  if(!wsUp||!ws||ws.readyState!==WebSocket.OPEN)return false;
+  const sentMsgIds=new Set();
+  const sentEventIds=new Set();
+  for(const {msgId,eventId} of acks){
+    if(msgId&&!sentMsgIds.has(msgId)){
+      wsSend({type:'ack-msg',msgId});
+      sentMsgIds.add(msgId);
+    }
+    if(eventId&&!sentEventIds.has(eventId)){
+      wsSend({type:'ack-event',eventId});
+      sentEventIds.add(eventId);
+    }
+  }
+  _pendingAcks.delete(pid);
+  _savePendingAcks();
+  return true;
+}
+function _flushAllPendingAcks(){
+  for(const pid of [..._pendingAcks.keys()]) _flushPendingAcks(pid);
 }
 
 function ensureWS(){if(ws&&(ws.readyState===WebSocket.OPEN||ws.readyState===WebSocket.CONNECTING))return;if(ws)try{ws.close();}catch(e){}ws=new WebSocket(SIGNAL_URL);ws.onopen=()=>{wsUp=true;wsRetry=0;ws.send(JSON.stringify({type:'register',peerId:MY_ID}));updateSendBtn();if(activePid)wsSend({type:'query-presence',target:activePid});if(pingInterval)clearInterval(pingInterval);pingInterval=setInterval(()=>{if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'ping'}));},30000);};ws.onmessage=async e=>{let d;try{d=JSON.parse(e.data);}catch{return;}await onWS(d);};ws.onclose=()=>{wsUp=false;updateSendBtn();if(activePid&&currentScreen==='scr-chat'){_stopConnDots();_startConnDots('Переподключение');}if(pingInterval){clearInterval(pingInterval);pingInterval=null;}setTimeout(ensureWS,WS_DELAYS[Math.min(wsRetry++,WS_DELAYS.length-1)]);};ws.onerror=()=>{wsUp=false;updateSendBtn();};}
@@ -1213,10 +1259,13 @@ async function onWS(msg){
       broadcastLastSeen().catch(()=>{});
       // После reconnect — drain все pending сообщения у которых есть ключ
       _drainAllPendingOnReconnect().catch(()=>{});
-      // Flush pending acks для текущего открытого чата (если ws упал и поднялся)
-      if(activePid && currentScreen==='scr-chat') _flushPendingAcks(activePid);
+      // Flush ВСЕ pending ack'и: пользователь мог уже прочитать чат,
+      // а соединение в этот момент было в состоянии «Переподключение...»
+      _flushAllPendingAcks();
       // Отправляем накопленные vn-watched и voice-listened (работа офлайн)
       _drainWatchedQueues();
+      // Если чат сейчас открыт — повторяем chat-read после успешного reconnect
+      if(activePid && currentScreen==='scr-chat') _sendChatReadReceipt(activePid).catch(()=>{});
       break;
     case 'presence':setOnline(msg.peerId.toLowerCase(),!!msg.online,true);break;
     case 'presence-reply':setOnline((msg.target||'').toLowerCase(),!!msg.online,false);break;
@@ -1274,32 +1323,28 @@ async function onWS(msg){
     }
     case 'incoming-msg':{
       const from=(msg.from||'').toLowerCase();
-      // НЕ отправляем ack-msg немедленно — откладываем до открытия чата
-      // Это и есть механизм ✔✔ только при прочтении (как в Telegram)
-      // Сохраняем в очередь pending acks для этого отправителя
-      if(!_pendingAcks.has(from)) _pendingAcks.set(from, []);
-      _pendingAcks.get(from).push({msgId: msg.msgId, eventId});
+      // НЕ отправляем ack-msg «навсегда в память» — сначала надёжно
+      // кладём в persistent-очередь, а уже потом flush'им если чат открыт.
+      // Это защищает read-receipts при reconnect / leaveChat / reload.
+      _queuePendingAck(from,msg.msgId,eventId);
       // Если я СЕЙЧАС нахожусь в чате с этим человеком — отправляем сразу
       // (я уже вижу сообщение на экране)
       if(activePid === from && currentScreen === 'scr-chat'){
-        wsSend({type:'ack-msg', msgId:msg.msgId});
-        if(eventId) wsSend({type:'ack-event', eventId});
-        _pendingAcks.set(from, _pendingAcks.get(from).filter(a=>a.msgId!==msg.msgId));
+        _flushPendingAcks(from);
       }
       // Если контакт заблокирован — молча игнорируем входящее сообщение
       if(isContactBlocked(from)){
-        // Всё равно ackуем чтобы сервер не держал в очереди
+        // Всё равно ackуем чтобы сервер не держал событие в очереди.
+        // eventId уже лежит внутри pending-ack и будет отправлен вместе с ack-msg.
         _flushPendingAcks(from);
-        if(eventId)wsSend({type:'ack-event',eventId});
         break;
       }
       // Немедленно пробуем drain pending для этого отправителя (если есть ключ)
       getKey(from).then(k=>{if(k)drainPending(from,k).catch(()=>{});}).catch(()=>{});
       let key=keyCache[from]||await loadPersistedKey(from);
       if(!key){const pwd=localStorage.getItem(`bc_pwd_${from}`)||sessionStorage.getItem(`bc_pwd_${from}`);if(pwd){try{key=await deriveKey(pwd,from);keyCache[from]=key;await persistKey(from,key);}catch(e){}}}
-      if(!key){const pending=lsGet(`bc_pending_${from}`,[]);pending.push({msgId:msg.msgId,payload:msg.payload,ts:Date.now()});lsSet(`bc_pending_${from}`,pending);const ct=loadContacts().find(c=>c.id===from);await getOrCreateChat(from,ct?.name,ct?.avatar);const chat=(await loadChats()).find(c=>c.peerId===from);await updateChat(from,{unread:(chat?.unread||0)+1,lastMsg:'🔒 Зашифровано',lastMsgTime:Date.now()});toast(`💬 ${ct?.name||from}: (зашифровано)`);break;}
+      if(!key){const pending=lsGet(`bc_pending_${from}`,[]);if(!pending.some(p=>p.msgId===msg.msgId))pending.push({msgId:msg.msgId,payload:msg.payload,ts:Date.now()});lsSet(`bc_pending_${from}`,pending);const ct=loadContacts().find(c=>c.id===from);await getOrCreateChat(from,ct?.name,ct?.avatar);const chat=(await loadChats()).find(c=>c.peerId===from);await updateChat(from,{unread:(chat?.unread||0)+1,lastMsg:'🔒 Зашифровано',lastMsgTime:Date.now()});toast(`💬 ${ct?.name||from}: (зашифровано)`);break;}
       try{const buf=typeof msg.payload==='string'?base64ToArrayBuffer(msg.payload):new Uint8Array(msg.payload).buffer;const pt=DEC.decode(await decData(buf,key));await handleEnvelope(from,JSON.parse(pt));}catch(e){console.warn('decrypt fail',e);}
-      if(eventId)wsSend({type:'ack-event',eventId});
       break;
     }
     case 'msg-delivered':await markDelivered(msg.msgId,msg.by);if(eventId)wsSend({type:'ack-event',eventId});break;
@@ -1518,7 +1563,9 @@ async function _drainAllPendingOnReconnect(){
 // Отправляем собеседнику зашифрованный read-receipt
 // Он получит его и поставит ✔✔ на своих отправленных сообщениях
 async function _sendChatReadReceipt(pid){
-  if(pid===MY_ID || !wsUp) return;
+  if(pid===MY_ID) return;
+  const ok = await waitForWS(5000);
+  if(!ok || !wsUp) return;
   const key = keyCache[pid] || await loadPersistedKey(pid);
   if(!key) return;
   // Собираем ID всех НЕ прочитанных входящих сообщений от этого пира
@@ -1529,23 +1576,25 @@ async function _sendChatReadReceipt(pid){
     .filter(m => m.type==='recv' && !m._readReceiptSent)
     .map(m => m.id);
   if(!unreadIds.length) return;
-  // Помечаем что receipt уже отправлен (не дублируем)
-  await withChatLock(pid, async()=>{
-    const m2 = await loadMsgs(pid);
-    let changed = false;
-    for(const m of m2){
-      if(m.type==='recv' && unreadIds.includes(m.id) && !m._readReceiptSent){
-        m._readReceiptSent = true;
-        changed = true;
-      }
-    }
-    if(changed) await saveMsgs(pid, m2);
-  });
   try{
     const enc = await encData(ENC.encode(JSON.stringify({
       type:'chat-read', msgIds:unreadIds, ts:Date.now()
     })), key);
+    if(!wsUp) return;
     wsSend({type:'send-msg', target:pid, msgId:uid(), payload:payloadToB64(enc)});
+    // Помечаем как отправленные ТОЛЬКО после успешной отправки в живой WS.
+    await withChatLock(pid, async()=>{
+      const m2 = await loadMsgs(pid);
+      let changed = false;
+      const unreadSet = new Set(unreadIds);
+      for(const m of m2){
+        if(m.type==='recv' && unreadSet.has(m.id) && !m._readReceiptSent){
+          m._readReceiptSent = true;
+          changed = true;
+        }
+      }
+      if(changed) await saveMsgs(pid, m2);
+    });
   }catch(e){}
 }
 
