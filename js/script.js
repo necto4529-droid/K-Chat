@@ -1211,6 +1211,26 @@ function _enqueueVoiceListened(targetPid, voiceMsgId){
   }
 }
 
+// ИСПРАВЛЕНИЕ: Возобновляем все активные загрузки файлов при reconnect
+function _resumeAllFileTransfers(){
+  if(!wsUp) return;
+  const activeTransfers = Array.from(fileTransfers.entries());
+  if(activeTransfers.length === 0) return;
+  console.log(`[File] Resuming ${activeTransfers.length} file transfers after reconnect`);
+  for(const [fileId, ft] of activeTransfers){
+    if(ft.state === 'downloading'){
+      const fromIndex = ft.received || 0;
+      console.log(`[File] Resuming ${fileId}: from chunk ${fromIndex}/${ft.total}`);
+      wsSend({type:'fetch-file', fileId, fromIndex});
+      // Сбрасываем таймер, чтобы не было двойного retry
+      if(ft._timeoutTimer){
+        clearTimeout(ft._timeoutTimer);
+      }
+      ft._timeoutTimer = setTimeout(()=>_retryDownload(fileId), 60000);
+    }
+  }
+}
+
 // Дренируем очереди — вызывается при каждом 'registered' (ws.onopen)
 function _drainWatchedQueues(){
   // vn-watched
@@ -1288,6 +1308,8 @@ async function onWS(msg){
       _drainWatchedQueues();
       // Если чат сейчас открыт — повторяем chat-read после успешного reconnect
       if(activePid && currentScreen==='scr-chat') _sendChatReadReceipt(activePid).catch(()=>{});
+      // ИСПРАВЛЕНИЕ: Мгновенно возобновляем все активные загрузки файлов
+      _resumeAllFileTransfers();
       break;
     case 'presence':setOnline(msg.peerId.toLowerCase(),!!msg.online,true);break;
     case 'presence-reply':setOnline((msg.target||'').toLowerCase(),!!msg.online,false);break;
