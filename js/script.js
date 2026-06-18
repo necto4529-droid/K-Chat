@@ -907,23 +907,25 @@ async function _retryDownload(fileId){
     return;
   }
   ft.retries++;
-  ft.received=0;
-  ft.chunks=[];
-  ft.total=0;
+  // ИСПРАВЛЕНИЕ: НЕ сбрасываем chunks и received — продолжаем с того же места!
+  // ft.received=0;  // УДАЛЕНО
+  // ft.chunks=[];   // УДАЛЕНО
+  // ft.total=0;     // УДАЛЕНО
   ft.state='downloading';
-  console.warn(`[File] Retry ${ft.retries}/${ft.maxRetries} for ${fileId}`);
-  toast(`Повтор загрузки (${ft.retries}/${ft.maxRetries})…`,'warn');
+  const fromIndex=ft.received||0;  // Продолжаем с того места, где остановились
+  console.warn(`[File] Retry ${ft.retries}/${ft.maxRetries} for ${fileId}, resuming from chunk ${fromIndex}/${ft.total}`);
+  toast(`Продолжаю загрузку (${ft.retries}/${ft.maxRetries})…`,'warn');
   if(!wsUp){
     // Ждём переподключения
-    const _wait=()=>{if(wsUp){wsSend({type:'fetch-file',fileId});}else setTimeout(_wait,1000);};
+    const _wait=()=>{if(wsUp){wsSend({type:'fetch-file',fileId,fromIndex});}else setTimeout(_wait,1000);};
     setTimeout(_wait,1000);
   } else {
-    wsSend({type:'fetch-file',fileId});
+    wsSend({type:'fetch-file',fileId,fromIndex});
   }
   ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId),60000);
 }
 
-async function handleFileDataHeader(msg){const{fileId,senderId,name,size,mimeType,totalChunks,caption,ts}=msg;const ft=fileTransfers.get(fileId);if(!ft)return;ft.total=totalChunks;ft.chunks=new Array(totalChunks).fill(null);ft.received=0;ft.name=name;ft.size=size;ft.mimeType=mimeType;ft.caption=caption;ft.ts=ts;ft.senderId=senderId;}
+async function handleFileDataHeader(msg){const{fileId,senderId,name,size,mimeType,totalChunks,caption,ts,fromIndex}=msg;const ft=fileTransfers.get(fileId);if(!ft)return;ft.total=totalChunks;if(!ft.chunks||ft.chunks.length!==totalChunks){ft.chunks=new Array(totalChunks).fill(null);}if(!ft.received)ft.received=0;ft.name=name;ft.size=size;ft.mimeType=mimeType;ft.caption=caption;ft.ts=ts;ft.senderId=senderId;ft._resumeFromIndex=fromIndex||0;console.log(`[File] Header for ${fileId}: ${totalChunks} chunks, resuming from ${fromIndex||0}`);}
 
 // Очередь декрипта чанков — обрабатываем по одному чтобы не блокировать UI
 const _decryptQueue=new Map(); // fileId -> {queue:[], running:bool}
@@ -965,7 +967,7 @@ async function handleFileDataChunk(msg){
 }
 
 async function assembleFile(fileId){
-  const ft=fileTransfers.get(fileId);if(!ft||ft.state==='done')return;ft.state='done';fileTransfers.delete(fileId);
+  const ft=fileTransfers.get(fileId);if(!ft||ft.state==='done')return;ft.state='assembling';
   try{
     const totalLen=ft.chunks.reduce((s,b)=>s+b.byteLength,0);
     const combined=new Uint8Array(totalLen);
@@ -979,8 +981,15 @@ async function assembleFile(fileId){
     // ── Видео-кружок: особая обработка ──────────────────────────────────────
     if(ft._isVideoNote){
       const vnMime=ft._vnMime||'video/webm';
-      const blobId=fileId+'_vnote';
-      await saveBlob(blobId,combined.buffer);
+      const vnBlobId=fileId+'_vnote';
+      try{
+        await saveBlob(vnBlobId,combined.buffer);
+      }catch(e){
+        console.error('[File] Failed to save video note blob:',e);
+        toast('Ошибка сохранения видео-кружка','err');
+        fileTransfers.delete(fileId);
+        return;
+      }
       // Создаём ObjectURL для немедленного отображения
       const vnBlob=new Blob([combined.buffer],{type:vnMime});
       const vnUrl=URL.createObjectURL(vnBlob);
@@ -991,7 +1000,7 @@ async function assembleFile(fileId){
         videoNote:true,
         voiceDuration:0, // durSec будет в ft.caption (JSON)
         voiceListened:false,
-        videoBlobId:blobId,
+        videoBlobId:vnBlobId,
         videoMime:vnMime,
         _vnPending:false,
       };
@@ -1005,7 +1014,9 @@ async function assembleFile(fileId){
         if(existingRow)(existingRow.closest('.msg-row-outer')||existingRow).replaceWith(buildRow(renderMsg));
         else appendOrReloadMsg(ft.senderId,renderMsg);
       }
+      // ИСПРАВЛЕНИЕ: Отправляем ack-file ТОЛЬКО ПОСЛЕ сохранения в IDB
       wsSend({type:'ack-file',fileId});
+      fileTransfers.delete(fileId);
       // Уведомляем отправителя → ✔✔
       const _vnKey=await getKey(ft.senderId).catch(()=>null);
       if(_vnKey&&wsUp&&ft.senderId!==MY_ID){
@@ -1017,10 +1028,17 @@ async function assembleFile(fileId){
       return;
     }
 
-    // Создаём blob URL сразу для показа — saveBlob делаем в фоне
+    // ИСПРАВЛЕНИЕ: Сохраняем blob ПЕРЕД ack-file и обрабатываем ошибки
     const _combinedBlob=new Blob([combined.buffer],{type:ft.mimeType});
     const _blobUrl=URL.createObjectURL(_combinedBlob);
-    saveBlob(fileId,combined.buffer).catch(e=>console.warn('[blobs] save error',e));
+    try{
+      await saveBlob(fileId,combined.buffer);
+    }catch(e){
+      console.error('[File] Failed to save blob:',e);
+      toast('Ошибка сохранения файла','err');
+      fileTransfers.delete(fileId);
+      return;
+    }
     const finalMsg={id:fileId,text:ft.caption||'',type:'recv',time:new Date(ft.ts||Date.now()).toISOString(),reactions:{},edited:false,replyTo:null,delivered:true,forwarded:false,fileAvailable:null,file:{name:ft.name,type:ft.mimeType,size:ft.size,blobId:fileId}};
     await upsertMsg(ft.senderId,finalMsg);
     await updateChat(ft.senderId,{lastMsg:`📁 ${ft.name}`,lastMsgTime:new Date(finalMsg.time).getTime()});
@@ -1030,7 +1048,10 @@ async function assembleFile(fileId){
       if(existingRow)(existingRow.closest('.msg-row-outer')||existingRow).replaceWith(buildRow(renderMsg));
       else appendOrReloadMsg(ft.senderId,renderMsg);
     }
-    wsSend({type:'ack-file',fileId});toast(`${ft.name} загружен ✓`);
+    // ИСПРАВЛЕНИЕ: Отправляем ack-file ТОЛЬКО ПОСЛЕ сохранения в IDB
+    wsSend({type:'ack-file',fileId});
+    fileTransfers.delete(fileId);
+    toast(`${ft.name} загружен ✓`);
     const _fdKey=await getKey(ft.senderId).catch(()=>null);
     if(_fdKey&&wsUp&&ft.senderId!==MY_ID){
       try{
@@ -1039,6 +1060,7 @@ async function assembleFile(fileId){
       }catch(e){}
     }
   }catch(e){console.error('assembleFile error',e);toast('Ошибка сборки файла','err');const spinner=document.querySelector(`.tg-spinner[data-fileid="${fileId}"]`);if(spinner)resetSpinnerToDownload(spinner,fileId,ft.senderId);}
+  ft.state='done';
 }
 
 function updateSpinnerProgress(fileId,pct){
