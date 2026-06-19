@@ -680,6 +680,71 @@ function _flushAllPendingAcks(){
 function ensureWS(){if(ws&&(ws.readyState===WebSocket.OPEN||ws.readyState===WebSocket.CONNECTING))return;if(ws)try{ws.close();}catch(e){}ws=new WebSocket(SIGNAL_URL);ws.onopen=()=>{wsUp=true;wsRetry=0;ws.send(JSON.stringify({type:'register',peerId:MY_ID}));updateSendBtn();if(activePid)wsSend({type:'query-presence',target:activePid});if(pingInterval)clearInterval(pingInterval);pingInterval=setInterval(()=>{if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'ping'}));},30000);};ws.onmessage=async e=>{let d;try{d=JSON.parse(e.data);}catch{return;}await onWS(d);};ws.onclose=()=>{wsUp=false;updateSendBtn();if(activePid&&currentScreen==='scr-chat'){_stopConnDots();_startConnDots('Переподключение');}if(pingInterval){clearInterval(pingInterval);pingInterval=null;}setTimeout(ensureWS,WS_DELAYS[Math.min(wsRetry++,WS_DELAYS.length-1)]);};ws.onerror=()=>{wsUp=false;updateSendBtn();};}
 function wsSend(obj){if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(obj));}
 
+// ── ОПТИМИЗАЦИЯ 1: Генерация миниатюры (thumb) 20x20 для мгновенного превью ──
+// Клиент генерирует маленькую картинку и вставляет её в store-file-header.
+// Получатель видит её мгновенно — ещё до того как начнётся загрузка чанков.
+async function generateThumb(fileInfo){
+  try{
+    // Для изображений — сжимаем через canvas
+    if(fileInfo.type&&fileInfo.type.startsWith('image/')){
+      return new Promise(res=>{
+        const img=new Image();
+        img.onload=()=>{
+          try{
+            const c=document.createElement('canvas');
+            c.width=20;c.height=20;
+            const ctx=c.getContext('2d');
+            // Вписываем с сохранением пропорций
+            const ratio=Math.min(20/img.width,20/img.height);
+            const w=img.width*ratio,h=img.height*ratio;
+            const x=(20-w)/2,y=(20-h)/2;
+            ctx.fillStyle='#1a1a2e';
+            ctx.fillRect(0,0,20,20);
+            ctx.drawImage(img,x,y,w,h);
+            res(c.toDataURL('image/jpeg',0.5));
+          }catch(e){res('');}
+        };
+        img.onerror=()=>res('');
+        // Используем data URL если есть, иначе blob
+        if(fileInfo.data)img.src=fileInfo.data;
+        else if(fileInfo.blob)img.src=URL.createObjectURL(fileInfo.blob);
+        else res('');
+      });
+    }
+    // Для видео — захватываем первый кадр
+    if(fileInfo.type&&fileInfo.type.startsWith('video/')&&fileInfo.blob){
+      return new Promise(res=>{
+        const video=document.createElement('video');
+        video.muted=true;
+        video.playsInline=true;
+        const url=URL.createObjectURL(fileInfo.blob);
+        video.src=url;
+        video.currentTime=0.1;
+        const cleanup=()=>{try{URL.revokeObjectURL(url);}catch(e){}};
+        video.onseeked=()=>{
+          try{
+            const c=document.createElement('canvas');
+            c.width=20;c.height=20;
+            const ctx=c.getContext('2d');
+            const ratio=Math.min(20/video.videoWidth,20/video.videoHeight);
+            const w=video.videoWidth*ratio,h=video.videoHeight*ratio;
+            const x=(20-w)/2,y=(20-h)/2;
+            ctx.fillStyle='#1a1a2e';
+            ctx.fillRect(0,0,20,20);
+            ctx.drawImage(video,x,y,w,h);
+            cleanup();
+            res(c.toDataURL('image/jpeg',0.5));
+          }catch(e){cleanup();res('');}
+        };
+        video.onerror=()=>{cleanup();res('');};
+        setTimeout(()=>{cleanup();res('');},3000);
+        video.load();
+      });
+    }
+  }catch(e){}
+  return '';
+}
+
 // ── UPLOAD PROGRESS UI ──
 const uploadUIs=new Map();
 function registerUploadUI(fileId,spinnerEl,fillEl,pctEl){uploadUIs.set(fileId,{spinnerEl,fillEl,pctEl});}
@@ -771,7 +836,11 @@ async function sendFileToServer(fileInfo,caption){
   // Сохраняем blob отправителя в IDB 'blobs' чтобы можно было воспроизвести без data:URL
   await saveBlob(fileId, fileBuffer);
 
-  wsSend({type:'store-file-header',fileId,recipientId:activePid,name:fileInfo.name,size:fileInfo.size,mimeType:fileInfo.type,totalChunks,caption:caption||'',ts});
+  // ОПТИМИЗАЦИЯ 1: Генерируем thumb до отправки заголовка
+  // Получатель увидит превью мгновенно, ещё до первого чанка
+  const thumb = await generateThumb(fileInfo).catch(()=>'');
+
+  wsSend({type:'store-file-header',fileId,recipientId:activePid,name:fileInfo.name,size:fileInfo.size,mimeType:fileInfo.type,totalChunks,caption:caption||'',thumb:thumb||'',ts});
   // Запоминаем кому отправлен файл — нужно для file-delivered → ✔✔
   _fileSentToPeer.set(fileId, activePid);
   // Сохраняем в localStorage — пережить перезагрузку страницы
@@ -814,8 +883,9 @@ async function sendFileToServer(fileInfo,caption){
 }
 
 // ИСПРАВЛЕНИЕ: handleFileAvailable — строгая проверка дублей + правильный unread
+// ОПТИМИЗАЦИЯ 1+3: thumb показывается мгновенно; chunksReady — сколько чанков уже есть
 async function handleFileAvailable(msg){
-  const{fileId,senderId,name,size,mimeType,totalChunks,caption,ts}=msg;
+  const{fileId,senderId,name,size,mimeType,totalChunks,caption,ts,thumb,chunksReady}=msg;
   if(senderId===MY_ID)return;
   const ct=loadContacts().find(c=>c.id===senderId);
   await getOrCreateChat(senderId,ct?.name,ct?.avatar);
@@ -862,7 +932,9 @@ async function handleFileAvailable(msg){
     return;
   }
 
-  const placeholderMsg={id:fileId,text:caption||'',type:'recv',time:new Date(ts||Date.now()).toISOString(),reactions:{},edited:false,replyTo:null,delivered:true,forwarded:false,fileAvailable:{name,size,mimeType,totalChunks,senderId}};
+  // ОПТИМИЗАЦИЯ 1: сохраняем thumb в сообщении — покажется мгновенно
+  // ОПТИМИЗАЦИЯ 3: chunksReady — сколько чанков уже готово (может быть не все)
+  const placeholderMsg={id:fileId,text:caption||'',type:'recv',time:new Date(ts||Date.now()).toISOString(),reactions:{},edited:false,replyTo:null,delivered:true,forwarded:false,fileAvailable:{name,size,mimeType,totalChunks,senderId,thumb:thumb||'',chunksReady:chunksReady||0}};
   await upsertMsg(senderId,placeholderMsg);
   await updateChat(senderId,{lastMsg:`📎 ${name}`,lastMsgTime:new Date(placeholderMsg.time).getTime()});
   if(currentScreen==='scr-chat'&&activePid===senderId){
@@ -908,13 +980,17 @@ async function _retryDownload(fileId){
   }
   ft.retries++;
   // ИСПРАВЛЕНИЕ: НЕ сбрасываем chunks и received — продолжаем с того же места!
-  // ft.received=0;  // УДАЛЕНО
-  // ft.chunks=[];   // УДАЛЕНО
-  // ft.total=0;     // УДАЛЕНО
   ft.state='downloading';
   const fromIndex=ft.received||0;  // Продолжаем с того места, где остановились
   console.warn(`[File] Retry ${ft.retries}/${ft.maxRetries} for ${fileId}, resuming from chunk ${fromIndex}/${ft.total}`);
-  toast(`Продолжаю загрузку (${ft.retries}/${ft.maxRetries})…`,'warn');
+  // ОПТИМИЗАЦИЯ 3: если чанков на сервере ещё нет — ждём без toast
+  // (файл ещё загружается отправителем, получатель уже видит thumb)
+  if(ft._chunksReady!==undefined&&ft._chunksReady<ft.total&&fromIndex===0){
+    // Чанков ещё нет — тихо ждём
+    console.log(`[File] Waiting for chunks to appear on server (${ft._chunksReady}/${ft.total})`);
+  } else {
+    toast(`Продолжаю загрузку (${ft.retries}/${ft.maxRetries})…`,'warn');
+  }
   if(!wsUp){
     // Ждём переподключения
     const _wait=()=>{if(wsUp){wsSend({type:'fetch-file',fileId,fromIndex});}else setTimeout(_wait,1000);};
@@ -925,7 +1001,18 @@ async function _retryDownload(fileId){
   ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId),60000);
 }
 
-async function handleFileDataHeader(msg){const{fileId,senderId,name,size,mimeType,totalChunks,caption,ts,fromIndex}=msg;const ft=fileTransfers.get(fileId);if(!ft)return;ft.total=totalChunks;if(!ft.chunks||ft.chunks.length!==totalChunks){ft.chunks=new Array(totalChunks).fill(null);}if(!ft.received)ft.received=0;ft.name=name;ft.size=size;ft.mimeType=mimeType;ft.caption=caption;ft.ts=ts;ft.senderId=senderId;ft._resumeFromIndex=fromIndex||0;console.log(`[File] Header for ${fileId}: ${totalChunks} chunks, resuming from ${fromIndex||0}`);}
+async function handleFileDataHeader(msg){
+  // ОПТИМИЗАЦИЯ 3+4: chunksReady — сервер может отдать часть чанков ещё до завершения загрузки
+  const{fileId,senderId,name,size,mimeType,totalChunks,caption,ts,fromIndex,chunksReady}=msg;
+  const ft=fileTransfers.get(fileId);if(!ft)return;
+  ft.total=totalChunks;
+  if(!ft.chunks||ft.chunks.length!==totalChunks){ft.chunks=new Array(totalChunks).fill(null);}
+  if(!ft.received)ft.received=0;
+  ft.name=name;ft.size=size;ft.mimeType=mimeType;ft.caption=caption;ft.ts=ts;ft.senderId=senderId;
+  ft._resumeFromIndex=fromIndex||0;
+  ft._chunksReady=chunksReady||totalChunks; // сколько чанков есть на сервере сейчас
+  console.log(`[File] Header for ${fileId}: ${totalChunks} chunks, ready on server: ${chunksReady||totalChunks}, resuming from ${fromIndex||0}`);
+}
 
 // Очередь декрипта чанков — обрабатываем по одному чтобы не блокировать UI
 const _decryptQueue=new Map(); // fileId -> {queue:[], running:bool}
@@ -969,14 +1056,12 @@ async function handleFileDataChunk(msg){
 async function assembleFile(fileId){
   const ft=fileTransfers.get(fileId);if(!ft||ft.state==='done')return;ft.state='assembling';
   try{
-    const totalLen=ft.chunks.reduce((s,b)=>s+b.byteLength,0);
-    const combined=new Uint8Array(totalLen);
-    let offset=0;
-    for(const buf of ft.chunks){
-      combined.set(new Uint8Array(buf),offset);
-      offset+=buf.byteLength;
-      if(offset%(10*1024*1024)<buf.byteLength) await new Promise(r=>setTimeout(r,0));
-    }
+    // ОПТИМИЗАЦИЯ 4: собираем чанки через Blob — не нужно копировать все данные в Uint8Array
+    // Браузер собирает Blob эффективно в памяти, без лишних копий
+    const blobParts = ft.chunks.map(buf => new Blob([buf]));
+    const combinedBlob = new Blob(blobParts, {type: ft.mimeType || 'application/octet-stream'});
+    // Получаем ArrayBuffer только для сохранения в IDB
+    const combined = { buffer: await combinedBlob.arrayBuffer() };
 
     // ── Видео-кружок: особая обработка ──────────────────────────────────────
     if(ft._isVideoNote){
@@ -990,8 +1075,8 @@ async function assembleFile(fileId){
         fileTransfers.delete(fileId);
         return;
       }
-      // Создаём ObjectURL для немедленного отображения
-      const vnBlob=new Blob([combined.buffer],{type:vnMime});
+      // ОПТИМИЗАЦИЯ 4: используем уже готовый combinedBlob для ObjectURL
+      const vnBlob=new Blob([combinedBlob],{type:vnMime});
       const vnUrl=URL.createObjectURL(vnBlob);
       const finalMsg={
         id:fileId,text:'',type:'recv',
@@ -1028,8 +1113,8 @@ async function assembleFile(fileId){
       return;
     }
 
-    // ИСПРАВЛЕНИЕ: Сохраняем blob ПЕРЕД ack-file и обрабатываем ошибки
-    const _combinedBlob=new Blob([combined.buffer],{type:ft.mimeType});
+    // ОПТИМИЗАЦИЯ 4: используем уже готовый combinedBlob — не создаём лишних копий
+    const _combinedBlob=combinedBlob;
     const _blobUrl=URL.createObjectURL(_combinedBlob);
     try{
       await saveBlob(fileId,combined.buffer);
@@ -1314,6 +1399,17 @@ async function onWS(msg){
     case 'presence':setOnline(msg.peerId.toLowerCase(),!!msg.online,true);break;
     case 'presence-reply':setOnline((msg.target||'').toLowerCase(),!!msg.online,false);break;
     case 'file-available':if(!isContactBlocked((msg.senderId||'').toLowerCase())){await handleFileAvailable(msg);}if(eventId)wsSend({type:'ack-event',eventId});break;
+    // ОПТИМИЗАЦИЯ 3+4: сервер сообщает сколько чанков уже есть — обновляем UI
+    case 'file-chunks-update':{
+      const{fileId:cuFileId,chunksReady:cuReady,totalChunks:cuTotal}=msg;
+      // Если файл уже скачивается — обновляем прогресс спиннера
+      const ft=fileTransfers.get(cuFileId);
+      if(ft&&ft.state==='downloading'){
+        const pct=Math.round((cuReady/cuTotal)*100);
+        updateSpinnerProgress(cuFileId,pct);
+      }
+      break;
+    }
     case 'file-data-header':await handleFileDataHeader(msg);break;
     case 'file-data-chunk':await handleFileDataChunk(msg);break;
     case 'store-file-header-ack':{const waiter=storeAckWaiters.get(msg.fileId);if(waiter)waiter.resolve();break;}
@@ -3985,8 +4081,41 @@ function buildFileAvailableCard(m){
   const fa = m.fileAvailable;
   const isSent = m.type === 'sent';
 
-  const isAudio = fa.type && fa.type.startsWith('audio/');
-  const isVideo = fa.type && fa.type.startsWith('video/');
+  const isAudio = fa.mimeType && fa.mimeType.startsWith('audio/');
+  const isVideo = fa.mimeType && fa.mimeType.startsWith('video/');
+  const isImage = fa.mimeType && fa.mimeType.startsWith('image/');
+
+  // ОПТИМИЗАЦИЯ 1: если есть thumb — строим враппер с превью
+  // Показывается мгновенно, ещё до загрузки чанков
+  if((isImage||isVideo)&&fa.thumb){
+    const wrap=document.createElement('div');
+    wrap.className='tg-file-wrap tg-file-wrap-thumb';
+    wrap.style.cssText='position:relative;overflow:hidden;border-radius:12px;cursor:pointer;';
+    // Превью-картинка с blur-эффектом (Telegram-стиль)
+    const thumbImg=document.createElement('img');
+    thumbImg.src=fa.thumb;
+    thumbImg.style.cssText='width:100%;height:auto;min-height:80px;object-fit:cover;filter:blur(4px) brightness(0.7);transform:scale(1.1);display:block;border-radius:12px;';
+    wrap.appendChild(thumbImg);
+    // Оверлей с кнопкой скачивания
+    const overlay=document.createElement('div');
+    overlay.style.cssText='position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;';
+    const dlBtn=document.createElement('div');
+    dlBtn.className='tg-file-icon tg-file-icon-dl';
+    dlBtn.style.cssText='background:rgba(0,0,0,0.55);backdrop-filter:blur(4px);';
+    dlBtn.innerHTML='⬇';
+    dlBtn.onclick=e=>{e.stopPropagation();startDownloadUI(dlBtn,m.id,fa.senderId);};
+    overlay.appendChild(dlBtn);
+    const nameEl=document.createElement('div');
+    nameEl.style.cssText='color:#fff;font-size:11px;text-shadow:0 1px 3px rgba(0,0,0,.8);max-width:90%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;';
+    nameEl.textContent=fa.name;
+    overlay.appendChild(nameEl);
+    const sizeEl=document.createElement('div');
+    sizeEl.style.cssText='color:rgba(255,255,255,.75);font-size:10px;';
+    sizeEl.textContent=formatSize(fa.size);
+    overlay.appendChild(sizeEl);
+    wrap.appendChild(overlay);
+    return wrap;
+  }
 
   // ── Вспомогательная: строит нижнюю строку (размер · [тип] · spacer · время) ──
   function makeBottomRow(sizeText, extText){
@@ -5834,6 +5963,15 @@ async function sendVideoNoteMessageBuffer(fileBuffer, durSec, mimeType, blob) {
   const totalChunks = Math.ceil(fileBuffer.byteLength / CHUNK_SIZE);
   const fileId = msgId;
 
+  // ОПТИМИЗАЦИЯ 1: генерируем thumb для видео-кружка
+  let vnThumb = '';
+  try {
+    if (blob || fileBuffer) {
+      const vnBlob = blob || new Blob([fileBuffer], {type: mimeType});
+      vnThumb = await generateThumb({type: mimeType, blob: vnBlob}).catch(()=>'');
+    }
+  } catch(e) {}
+
   wsSend({
     type: 'store-file-header',
     fileId,
@@ -5843,6 +5981,7 @@ async function sendVideoNoteMessageBuffer(fileBuffer, durSec, mimeType, blob) {
     mimeType: mimeType || 'video/webm',
     totalChunks,
     caption: vnMeta,
+    thumb: vnThumb,
     ts
   });
 
