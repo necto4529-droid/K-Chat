@@ -973,32 +973,42 @@ async function downloadFileFromServer(fileId,senderId){
 async function _retryDownload(fileId){
   const ft=fileTransfers.get(fileId);
   if(!ft||ft.state==='done')return;
+
+  // ОПТИМИЗАЦИЯ: Если очередь дешифровки ещё работает, не паникуем!
+  // Это значит, что чанки прилетели по сети, но CPU ещё занят их обработкой.
+  const q = _decryptQueue.get(fileId);
+  if (q && q.queue.length > 0) {
+    console.log(`[File] Decrypt queue is busy (${q.queue.length} left), delaying retry for ${fileId}`);
+    if(ft._timeoutTimer) clearTimeout(ft._timeoutTimer);
+    ft._timeoutTimer = setTimeout(() => _retryDownload(fileId), 10000); // Ждём ещё 10с
+    return;
+  }
+
   if(ft.retries>=ft.maxRetries){
     toast('Не удалось загрузить файл после нескольких попыток','err');
     fileTransfers.delete(fileId);
     return;
   }
   ft.retries++;
-  // ИСПРАВЛЕНИЕ: НЕ сбрасываем chunks и received — продолжаем с того же места!
   ft.state='downloading';
-  const fromIndex=ft.received||0;  // Продолжаем с того места, где остановились
+  // ИСПРАВЛЕНИЕ: Мы должны продолжать с того чанка, который реально ПОЛУЧЕН,
+  // а не только дешифрован. Иначе мы перекачиваем то, что уже в очереди.
+  const fromIndex = ft._lastReceivedIndex !== undefined ? ft._lastReceivedIndex + 1 : (ft.received || 0);
+  
   console.warn(`[File] Retry ${ft.retries}/${ft.maxRetries} for ${fileId}, resuming from chunk ${fromIndex}/${ft.total}`);
-  // ОПТИМИЗАЦИЯ 3: если чанков на сервере ещё нет — ждём без toast
-  // (файл ещё загружается отправителем, получатель уже видит thumb)
   if(ft._chunksReady!==undefined&&ft._chunksReady<ft.total&&fromIndex===0){
-    // Чанков ещё нет — тихо ждём
     console.log(`[File] Waiting for chunks to appear on server (${ft._chunksReady}/${ft.total})`);
   } else {
     toast(`Продолжаю загрузку (${ft.retries}/${ft.maxRetries})…`,'warn');
   }
   if(!wsUp){
-    // Ждём переподключения
     const _wait=()=>{if(wsUp){wsSend({type:'fetch-file',fileId,fromIndex});}else setTimeout(_wait,1000);};
     setTimeout(_wait,1000);
   } else {
     wsSend({type:'fetch-file',fileId,fromIndex});
   }
-  ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId),60000);
+  if(ft._timeoutTimer) clearTimeout(ft._timeoutTimer);
+  ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId), 60000);
 }
 
 async function handleFileDataHeader(msg){
@@ -1024,30 +1034,37 @@ async function _processDecryptQueue(fileId){
   const q=_decryptQueue.get(fileId);
   if(!q||q.running)return;
   q.running=true;
+  
+  // ОПТИМИЗАЦИЯ: Обрабатываем чанки пачками по 5 штук параллельно
+  // Это значительно ускоряет процесс на многоядерных CPU и не дает UI зависнуть
   while(q.queue.length>0){
-    const msg=q.queue.shift();
-    const ft=fileTransfers.get(msg.fileId);
-    if(!ft){continue;}
-    try{
-      const encBuf=base64ToArrayBuffer(msg.data);
-      const decBuf=await decData(encBuf,ft.key);
-      ft.chunks[msg.index]=decBuf;
-      ft.received=(ft.received||0)+1;
-      
-      // Сбрасываем тайм-аут ожидания при получении любого чанка
-      if(ft._timeoutTimer){clearTimeout(ft._timeoutTimer);ft._timeoutTimer=null;}
-      // Если это не последний чанк файла, ставим новый тайм-аут
-      if(ft.received < ft.total){
-        ft._timeoutTimer=setTimeout(()=>_retryDownload(msg.fileId),60000);
+    const batch = q.queue.splice(0, 5);
+    await Promise.all(batch.map(async (msg) => {
+      const ft=fileTransfers.get(msg.fileId);
+      if(!ft) return;
+      try{
+        const encBuf=base64ToArrayBuffer(msg.data);
+        const decBuf=await decData(encBuf,ft.key);
+        ft.chunks[msg.index]=decBuf;
+        ft.received=(ft.received||0)+1;
+        
+        // Сбрасываем тайм-аут ожидания
+        if(ft._timeoutTimer){clearTimeout(ft._timeoutTimer);ft._timeoutTimer=null;}
+        if(ft.received < ft.total){
+          ft._timeoutTimer=setTimeout(()=>_retryDownload(msg.fileId),60000);
+        }
+      }catch(e){console.warn(`chunk decrypt error index=${msg.index}`,e);}
+    }));
+
+    const ft=fileTransfers.get(fileId);
+    if(ft) {
+      const pct=Math.round((ft.received/ft.total)*100);
+      updateSpinnerProgress(fileId,pct);
+      if(ft.received>=ft.total && ft.chunks.every(c=>c!==null)){
+        if(ft._timeoutTimer){clearTimeout(ft._timeoutTimer);ft._timeoutTimer=null;}
+        await assembleFile(fileId);
       }
-    }catch(e){console.warn(`chunk decrypt error index=${msg.index}`,e);}
-    const pct=Math.round((ft.received/ft.total)*100);
-    updateSpinnerProgress(msg.fileId,pct);
-    if(ft.received>=ft.total&&ft.chunks.every(c=>c!==null)){
-      if(ft._timeoutTimer){clearTimeout(ft._timeoutTimer);ft._timeoutTimer=null;}
-      await assembleFile(msg.fileId);
     }
-    // Yield UI thread
     await new Promise(r=>setTimeout(r,0));
   }
   q.running=false;
@@ -1059,6 +1076,11 @@ async function handleFileDataChunk(msg){
   const ft=fileTransfers.get(fileId);if(!ft)return;
   if(!ft.chunks)ft.chunks=new Array(total).fill(null);
   if(ft.chunks[index]!==null)return;
+  
+  // ФИКС: Запоминаем индекс последнего прилетевшего по сети чанка.
+  // Если случится Retry, мы продолжим с index + 1, даже если этот чанк ещё не дешифрован.
+  ft._lastReceivedIndex = Math.max(ft._lastReceivedIndex || 0, index);
+
   // Ставим в очередь — не await сразу чтобы WS мог принять следующий chunk
   if(!_decryptQueue.has(fileId))_decryptQueue.set(fileId,{queue:[],running:false});
   _decryptQueue.get(fileId).queue.push({fileId,index,total,data});
