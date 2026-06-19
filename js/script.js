@@ -956,7 +956,7 @@ async function _downloadVideoNote(fileId, senderId, videoMime){
     fileTransfers.set(fileId,{state:'downloading',chunks:[],total:0,received:0,key,senderId,retries:0,maxRetries:6,_isVideoNote:true,_vnMime:videoMime});
     wsSend({type:'fetch-file',fileId});
     const ft=fileTransfers.get(fileId);
-    ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId),60000);
+    ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId),300000);
   }catch(e){console.error('[vnote] download error',e);}
 }
 
@@ -967,7 +967,7 @@ async function downloadFileFromServer(fileId,senderId){
   wsSend({type:'fetch-file',fileId});
   // Таймаут: если за 60с не получили ни одного чанка — retry
   const ft=fileTransfers.get(fileId);
-  ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId),60000);
+  ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId),300000);
 }
 
 async function _retryDownload(fileId){
@@ -1008,7 +1008,7 @@ async function _retryDownload(fileId){
     wsSend({type:'fetch-file',fileId,fromIndex});
   }
   if(ft._timeoutTimer) clearTimeout(ft._timeoutTimer);
-  ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId), 60000);
+  ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId), 300000);
 }
 
 async function handleFileDataHeader(msg){
@@ -1025,7 +1025,7 @@ async function handleFileDataHeader(msg){
   
   // Сбрасываем тайм-аут при получении заголовка
   if(ft._timeoutTimer){clearTimeout(ft._timeoutTimer);ft._timeoutTimer=null;}
-  ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId),60000);
+  ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId),300000);
 }
 
 // Очередь декрипта чанков — обрабатываем по одному чтобы не блокировать UI
@@ -1051,7 +1051,7 @@ async function _processDecryptQueue(fileId){
         // Сбрасываем тайм-аут ожидания
         if(ft._timeoutTimer){clearTimeout(ft._timeoutTimer);ft._timeoutTimer=null;}
         if(ft.received < ft.total){
-          ft._timeoutTimer=setTimeout(()=>_retryDownload(msg.fileId),60000);
+          ft._timeoutTimer=setTimeout(()=>_retryDownload(msg.fileId),300000);
         }
       }catch(e){console.warn(`chunk decrypt error index=${msg.index}`,e);}
     }));
@@ -1345,7 +1345,7 @@ function _resumeAllFileTransfers(){
       if(ft._timeoutTimer){
         clearTimeout(ft._timeoutTimer);
       }
-      ft._timeoutTimer = setTimeout(()=>_retryDownload(fileId), 60000);
+      ft._timeoutTimer = setTimeout(()=>_retryDownload(fileId), 300000);
     }
   }
 }
