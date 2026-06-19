@@ -995,24 +995,19 @@ async function _retryDownload(fileId){
     return;
   }
 
-  if(ft.retries>=ft.maxRetries){
-    toast('Не удалось загрузить файл после нескольких попыток','err');
-    fileTransfers.delete(fileId);
-    return;
-  }
+  // Убираем ограничение на количество попыток — теперь бесконечно!
   ft.retries++;
   ft.state='downloading';
-  // ИСПРАВЛЕНИЕ: Мы должны продолжать с того чанка, который реально ПОЛУЧЕН,
-  // а не только дешифрован. Иначе мы перекачиваем то, что уже в очереди.
+  
   const fromIndex = ft._lastReceivedIndex !== undefined ? ft._lastReceivedIndex + 1 : (ft.received || 0);
   
-  console.warn(`[File] Retry ${ft.retries}/${ft.maxRetries} for ${fileId}, resuming from chunk ${fromIndex}/${ft.total}`);
+  console.warn(`[File] Retry ${ft.retries} for ${fileId}, resuming from chunk ${fromIndex}/${ft.total}`);
   if(ft._chunksReady!==undefined&&ft._chunksReady<ft.total&&fromIndex>=ft._chunksReady){
     // Мы скачали всё что было на сервере, просто ждём новых чанков
     console.log(`[File] Waiting for new chunks on server (${ft._chunksReady}/${ft.total})`);
-    toast(`Продолжаю скачивать (${ft.retries}/${ft.maxRetries})…`,'warn');
+    toast(`Продолжаю скачивать…`,'warn');
   } else {
-    toast(`Продолжаю загрузку (${ft.retries}/${ft.maxRetries})…`,'warn');
+    toast(`Продолжаю загрузку…`,'warn');
   }
   if(!wsUp){
     const _wait=()=>{if(wsUp){wsSend({type:'fetch-file',fileId,fromIndex});}else setTimeout(_wait,1000);};
