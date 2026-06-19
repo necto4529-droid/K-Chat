@@ -37,7 +37,7 @@ function payloadToB64(buf){return arrayBufferToBase64(buf instanceof ArrayBuffer
 function readFileAsArrayBuffer(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsArrayBuffer(file);});}
 // ИСПРАВЛЕНИЕ 2: читаем файл сразу как постоянный data: URL (не blob:)
 function readFileAsDataURL(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(file);});}
-function getFileIcon(mt){mt=mt||'';if(mt.startsWith('video/'))return'🎬';if(mt.startsWith('audio/'))return'🎵';if(mt.includes('pdf'))return'📄';if(mt.includes('zip')||mt.includes('rar')||mt.includes('7z'))return'🗜️';if(mt.includes('text')||mt.includes('doc'))return'📝';return'📁';}
+function getFileIcon(mt){mt=mt||'';if(mt.startsWith('video/'))return'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" /> <path d="M14 2v5a1 1 0 0 0 1 1h5" /> <path d="M15.033 13.44a.647.647 0 0 1 0 1.12l-4.065 2.352a.645.645 0 0 1-.968-.56v-4.704a.645.645 0 0 1 .967-.56z" /> </svg>';if(mt.startsWith('audio/'))return'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M4 6.835V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.706.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2h-.343" /> <path d="M14 2v5a1 1 0 0 0 1 1h5" /> <path d="M2 19a2 2 0 0 1 4 0v1a2 2 0 0 1-4 0v-4a6 6 0 0 1 12 0v4a2 2 0 0 1-4 0v-1a2 2 0 0 1 4 0" /> </svg>';if(mt.includes('pdf'))return'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" /> <path d="M14 2v5a1 1 0 0 0 1 1h5" /> <path d="M10 9H8" /> <path d="M16 13H8" /> <path d="M16 17H8" /> </svg>';if(mt.includes('zip')||mt.includes('rar')||mt.includes('7z'))return'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <rect width="20" height="5" x="2" y="3" rx="1" /> <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" /> <path d="M10 12h4" /> </svg>';if(mt.includes('text')||mt.includes('doc'))return'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" /> <path d="M14 2v5a1 1 0 0 0 1 1h5" /> <path d="M10 9H8" /> <path d="M16 13H8" /> <path d="M16 17H8" /> </svg>';return'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" /> </svg>';}
 function formatSize(bytes){if(bytes<1024)return bytes+' B';if(bytes<1048576)return(bytes/1024).toFixed(1)+' KB';if(bytes<1073741824)return(bytes/1048576).toFixed(1)+' MB';return(bytes/1073741824).toFixed(2)+' GB';}
 function downloadFile(dataUrl,fileName){const a=document.createElement('a');a.href=dataUrl;a.download=fileName;document.body.appendChild(a);a.click();document.body.removeChild(a);}
 
@@ -144,10 +144,10 @@ async function saveToGallery(dataUrlOrBlobId,mimeType,fileName,isBlob){
           // "Downloads Folder" файл сохранится в Загрузки и появится в галерее
           // после индексации медиа-сканером.
           const ok=await medianDownload(blob,name,'file');
-          if(ok){toast('Видео сохранено 📹');return;}
+          if(ok){toast('Видео сохранено');return;}
         }else{
           const ok=await medianDownload(blob,name,'image');
-          if(ok){toast('Изображение сохранено 🖼️');return;}
+          if(ok){toast('Изображение сохранено');return;}
         }
       }catch(e){
         console.error('Median save error',e);
@@ -159,7 +159,7 @@ async function saveToGallery(dataUrlOrBlobId,mimeType,fileName,isBlob){
     if(navigator.canShare&&navigator.canShare({files:[new File([blob],name,{type:blob.type})]})){
       try{
         await navigator.share({files:[new File([blob],name,{type:blob.type})],title:name});
-        toast(isVideo?'Видео сохранено 📹':'Изображение сохранено 🖼️');
+        toast(isVideo?'Видео сохранено':'Изображение сохранено');
         return;
       }catch(e){
         if(e.name==='AbortError')return; // пользователь отменил
@@ -171,7 +171,7 @@ async function saveToGallery(dataUrlOrBlobId,mimeType,fileName,isBlob){
     const a=document.createElement('a');a.href=url;a.download=name;
     document.body.appendChild(a);a.click();document.body.removeChild(a);
     setTimeout(()=>URL.revokeObjectURL(url),5000);
-    toast(isVideo?'Видео сохранено 📹':'Изображение сохранено 🖼️');
+    toast(isVideo?'Видео сохранено':'Изображение сохранено');
   }catch(e){
     console.error('saveToGallery error',e);
     toast('Ошибка сохранения','err');
@@ -196,7 +196,7 @@ async function saveToFiles(dataUrlOrBlobId,mimeType,fileName,isBlob){
     if(IS_MEDIAN){
       try{
         const ok=await medianDownload(blob,name,'file');
-        if(ok){toast('Файл сохранён 💾');return;}
+        if(ok){toast('Файл сохранён');return;}
       }catch(e){
         console.error('Median save error',e);
         // падаем дальше на универсальные фоллбэки
@@ -211,7 +211,7 @@ async function saveToFiles(dataUrlOrBlobId,mimeType,fileName,isBlob){
         const writable=await fh.createWritable();
         await writable.write(blob);
         await writable.close();
-        toast('Файл сохранён 💾');
+        toast('Файл сохранён');
         return;
       }catch(e){
         if(e.name==='AbortError')return;
@@ -223,7 +223,7 @@ async function saveToFiles(dataUrlOrBlobId,mimeType,fileName,isBlob){
     const a=document.createElement('a');a.href=url;a.download=name;
     document.body.appendChild(a);a.click();document.body.removeChild(a);
     setTimeout(()=>URL.revokeObjectURL(url),5000);
-    toast('Файл сохранён 💾');
+    toast('Файл сохранён');
   }catch(e){
     console.error('saveToFiles error',e);
     toast('Ошибка сохранения','err');
@@ -559,7 +559,7 @@ function warmKey(pid){getKey(pid).then(k=>{if(!k){const pwd=localStorage.getItem
 async function encData(data,key){const iv=crypto.getRandomValues(new Uint8Array(12));const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,data);const out=new Uint8Array(12+ct.byteLength);out.set(iv);out.set(new Uint8Array(ct),12);return out.buffer;}
 async function decData(buf,key){const d=new Uint8Array(buf);return crypto.subtle.decrypt({name:'AES-GCM',iv:d.slice(0,12)},key,d.slice(12));}
 let _kmResolve=null,_kmReject=null,_kmPid=null;
-function promptKey(pid){return new Promise((res,rej)=>{_kmResolve=res;_kmReject=rej;_kmPid=pid;loadChats().then(chats=>{const chat=chats.find(c=>c.peerId===pid)||{};$('keyModalTitle').textContent=`🔑 Ключ для «${chat.peerName||pid}»`;});$('keyModalPwd').value='';$('keySpinner').style.display='none';$('keyModalBtn').disabled=false;$('keyModalBtn').textContent='Продолжить';$('keyModalOverlay').classList.add('open');setTimeout(()=>$('keyModalPwd').focus(),300);});}
+function promptKey(pid){return new Promise((res,rej)=>{_kmResolve=res;_kmReject=rej;_kmPid=pid;loadChats().then(chats=>{const chat=chats.find(c=>c.peerId===pid)||{};$('keyModalTitle').innerHTML=`<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4" /> <path d="m21 2-9.6 9.6" /> <circle cx="7.5" cy="15.5" r="5.5" /> </svg> Ключ для «${chat.peerName||pid}»`;});$('keyModalPwd').value='';$('keySpinner').style.display='none';$('keyModalBtn').disabled=false;$('keyModalBtn').textContent='Продолжить';$('keyModalOverlay').classList.add('open');setTimeout(()=>$('keyModalPwd').focus(),300);});}
 $('keyModalPwd')?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submitKeyModal();}});
 window.submitKeyModal=async function(){const pwd=$('keyModalPwd').value;if(pwd.length<16){toast('Пароль должен быть не менее 16 символов','err');return;}$('keySpinner').style.display='flex';$('keyModalBtn').disabled=true;$('keyModalBtn').textContent='Вычисление…';try{const key=await deriveKey(pwd,_kmPid);keyCache[_kmPid]=key;if($('keyModalRemember').checked){localStorage.setItem(`bc_pwd_${_kmPid}`,pwd);await persistKey(_kmPid,key);}else sessionStorage.setItem(`bc_pwd_${_kmPid}`,pwd);$('keyModalOverlay').classList.remove('open');if(_kmResolve){_kmResolve(key);_kmResolve=null;}updateSendBtn();}catch(e){toast('Ошибка вычисления ключа','err');$('keySpinner').style.display='none';$('keyModalBtn').disabled=false;$('keyModalBtn').textContent='Продолжить';}};
 window.cancelKeyModal=function(){$('keyModalOverlay').classList.remove('open');if(_kmReject){_kmReject(new Error('cancelled'));_kmReject=null;}};
@@ -754,7 +754,7 @@ async function finalizeUploadUI(fileId,pid){
   if(ui){
     ui.fillEl.style.strokeDashoffset=0;
     const iconEl=ui.spinnerEl.querySelector('.upload-spinner-icon,.file-upload-spinner-icon');
-    if(iconEl){iconEl.textContent='✓';iconEl.style.color='var(--g)';}
+    if(iconEl){iconEl.innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M20 6 9 17l-5-5\" /> </svg>';iconEl.style.color='var(--g)';}
     ui.spinnerEl.classList.add('spinner-done');
     await new Promise(r=>setTimeout(r,350));
     uploadUIs.delete(fileId);
@@ -824,7 +824,7 @@ async function sendFileToServer(fileInfo,caption){
     file:{name:fileInfo.name,type:fileInfo.type,size:fileInfo.size,blobId:fileId}
   };
   await upsertMsg(activePid,m);
-  await updateChat(activePid,{lastMsg:`📁 ${fileInfo.name}`,lastMsgTime:ts});
+  await updateChat(activePid,{lastMsg:`${fileInfo.name}`,lastMsgTime:ts});
   appendOrReloadMsg(activePid,m);
 
   // Сигнал "отправляет файл" + heartbeat каждые 3с
@@ -920,14 +920,14 @@ async function handleFileAvailable(msg){
       _vnSize:size,_vnTotalChunks:totalChunks,
     };
     await upsertMsg(senderId,vnMsg);
-    await updateChat(senderId,{lastMsg:'📹 Видео-кружок',lastMsgTime:new Date(vnMsg.time).getTime()});
+    await updateChat(senderId,{lastMsg:'Видео-кружок',lastMsgTime:new Date(vnMsg.time).getTime()});
     if(currentScreen==='scr-chat'&&activePid===senderId){
       const existingRow=document.querySelector(`.msg-row[data-msgid="${fileId}"]`);
       if(!existingRow)appendOrReloadMsg(senderId,vnMsg);
     }else{
       const chat=(await loadChats()).find(c=>c.peerId===senderId);
       await updateChat(senderId,{unread:(chat?.unread||0)+1});
-      toast(`📹 ${chat?.peerName||senderId}: Видео-кружок`);
+      toast(`${chat?.peerName||senderId}: Видео-кружок`);
     }
     return;
   }
@@ -936,14 +936,14 @@ async function handleFileAvailable(msg){
   // ОПТИМИЗАЦИЯ 3: chunksReady — сколько чанков уже готово (может быть не все)
   const placeholderMsg={id:fileId,text:caption||'',type:'recv',time:new Date(ts||Date.now()).toISOString(),reactions:{},edited:false,replyTo:null,delivered:true,forwarded:false,fileAvailable:{name,size,mimeType,totalChunks,senderId,thumb:thumb||'',chunksReady:chunksReady||0}};
   await upsertMsg(senderId,placeholderMsg);
-  await updateChat(senderId,{lastMsg:`📎 ${name}`,lastMsgTime:new Date(placeholderMsg.time).getTime()});
+  await updateChat(senderId,{lastMsg:`${name}`,lastMsgTime:new Date(placeholderMsg.time).getTime()});
   if(currentScreen==='scr-chat'&&activePid===senderId){
     const existingRow=document.querySelector(`.msg-row[data-msgid="${fileId}"]`);
     if(!existingRow)appendOrReloadMsg(senderId,placeholderMsg);
   }else{
     const chat=(await loadChats()).find(c=>c.peerId===senderId);
     await updateChat(senderId,{unread:(chat?.unread||0)+1});
-    toast(`📎 ${chat?.peerName||senderId}: ${name}`);
+    toast(`${chat?.peerName||senderId}: ${name}`);
   }
 }
 
@@ -1151,11 +1151,12 @@ async function assembleFile(fileId){
         videoBlobId:vnBlobId,
         videoMime:vnMime,
         _vnPending:false,
+        _readReceiptSent:true,
       };
       // Восстанавливаем durSec из caption
       try{const meta=JSON.parse(ft.caption||'{}');if(meta.durSec)finalMsg.voiceDuration=meta.durSec;}catch(e){}
       await upsertMsg(ft.senderId,finalMsg);
-      await updateChat(ft.senderId,{lastMsg:'📹 Видео-кружок',lastMsgTime:new Date(finalMsg.time).getTime()});
+      await updateChat(ft.senderId,{lastMsg:'Видео-кружок',lastMsgTime:new Date(finalMsg.time).getTime()});
       if(currentScreen==='scr-chat'&&activePid===ft.senderId){
         const existingRow=document.querySelector(`.msg-row[data-msgid="${fileId}"]`);
         const renderMsg={...finalMsg,videoData:vnUrl};
@@ -1187,9 +1188,9 @@ async function assembleFile(fileId){
       fileTransfers.delete(fileId);
       return;
     }
-    const finalMsg={id:fileId,text:ft.caption||'',type:'recv',time:new Date(ft.ts||Date.now()).toISOString(),reactions:{},edited:false,replyTo:null,delivered:true,forwarded:false,fileAvailable:null,file:{name:ft.name,type:ft.mimeType,size:ft.size,blobId:fileId}};
+    const finalMsg={id:fileId,text:ft.caption||'',type:'recv',time:new Date(ft.ts||Date.now()).toISOString(),reactions:{},edited:false,replyTo:null,delivered:true,forwarded:false,fileAvailable:null,_readReceiptSent:true,file:{name:ft.name,type:ft.mimeType,size:ft.size,blobId:fileId}};
     await upsertMsg(ft.senderId,finalMsg);
-    await updateChat(ft.senderId,{lastMsg:`📁 ${ft.name}`,lastMsgTime:new Date(finalMsg.time).getTime()});
+    await updateChat(ft.senderId,{lastMsg:`${ft.name}`,lastMsgTime:new Date(finalMsg.time).getTime()});
     const renderMsg={...finalMsg,file:{...finalMsg.file,_tempUrl:_blobUrl}};
     if(currentScreen==='scr-chat'&&activePid===ft.senderId){
       const existingRow=document.querySelector(`.msg-row[data-msgid="${fileId}"]`);
@@ -1199,7 +1200,7 @@ async function assembleFile(fileId){
     // ИСПРАВЛЕНИЕ: Отправляем ack-file ТОЛЬКО ПОСЛЕ сохранения в IDB
     wsSend({type:'ack-file',fileId});
     fileTransfers.delete(fileId);
-    toast(`${ft.name} загружен ✓`);
+    toast(`${ft.name} загружен`);
     const _fdKey=await getKey(ft.senderId).catch(()=>null);
     if(_fdKey&&wsUp&&ft.senderId!==MY_ID){
       try{
@@ -1227,7 +1228,7 @@ function updateSpinnerProgress(fileId, pct) {
     const fill = spinner.querySelector('.tg-spinner-fill');
     if (fill) fill.style.strokeDashoffset = Math.max(0, 122 - 122 * pct / 100);
     const icon = spinner.querySelector('.tg-spinner-icon');
-    if (icon && pct >= 100) { icon.textContent = '✓'; icon.style.color = 'var(--g)'; }
+    if (icon && pct >= 100) { icon.innerHTML = '<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M20 6 9 17l-5-5\" /> </svg>'; icon.style.color = 'var(--g)'; }
   }
   // Видео-кружок: спиннер по центру кружка
   const vnSpinner = document.querySelector(`.vn-dl-spinner[data-fileid="${fileId}"]`);
@@ -1235,7 +1236,7 @@ function updateSpinnerProgress(fileId, pct) {
     const fill = vnSpinner.querySelector('.vn-dl-spinner-fill');
     if (fill) fill.style.strokeDashoffset = Math.max(0, 122 - 122 * pct / 100);
     const icon = vnSpinner.querySelector('.vn-dl-spinner-icon');
-    if (icon && pct >= 100) { icon.textContent = '✓'; icon.style.color = 'var(--g)'; }
+    if (icon && pct >= 100) { icon.innerHTML = '<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M20 6 9 17l-5-5\" /> </svg>'; icon.style.color = 'var(--g)'; }
   }
 }
 function resetSpinnerToDownload(spinner,fileId,fromId){
@@ -1244,12 +1245,12 @@ function resetSpinnerToDownload(spinner,fileId,fromId){
   const isNewStyle = spinner.closest('.tg-file-wrap,.tg-audio-pending-wrap');
   if(isNewStyle){
     iconWrap.className='tg-file-icon tg-file-icon-dl';
-    iconWrap.innerHTML='⬇';
+    iconWrap.innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M12 15V3\" /> <path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\" /> <path d=\"m7 10 5 5 5-5\" /> </svg>';
   } else {
     iconWrap.className='file-icon-wrap file-icon-download';
     const arrow=document.createElement('div');
     arrow.className='file-dl-arrow';
-    arrow.textContent='⬇️';
+    arrow.innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M12 15V3\" /> <path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\" /> <path d=\"m7 10 5 5 5-5\" /> </svg>';
     iconWrap.appendChild(arrow);
   }
   iconWrap.onclick=e=>{e.stopPropagation();startDownloadUI(iconWrap,fileId,fromId);};
@@ -1259,7 +1260,7 @@ function startDownloadUI(iconWrap,fileId,fromId){
   const spinner=document.createElement('div');
   spinner.className='tg-spinner';
   spinner.dataset.fileid=fileId;
-  spinner.innerHTML=`<svg viewBox="0 0 42 42"><circle class="tg-spinner-track" cx="21" cy="21" r="19"/><circle class="tg-spinner-fill" cx="21" cy="21" r="19" stroke-dasharray="122" stroke-dashoffset="122"/></svg><div class="tg-spinner-icon">⬇</div>`;
+  spinner.innerHTML=`<svg viewBox="0 0 42 42"><circle class="tg-spinner-track" cx="21" cy="21" r="19"/><circle class="tg-spinner-fill" cx="21" cy="21" r="19" stroke-dasharray="122" stroke-dashoffset="122"/></svg><div class="tg-spinner-icon"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M12 15V3" /> <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /> <path d="m7 10 5 5 5-5" /> </svg></div>`;
   const card=iconWrap.closest('.tg-file-wrap,.tg-audio-pending-wrap,.file-card');
   iconWrap.replaceWith(spinner);
   if(card){const sizeEl=card.querySelector('.tg-file-size,.file-size');if(sizeEl)sizeEl.textContent='Загрузка…';}
@@ -1286,26 +1287,33 @@ async function handleFileRef(from,env){
   }
   const placeholderMsg={id:fileId,text:text||'',type:'recv',time:new Date(ts||Date.now()).toISOString(),reactions:{},edited:false,replyTo:rt||null,delivered:true,forwarded:false,fileAvailable:{name:finfo.name,size:finfo.size,mimeType:finfo.mimeType,totalChunks:finfo.totalChunks,senderId:from}};
   await upsertMsg(from,placeholderMsg);
-  await updateChat(from,{lastMsg:`📎 ${finfo.name}`,lastMsgTime:new Date(placeholderMsg.time).getTime()});
+  await updateChat(from,{lastMsg:`${finfo.name}`,lastMsgTime:new Date(placeholderMsg.time).getTime()});
   if(currentScreen==='scr-chat'&&activePid===from){
     const existingRow=document.querySelector(`.msg-row[data-msgid="${fileId}"]`);
     if(!existingRow)appendOrReloadMsg(from,placeholderMsg);
   }else{
     const chat=(await loadChats()).find(c=>c.peerId===from);
     await updateChat(from,{unread:(chat?.unread||0)+1,marked:false});
-    toast(`📎 ${chat?.peerName||from}: ${finfo.name}`);
+    toast(`${chat?.peerName||from}: ${finfo.name}`);
   }
 }
 
 // ── WS ──
 async function registerPushNotifications(){if(!window.OneSignal)return;try{const granted=await OneSignal.Notifications.requestPermission();if(granted){const pid=await OneSignal.User.getOnesignalId();if(pid)wsSend({type:'register-push',playerId:pid});}}catch(e){}}
 
-async function markDelivered(msgId,peerId){
+async function markDelivered(msgId,peerId,isExplicitFileDelivered){
   if(!peerId) return;
   await withChatLock(peerId, async()=>{
     const msgs = await loadMsgs(peerId);
     const m = msgs.find(m=>m.id===msgId);
     if(m && !m.delivered){
+      // ИСПРАВЛЕНИЕ: Файлы и видео-кружки помечаются доставленными (✔✔)
+      // ТОЛЬКО через явный сигнал 'file-delivered' от получателя.
+      // Игнорируем для них системный 'msg-delivered' от сервера (который
+      // срабатывает сразу при попадании сообщения в очередь сервера).
+      const isAttachment = m.file || m.videoNote || m.media;
+      if(isAttachment && !isExplicitFileDelivered) return;
+
       m.delivered = true;
       await saveMsgs(peerId, msgs);
     }
@@ -1316,7 +1324,7 @@ async function markDelivered(msgId,peerId){
     const row = document.querySelector(`.msg-row[data-msgid="${msgId}"]`);
     if(row){
       const tk = row.querySelector('.msg-ticks');
-      if(tk){ tk.textContent='✔✔'; tk.className='msg-ticks double'; }
+      if(tk){ tk.innerHTML='<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M18 6 7 17l-5-5" /> <path d="m22 10-7.5 7.5L13 16" /> </svg>'; tk.className='msg-ticks double'; }
     }
   }
   // Иначе — ✔✔ появится когда отправитель откроет чат (через syncDeliveredStatuses)
@@ -1448,7 +1456,7 @@ function sendVoiceListened(targetPid, voiceMsgId){
     try{lsSet(VOICE_LISTENED_QUEUE_KEY, filtered);}catch(e){}
   }
 }
-async function syncDeliveredStatuses(){if(!activePid)return;const msgs=await loadMsgs(activePid);for(const m of msgs){if(m.type==='sent'&&m.delivered){const row=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);if(row){const tk=row.querySelector('.msg-ticks');if(tk&&tk.textContent!=='✔✔'){tk.textContent='✔✔';tk.className='msg-ticks double';}}}if(m.type==='sent'&&m.voice&&m.voiceListened){const row=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);if(row){const dot=row.querySelector('.voice-unread-dot');if(dot)dot.classList.add('hidden');}}if(m.type==='sent'&&m.videoNote&&m.voiceListened){const row=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);if(row){const dot=row.querySelector('.vn-unread-dot');if(dot)dot.classList.add('hidden');const badge=row.querySelector('.vn-circle-unread-badge');if(badge)badge.classList.add('hidden');}}if(m.type==='recv'&&m.videoNote&&m.voiceListened){const row=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);if(row){const dot=row.querySelector('.vn-unread-dot');if(dot)dot.classList.add('hidden');const badge=row.querySelector('.vn-circle-unread-badge');if(badge)badge.classList.add('hidden');}}}}
+async function syncDeliveredStatuses(){if(!activePid)return;const msgs=await loadMsgs(activePid);for(const m of msgs){if(m.type==='sent'&&m.delivered){const row=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);if(row){const tk=row.querySelector('.msg-ticks');if(tk&&tk.innerHTML!=='<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M18 6 7 17l-5-5" /> <path d="m22 10-7.5 7.5L13 16" /> </svg>'){tk.innerHTML='<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M18 6 7 17l-5-5" /> <path d="m22 10-7.5 7.5L13 16" /> </svg>';tk.className='msg-ticks double';}}}if(m.type==='sent'&&m.voice&&m.voiceListened){const row=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);if(row){const dot=row.querySelector('.voice-unread-dot');if(dot)dot.classList.add('hidden');}}if(m.type==='sent'&&m.videoNote&&m.voiceListened){const row=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);if(row){const dot=row.querySelector('.vn-unread-dot');if(dot)dot.classList.add('hidden');const badge=row.querySelector('.vn-circle-unread-badge');if(badge)badge.classList.add('hidden');}}if(m.type==='recv'&&m.videoNote&&m.voiceListened){const row=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);if(row){const dot=row.querySelector('.vn-unread-dot');if(dot)dot.classList.add('hidden');const badge=row.querySelector('.vn-circle-unread-badge');if(badge)badge.classList.add('hidden');}}}}
 
 const online={};
 
@@ -1539,7 +1547,7 @@ async function onWS(msg){
       if(fdFileId && fdPeerId){
         _fileSentToPeer.delete(fdFileId); // чистим Map
         try{const _sftp=lsGet('_fileSentToPeer',{});delete _sftp[fdFileId];lsSet('_fileSentToPeer',_sftp);}catch(e){}
-        await markDelivered(fdFileId, fdPeerId);
+        await markDelivered(fdFileId, fdPeerId, true);
       }
       if(eventId) wsSend({type:'ack-event',eventId});
       break;
@@ -1566,7 +1574,7 @@ async function onWS(msg){
       getKey(from).then(k=>{if(k)drainPending(from,k).catch(()=>{});}).catch(()=>{});
       let key=keyCache[from]||await loadPersistedKey(from);
       if(!key){const pwd=localStorage.getItem(`bc_pwd_${from}`)||sessionStorage.getItem(`bc_pwd_${from}`);if(pwd){try{key=await deriveKey(pwd,from);keyCache[from]=key;await persistKey(from,key);}catch(e){}}}
-      if(!key){const pending=lsGet(`bc_pending_${from}`,[]);if(!pending.some(p=>p.msgId===msg.msgId))pending.push({msgId:msg.msgId,payload:msg.payload,ts:Date.now()});lsSet(`bc_pending_${from}`,pending);const ct=loadContacts().find(c=>c.id===from);await getOrCreateChat(from,ct?.name,ct?.avatar);const chat=(await loadChats()).find(c=>c.peerId===from);await updateChat(from,{unread:(chat?.unread||0)+1,lastMsg:'🔒 Зашифровано',lastMsgTime:Date.now()});toast(`💬 ${ct?.name||from}: (зашифровано)`);break;}
+      if(!key){const pending=lsGet(`bc_pending_${from}`,[]);if(!pending.some(p=>p.msgId===msg.msgId))pending.push({msgId:msg.msgId,payload:msg.payload,ts:Date.now()});lsSet(`bc_pending_${from}`,pending);const ct=loadContacts().find(c=>c.id===from);await getOrCreateChat(from,ct?.name,ct?.avatar);const chat=(await loadChats()).find(c=>c.peerId===from);await updateChat(from,{unread:(chat?.unread||0)+1,lastMsg:'Зашифровано',lastMsgTime:Date.now()});toast(`${ct?.name||from}: (зашифровано)`);break;}
       try{const buf=typeof msg.payload==='string'?base64ToArrayBuffer(msg.payload):new Uint8Array(msg.payload).buffer;const pt=DEC.decode(await decData(buf,key));await handleEnvelope(from,JSON.parse(pt));}catch(e){console.warn('decrypt fail',e);}
       break;
     }
@@ -1593,14 +1601,14 @@ async function handleEnvelope(from,env){
       return;
     }
     await upsertMsg(from,m);
-    await updateChat(from,{lastMsg:'🗿 Стикер',lastMsgTime:new Date(m.time).getTime()});
+    await updateChat(from,{lastMsg:'Стикер',lastMsgTime:new Date(m.time).getTime()});
     if(currentScreen==='scr-chat'&&activePid===from){
       appendOrReloadMsg(from,m);
       if(from===activePid){stopPeerActivity();updateBar();}
     }else{
       const chat=(await loadChats()).find(ch=>ch.peerId===from);
       await updateChat(from,{unread:(chat?.unread||0)+1,marked:false});
-      toast('🗿 '+(chat?.peerName||from)+': Стикер');
+      toast((chat?.peerName||from)+': Стикер');
     }
     return;
   }
@@ -1682,13 +1690,13 @@ async function handleEnvelope(from,env){
       return;
     }
     await upsertMsg(from,m);
-    const lastPreview=env.type==='voice'?'🎙 Голосовое':env.type==='video_note'?'📹 Видео-кружок':env.type==='media'?'📷 Фото':(env.text||'').slice(0,28);
+    const lastPreview=env.type==='voice'?'Голосовое':env.type==='video_note'?'Видео-кружок':env.type==='media'?'Фото':(env.text||'').slice(0,28);
     await updateChat(from,{lastMsg:lastPreview,lastMsgTime:new Date(m.time).getTime()});
     if(currentScreen==='scr-chat'&&activePid===from){
       appendOrReloadMsg(from,m);
       // Сбрасываем статус активности при получении реального сообщения
       if(from===activePid){stopPeerActivity();updateBar();}
-    }else{const chat=(await loadChats()).find(c=>c.peerId===from);await updateChat(from,{unread:(chat?.unread||0)+1,marked:false});toast(`💬 ${chat?.peerName||from}: ${lastPreview}`);}
+    }else{const chat=(await loadChats()).find(c=>c.peerId===from);await updateChat(from,{unread:(chat?.unread||0)+1,marked:false});toast(`${chat?.peerName||from}: ${lastPreview}`);}
   }else if(env.type==='file-ref'){
     if(from===activePid&&currentScreen==='scr-chat'){stopPeerActivity();updateBar();}
     await handleFileRef(from,env);
@@ -1731,13 +1739,13 @@ async function handleEnvelope(from,env){
         if(inputBar)inputBar.classList.add('blocked-mode');
         $('sendBtn').disabled=true;
         const banner=$('blockedBanner');
-        if(banner){banner.textContent='🚫 Вы заблокированы этим контактом';banner.classList.add('visible');}
+        if(banner){banner.innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"M4.929 4.929 19.07 19.071\" /> </svg> Вы заблокированы этим контактом';banner.classList.add('visible');}
       }else{
         // Нас разблокировали — восстанавливаем
         const inputBar=$('chatInputBar');
         if(inputBar)inputBar.classList.remove('blocked-mode');
         const banner=$('blockedBanner');
-        if(banner){banner.textContent='🚫 Контакт заблокирован — отправка сообщений недоступна';banner.classList.remove('visible');}
+        if(banner){banner.innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"M4.929 4.929 19.07 19.071\" /> </svg> Контакт заблокирован — отправка сообщений недоступна';banner.classList.remove('visible');}
         updateBar();
         updateSendBtn();
       }
@@ -1752,13 +1760,13 @@ async function handleEnvelope(from,env){
   }else if(env.type==='file-delivered'){
     // Получатель скачал наш файл — ставим ✔✔
     if(env.fileId){
-      await markDelivered(env.fileId, from);
+      await markDelivered(env.fileId, from, true);
     }
   }else if(env.type==='chat-read'){
     // Получатель открыл чат и прочитал наши сообщения → ставим ✔✔
     if(Array.isArray(env.msgIds) && env.msgIds.length){
       for(const mid of env.msgIds){
-        await markDelivered(mid, from);
+        await markDelivered(mid, from, true);
       }
     }
   }else if(env.type==='pin-msg'){
@@ -1795,8 +1803,10 @@ async function _sendChatReadReceipt(pid){
   const msgs = await loadMsgs(pid);
   // Отправляем один envelope со списком msgId входящих сообщений
   // Собеседник пометит их как delivered (✔✔ у него)
+  // ИСПРАВЛЕНИЕ: исключаем файлы и видео-кружки, которые ещё не скачаны (fileAvailable / _vnPending).
+  // Для них ✔✔ ставится только через file-delivered — после реального скачивания файла получателем.
   const unreadIds = msgs
-    .filter(m => m.type==='recv' && !m._readReceiptSent)
+    .filter(m => m.type==='recv' && !m._readReceiptSent && !m.fileAvailable && !(m.videoNote && m._vnPending))
     .map(m => m.id);
   if(!unreadIds.length) return;
   try{
@@ -1958,7 +1968,7 @@ function updateSendBtn(){if(!activePid){$('sendBtn').disabled=true;return;}if(is
 async function getOrCreateChat(pid,peerName,avatar){let chats=await loadChats();let c=chats.find(c=>c.peerId===pid);if(!c){c={peerId:pid,peerName:peerName||(pid===MY_ID?'⭐ Избранное':pid),avatar:avatar||(pid===MY_ID?'⭐':'👤'),lastMsg:null,lastMsgTime:null,unread:0};chats.push(c);}else{if(peerName)c.peerName=peerName;if(avatar)c.avatar=avatar;}await saveChats(chats);return c;}
 async function updateChat(pid,upd){let c=await loadChats();const i=c.findIndex(x=>x.peerId===pid);if(i!==-1){c[i]={...c[i],...upd};await saveChats(c);}renderChatList();}
 async function deleteChatData(pid){await saveChats((await loadChats()).filter(c=>c.peerId!==pid));renderChatList();}
-window.clearAllData=()=>{ showConfirm({icon:'🧹',title:'Стереть все данные?',text:'Все чаты, история, контакты и ключи шифрования будут удалены навсегда.',yesLabel:'🧹 Да, стереть всё',onYes:()=>{_chatsCache=null;localStorage.clear();indexedDB.deleteDatabase(DB_NAME);setTimeout(()=>location.reload(),200);}});};
+window.clearAllData=()=>{ showConfirm({icon:'<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M21 21H8a2 2 0 0 1-1.42-.587l-3.994-3.999a2 2 0 0 1 0-2.828l10-10a2 2 0 0 1 2.829 0l5.999 6a2 2 0 0 1 0 2.828L12.834 21\" /> <path d=\"m5.082 11.09 8.828 8.828\" /> </svg>',title:'Стереть все данные?',text:'Все чаты, история, контакты и ключи шифрования будут удалены навсегда.',yesLabel:'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M21 21H8a2 2 0 0 1-1.42-.587l-3.994-3.999a2 2 0 0 1 0-2.828l10-10a2 2 0 0 1 2.829 0l5.999 6a2 2 0 0 1 0 2.828L12.834 21" /> <path d="m5.082 11.09 8.828 8.828" /> </svg> Да, стереть всё',onYes:()=>{_chatsCache=null;localStorage.clear();indexedDB.deleteDatabase(DB_NAME);setTimeout(()=>location.reload(),200);}});};
 
 // ── TABS / FAB ──
 let currentTab='chats';
@@ -2088,13 +2098,13 @@ function _pluralMsgWord(n){
   return 'сообщений';
 }
 
-function showConfirm({icon='⚠️', title, text, yesLabel='Да', noLabel='Отмена', onYes}){
+function showConfirm({icon='<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /> <path d="M12 9v4" /> <path d="M12 17h.01" /> </svg>', title, text, yesLabel='Да', noLabel='Отмена', onYes}){
   const overlay = $('confirmOverlay');
-  $('confirmIcon').textContent = icon;
+  $('confirmIcon').innerHTML = icon;
   $('confirmTitle').textContent = title;
   $('confirmText').textContent = text;
-  $('confirmYesBtn').textContent = yesLabel;
-  $('confirmNoBtn').textContent = noLabel;
+  $('confirmYesBtn').innerHTML = yesLabel;
+  $('confirmNoBtn').innerHTML = noLabel;
 
   const close = () => overlay.classList.remove('open');
 
@@ -2122,7 +2132,7 @@ function openSettingsModal(){
 
         <!-- Header -->
         <div class="settings-hdr">
-          <div class="settings-hdr-icon">⚙️</div>
+          <div class="settings-hdr-icon"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" /> <circle cx="12" cy="12" r="3" /> </svg></div>
           <span class="settings-hdr-title">Настройки</span>
         </div>
 
@@ -2132,7 +2142,7 @@ function openSettingsModal(){
           <div class="settings-card">
             <div class="settings-id-row">
               <span class="settings-id-val" id="settingsMyId">${MY_ID}</span>
-              <div class="settings-copy-pill" id="settingsCopyPill">📋 Копировать</div>
+              <div class="settings-copy-pill" id="settingsCopyPill"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <rect width="8" height="4" x="8" y="2" rx="1" ry="1" /> <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" /> </svg> Копировать</div>
             </div>
           </div>
         </div>
@@ -2150,7 +2160,7 @@ function openSettingsModal(){
           <div class="settings-sec-label">Конфиденциальность</div>
           <div class="settings-card">
             <div class="settings-tog-row" id="lastSeenRow">
-              <span class="settings-tog-icon">🕐</span>
+              <span class="settings-tog-icon"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <circle cx="12" cy="12" r="10" /> <path d="M12 6v6l4 2" /> </svg></span>
               <div class="settings-tog-info">
                 <div class="settings-tog-title">Время захода</div>
                 <div class="settings-tog-desc">Показывать другим, когда вы были в сети</div>
@@ -2159,7 +2169,7 @@ function openSettingsModal(){
             </div>
             <div style="height:1px;background:rgba(255,255,255,.06);margin:0 2px"></div>
             <div class="settings-tog-row" id="energySaveRow">
-              <span class="settings-tog-icon">⚡</span>
+              <span class="settings-tog-icon"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z" /> </svg></span>
               <div class="settings-tog-info">
                 <div class="settings-tog-title">Энергосбережение</div>
                 <div class="settings-tog-desc">Отключает тяжёлые анимации — экономит батарею</div>
@@ -2168,7 +2178,7 @@ function openSettingsModal(){
             </div>
             <div style="height:1px;background:rgba(255,255,255,.06);margin:0 2px"></div>
             <div class="settings-tog-row" id="hapticsRow">
-              <span class="settings-tog-icon">📳</span>
+              <span class="settings-tog-icon"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="m2 8 2 2-2 2 2 2-2 2" /> <path d="m22 8-2 2 2 2-2 2 2 2" /> <rect width="8" height="14" x="8" y="5" rx="1" /> </svg></span>
               <div class="settings-tog-info">
                 <div class="settings-tog-title">Вибрация</div>
                 <div class="settings-tog-desc">Тактильный отклик на действия: запись, отправка, кнопки</div>
@@ -2177,7 +2187,7 @@ function openSettingsModal(){
             </div>
             <div style="height:1px;background:rgba(255,255,255,.06);margin:0 2px"></div>
             <div class="settings-tog-row" id="bioLockRow" style="display:none">
-              <span class="settings-tog-icon">☝️</span>
+              <span class="settings-tog-icon"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4" /> <path d="M14 13.12c0 2.38 0 6.38-1 8.88" /> <path d="M17.29 21.02c.12-.6.43-2.3.5-3.02" /> <path d="M2 12a10 10 0 0 1 18-6" /> <path d="M2 16h.01" /> <path d="M21.8 16c.2-2 .131-5.354 0-6" /> <path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2" /> <path d="M8.65 22c.21-.66.45-1.32.57-2" /> <path d="M9 6.8a6 6 0 0 1 9 5.2v2" /> </svg></span>
               <div class="settings-tog-info">
                 <div class="settings-tog-title">Блокировка по биометрии</div>
                 <div class="settings-tog-desc" id="bioLockDesc">Touch ID / Face ID при открытии приложения</div>
@@ -2192,7 +2202,7 @@ function openSettingsModal(){
           <div class="settings-sec-label">Опасная зона</div>
           <div class="settings-danger-card">
             <div class="settings-danger-row" id="settingsDangerRow">
-              <span class="settings-danger-icon">🗑</span>
+              <span class="settings-danger-icon"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M10 11v6" /> <path d="M14 11v6" /> <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /> <path d="M3 6h18" /> <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /> </svg></span>
               <div class="settings-danger-info">
                 <div class="settings-danger-title">Стереть все данные</div>
                 <div class="settings-danger-desc">Удаление необратимо — восстановление невозможно</div>
@@ -2235,9 +2245,9 @@ function openSettingsModal(){
   if(copyPill){
     copyPill.onclick = () => {
       copyToClipboard(MY_ID).then(()=>{
-        copyPill.textContent = '✓ Скопировано';
+        copyPill.innerHTML = '<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M20 6 9 17l-5-5\" /> </svg> Скопировано';
         copyPill.style.background = 'var(--g-20)';
-        setTimeout(()=>{copyPill.textContent='📋 Копировать';copyPill.style.background='';},1500);
+        setTimeout(()=>{copyPill.innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <rect width=\"8\" height=\"4\" x=\"8\" y=\"2\" rx=\"1\" ry=\"1\" /> <path d=\"M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2\" /> </svg> Копировать';copyPill.style.background='';},1500);
         toast('ID скопирован ✓');
       });
     };
@@ -2308,7 +2318,7 @@ function openSettingsModal(){
       lsSet('bc_last_seen_enabled', nowOn);
       _vib('tick');
       if(!nowOn) broadcastLastSeenOff().catch(()=>{});
-      toast(nowOn ? '🕐 Время захода включено' : 'Время захода скрыто');
+      toast(nowOn ? 'Время захода включено' : 'Время захода скрыто');
     };
   }
 
@@ -2324,7 +2334,7 @@ function openSettingsModal(){
       const nowOn = esSw2.classList.toggle('on');
       lsSet('bc_energy_save', nowOn);
       applyEnergySave(nowOn);
-      toast(nowOn ? '⚡ Энергосбережение включено' : '✨ Анимации восстановлены');
+      toast(nowOn ? 'Энергосбережение включено' : 'Анимации восстановлены');
     };
   }
 
@@ -2343,7 +2353,7 @@ function openSettingsModal(){
       // если включаем, временно форсируем вибрацию для демонстрации
       if(nowOn){_vib('impactMedium');}
       else if(navigator.vibrate){try{navigator.vibrate(20);}catch(e){}}
-      toast(nowOn ? '📳 Вибрация включена' : '🔇 Вибрация выключена');
+      toast(nowOn ? 'Вибрация включена' : 'Вибрация выключена');
     };
   }
 
@@ -2387,7 +2397,7 @@ function openSettingsModal(){
                 lsSet('bc_bio_lock', true);
                 var d2 = document.getElementById('bioLockDesc');
                 if(d2) d2.textContent = 'Включена — запрашивается при открытии приложения';
-                toast('☝️ Биометрия включена');
+                toast('Биометрия включена');
               } else {
                 // duplicateItem — секрет уже существует, считаем успехом
                 var errCode = res && res.error;
@@ -2396,7 +2406,7 @@ function openSettingsModal(){
                   lsSet('bc_bio_lock', true);
                   var d3 = document.getElementById('bioLockDesc');
                   if(d3) d3.textContent = 'Включена — запрашивается при открытии приложения';
-                  toast('☝️ Биометрия включена');
+                  toast('Биометрия включена');
                 } else {
                   toast('Ошибка сохранения биометрии: ' + (errCode||'?'), 'err');
                 }
@@ -2455,7 +2465,7 @@ function openDangerConfirmDialog(){
         <div class="danger-dialog-handle"></div>
 
         <div class="danger-dialog-header">
-          <div class="danger-dialog-icon-wrap">🗑</div>
+          <div class="danger-dialog-icon-wrap"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M10 11v6" /> <path d="M14 11v6" /> <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /> <path d="M3 6h18" /> <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /> </svg></div>
           <div class="danger-dialog-header-text">
             <div class="danger-dialog-title">Стереть все данные</div>
             <div class="danger-dialog-subtitle">НЕОБРАТИМОЕ ДЕЙСТВИЕ</div>
@@ -2465,19 +2475,19 @@ function openDangerConfirmDialog(){
         <div class="danger-dialog-body">
           <div class="danger-dialog-warning">
             <div class="danger-dialog-warning-row">
-              <span class="danger-dialog-warning-icon">💬</span>
+              <span class="danger-dialog-warning-icon"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719" /> </svg></span>
               <span class="danger-dialog-warning-text">Все чаты и история сообщений будут удалены</span>
             </div>
             <div class="danger-dialog-warning-row">
-              <span class="danger-dialog-warning-icon">🔑</span>
+              <span class="danger-dialog-warning-icon"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4" /> <path d="m21 2-9.6 9.6" /> <circle cx="7.5" cy="15.5" r="5.5" /> </svg></span>
               <span class="danger-dialog-warning-text">Ключи шифрования и пароли будут удалены</span>
             </div>
             <div class="danger-dialog-warning-row">
-              <span class="danger-dialog-warning-icon">👤</span>
+              <span class="danger-dialog-warning-icon"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <circle cx="12" cy="8" r="5" /> <path d="M20 21a8 8 0 0 0-16 0" /> </svg></span>
               <span class="danger-dialog-warning-text">Все контакты будут удалены</span>
             </div>
             <div class="danger-dialog-warning-row">
-              <span class="danger-dialog-warning-icon">⚠️</span>
+              <span class="danger-dialog-warning-icon"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /> <path d="M12 9v4" /> <path d="M12 17h.01" /> </svg></span>
               <span class="danger-dialog-warning-text">Восстановление невозможно — данные удалятся навсегда</span>
             </div>
           </div>
@@ -2491,7 +2501,7 @@ function openDangerConfirmDialog(){
         </div>
 
         <div class="danger-dialog-btns">
-          <button class="danger-dialog-btn-yes" id="dangerDialogYes" disabled>🗑 Удалить все данные</button>
+          <button class="danger-dialog-btn-yes" id="dangerDialogYes" disabled><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M10 11v6" /> <path d="M14 11v6" /> <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /> <path d="M3 6h18" /> <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /> </svg> Удалить все данные</button>
           <button class="danger-dialog-btn-no" id="dangerDialogNo">Отмена</button>
         </div>
       </div>
@@ -2651,7 +2661,7 @@ async function pinChat(pid){
     await saveChats(chats);
   }
   renderChatList();
-  toast('Чат закреплён 📌');
+  toast('Чат закреплён');
 }
 async function unpinChat(pid){
   const chats=await loadChats();
@@ -2680,15 +2690,15 @@ async function showChatCtx(pid,tx,ty){
   // Закрепить / Открепить
   if(pid!==MY_ID){
     if(isPinned){
-      add('📍','Открепить',()=>{closeAll();unpinChat(pid);});
+      add('<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M12 17v5\" /> <path d=\"M15 9.34V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H7.89\" /> <path d=\"m2 2 20 20\" /> <path d=\"M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h11\" /> </svg>','Открепить',()=>{closeAll();unpinChat(pid);});
     }else{
-      add('📌','Закрепить',()=>{closeAll();pinChat(pid);});
+      add('<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M12 17v5\" /> <path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\" /> </svg>','Закрепить',()=>{closeAll();pinChat(pid);});
     }
   }
   // Пометить как непрочитанное
   // Пометить: если уже помечено — снять пометку, иначе — поставить
   const isMarked=!!chat.marked;
-  add(isMarked?'📩':'📩',isMarked?'Снять пометку':'Пометить',async()=>{
+  add('<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M17 3a2 2 0 0 1 2 2v15a1 1 0 0 1-1.496.868l-4.512-2.578a2 2 0 0 0-1.984 0l-4.512 2.578A1 1 0 0 1 5 20V5a2 2 0 0 1 2-2z\" /> </svg>',isMarked?'Снять пометку':'Пометить',async()=>{
     closeAll();
     if(isMarked){
       await updateChat(pid,{marked:false});
@@ -2702,13 +2712,13 @@ async function showChatCtx(pid,tx,ty){
   // Заблокировать / Разблокировать
   if(pid!==MY_ID){
     if(isBlocked){
-      add('❌','Разблокировать',()=>{
+      add('<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"m15 9-6 6\" /> <path d=\"m9 9 6 6\" /> </svg>','Разблокировать',()=>{
         closeAll();
         showConfirm({
-          icon:'❌',
+          icon:'<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"m15 9-6 6\" /> <path d=\"m9 9 6 6\" /> </svg>',
           title:'Разблокировать контакт?',
           text:'Контакт будет разблокирован. Вы снова сможете получать от него сообщения и общаться.',
-          yesLabel:'❌ Разблокировать',
+          yesLabel:'<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"m15 9-6 6\" /> <path d=\"m9 9 6 6\" /> </svg> Разблокировать',
           noLabel:'Отмена',
           onYes:()=>{
             setContactBlocked(pid,false);
@@ -2720,13 +2730,13 @@ async function showChatCtx(pid,tx,ty){
         });
       });
     }else{
-      add('🚫','Заблокировать',()=>{
+      add('<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"M4.929 4.929 19.07 19.071\" /> </svg>','Заблокировать',()=>{
         closeAll();
         showConfirm({
-          icon:'🚫',
+          icon:'<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"M4.929 4.929 19.07 19.071\" /> </svg>',
           title:'Заблокировать контакт?',
           text:'Контакт будет заблокирован. Новые сообщения от него перестанут поступать. Вы сможете разблокировать его в любой момент.',
-          yesLabel:'🚫 Заблокировать',
+          yesLabel:'<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"M4.929 4.929 19.07 19.071\" /> </svg> Заблокировать',
           noLabel:'Отмена',
           onYes:()=>{
             setContactBlocked(pid,true);
@@ -2741,14 +2751,14 @@ async function showChatCtx(pid,tx,ty){
   }
   // Удалить
   divider();
-  add('🗑️','Удалить',()=>{
+  add('<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M10 11v6\" /> <path d=\"M14 11v6\" /> <path d=\"M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6\" /> <path d=\"M3 6h18\" /> <path d=\"M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2\" /> </svg>','Удалить',()=>{
     closeAll();
     if(pid===MY_ID){toast('Чат "Избранное" нельзя удалить','warn');return;}
     showConfirm({
-      icon:'🗑',
+      icon:'<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M10 11v6\" /> <path d=\"M14 11v6\" /> <path d=\"M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6\" /> <path d=\"M3 6h18\" /> <path d=\"M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2\" /> </svg>',
       title:'Удалить чат?',
       text:'История сообщений и ключ шифрования будут удалены с этого устройства. Собеседник не будет уведомлён.',
-      yesLabel:'🗑 Удалить чат',
+      yesLabel:'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M10 11v6" /> <path d="M14 11v6" /> <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /> <path d="M3 6h18" /> <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /> </svg> Удалить чат',
       noLabel:'Отмена',
       onYes:async()=>{
         if(activePid===pid){activePid='';stopPeerActivity();cancelEdit();cancelReply();resetMsgSearch();exitSelectionMode();closeAll();}
@@ -2820,8 +2830,8 @@ async function renderChatList(){
     item.className='chat-item'+(isPinned?' pinned-chat':'')+(isBlocked?' blocked-chat':'');
     const nameHtml=q?hl(esc(c.peerName),q):esc(c.peerName);
     const lastHtml=q?hl(esc(c.lastMsg||''),q):esc(c.lastMsg||'Нет сообщений');
-    const pinBadge=isPinned?'<span class="chat-pin-badge">📌</span>':'';
-    const blockBadge=isBlocked?'<span class="chat-pin-badge" style="opacity:.5">🚫</span>':'';
+    const pinBadge=isPinned?'<span class="chat-pin-badge"><svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M12 17v5\" /> <path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\" /> </svg></span>':'';
+    const blockBadge=isBlocked?'<span class="chat-pin-badge" style="opacity:.5"><svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"M4.929 4.929 19.07 19.071\" /> </svg></span>':'';
     // Если есть реальные непрочитанные — показываем цифру
     // Если только пометка (marked) — показываем пустой кружок
     const badge=c.unread>0
@@ -2855,17 +2865,17 @@ async function renderChatList(){
   list.appendChild(frag);
 }
 
-function renderContacts(){const q=($('contactsSearch')?.value||'').toLowerCase();let contacts=loadContacts();if(q)contacts=contacts.filter(c=>c.name.toLowerCase().includes(q)||c.id.toLowerCase().includes(q));const list=$('contactsList');if(!contacts.length){list.innerHTML=`<div class="empty-state"><div class="empty-state-icon">👤</div><div class="empty-state-text">Нет контактов.<br>Нажмите «+ Добавить»</div></div>`;return;}list.innerHTML=contacts.map((c,i)=>{const on=!!online[c.id];return`<div class="contact-item"><div class="contact-avatar">${c.avatar||'👤'}<span class="presence-dot${on?' online':''}"></span></div><div class="contact-info" onclick="startChatWithContact('${esc(c.id)}')"><div class="contact-name">${esc(c.name)}</div><div class="contact-id">${esc(c.id)}</div></div><div class="contact-actions"><div class="icon-btn-sm" onclick="startChatWithContact('${esc(c.id)}')">💬</div><div class="contact-del-btn" onclick="delContact(${i},event)">🗑</div></div></div>`;}).join('');}
+function renderContacts(){const q=($('contactsSearch')?.value||'').toLowerCase();let contacts=loadContacts();if(q)contacts=contacts.filter(c=>c.name.toLowerCase().includes(q)||c.id.toLowerCase().includes(q));const list=$('contactsList');if(!contacts.length){list.innerHTML=`<div class="empty-state"><div class="empty-state-icon"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <circle cx="12" cy="8" r="5" /> <path d="M20 21a8 8 0 0 0-16 0" /> </svg></div><div class="empty-state-text">Нет контактов.<br>Нажмите «+ Добавить»</div></div>`;return;}list.innerHTML=contacts.map((c,i)=>{const on=!!online[c.id];return`<div class="contact-item"><div class="contact-avatar">${c.avatar||'👤'}<span class="presence-dot${on?' online':''}"></span></div><div class="contact-info" onclick="startChatWithContact('${esc(c.id)}')"><div class="contact-name">${esc(c.name)}</div><div class="contact-id">${esc(c.id)}</div></div><div class="contact-actions"><div class="icon-btn-sm" onclick="startChatWithContact('${esc(c.id)}')"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719" /> </svg></div><div class="contact-del-btn" onclick="delContact(${i},event)"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M10 11v6" /> <path d="M14 11v6" /> <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /> <path d="M3 6h18" /> <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /> </svg></div></div></div>`;}).join('');}
 window.delContact=(i,e)=>{
   e?.stopPropagation();
   const contacts=loadContacts();
   const c=contacts[i];
   if(!c)return;
   showConfirm({
-    icon:'🗑',
+    icon:'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M10 11v6" /> <path d="M14 11v6" /> <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /> <path d="M3 6h18" /> <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /> </svg>',
     title:'Удалить контакт?',
     text:`Контакт «${c.name}» будет удалён из списка. История переписки и ключи шифрования сохранятся.`,
-    yesLabel:'🗑 Удалить',
+    yesLabel:'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M10 11v6" /> <path d="M14 11v6" /> <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /> <path d="M3 6h18" /> <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /> </svg> Удалить',
     noLabel:'Отмена',
     onYes:()=>{
       const list=loadContacts();
@@ -2967,7 +2977,7 @@ function openShareScreen(){
   const pv=$('sharePreview');
   const isLink=/^https?:\/\//i.test(_sharePayloadText.split('\n').pop()||'');
   pv.innerHTML=`
-    <div class="share-preview-icon">${isLink?'🔗':'📝'}</div>
+    <div class="share-preview-icon">${isLink?'<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71\" /> <path d=\"M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71\" /> </svg>':'<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z\" /> <path d=\"M14 2v5a1 1 0 0 0 1 1h5\" /> <path d=\"M10 9H8\" /> <path d=\"M16 13H8\" /> <path d=\"M16 17H8\" /> </svg>'}</div>
     <div class="share-preview-body">
       <div class="share-preview-title">${isLink?'Ссылка':'Текст'} для отправки</div>
       <div class="share-preview-sub">${esc(_sharePayloadText)}</div>
@@ -2993,7 +3003,7 @@ function renderShareTargets(query){
   const filtered=q?targets.filter(t=>(t.peerName||'').toLowerCase().includes(q)||t.peerId.toLowerCase().includes(q)):targets;
   const list=$('shareTargetList');
   if(!filtered.length){
-    list.innerHTML=`<div class="empty-state"><div class="empty-state-icon">👤</div><div class="empty-state-text">Нет чатов для отправки.<br>Сначала добавьте контакт.</div></div>`;
+    list.innerHTML=`<div class="empty-state"><div class="empty-state-icon"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <circle cx="12" cy="8" r="5" /> <path d="M20 21a8 8 0 0 0-16 0" /> </svg></div><div class="empty-state-text">Нет чатов для отправки.<br>Сначала добавьте контакт.</div></div>`;
     return;
   }
   list.innerHTML=filtered.map(t=>{
@@ -3059,7 +3069,7 @@ window.confirmShareSend=async function(){
       toast('Подключение...');
       const ok=await waitForWS(8000);
       if(!ok){
-        toast('Нет связи с сервером. Сообщение сохранено, нажмите ➤ ещё раз','err');
+        toast('Нет связи с сервером. Сообщение сохранено, нажмите кнопку ещё раз','err');
         fab.style.pointerEvents='';
         fab.style.opacity='';
         return; // не закрываем экран шаринга — payload сохранён, можно повторить отправку
@@ -3104,14 +3114,14 @@ window.openChatById=async function(pid){
   if(blockBtn){blockBtn.style.display=(pid===MY_ID)?'none':'flex';}
   // Сбрасываем баннер к дефолту
   const banner=$('blockedBanner');
-  if(banner)banner.textContent='🚫 Контакт заблокирован — отправка сообщений недоступна';
+  if(banner)banner.innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"M4.929 4.929 19.07 19.071\" /> </svg> Контакт заблокирован — отправка сообщений недоступна';
   updateBlockUI(pid);
   // Если нас заблокировали — показываем баннер "вы заблокированы"
   if(lsGet(`bc_blocked_by_${pid}`,false)&&!isContactBlocked(pid)){
     setPeerStatus('blocked','Вы заблокированы');
     const inputBar=$('chatInputBar');
     if(inputBar)inputBar.classList.add('blocked-mode');
-    if(banner){banner.textContent='🚫 Вы заблокированы этим контактом';banner.classList.add('visible');}
+    if(banner){banner.innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"M4.929 4.929 19.07 19.071\" /> </svg> Вы заблокированы этим контактом';banner.classList.add('visible');}
   }
   await loadChatHistory(pid,true);
   initPinnedBar(pid);
@@ -3145,10 +3155,10 @@ window.openChatById=async function(pid){
 window.forgetPassword=()=>{
   if(!activePid)return;
   showConfirm({
-    icon:'🔓',
+    icon:'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <circle cx="12" cy="16" r="1" /> <rect width="18" height="12" x="3" y="10" rx="2" /> <path d="M7 10V7a5 5 0 0 1 9.33-2.5" /> </svg>',
     title:'Удалить ключ доступа?',
     text:'Ключ шифрования и пароль для этого чата будут удалены. При следующем сообщении потребуется ввести пароль заново.',
-    yesLabel:'🔓 Удалить ключ',
+    yesLabel:'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <circle cx="12" cy="16" r="1" /> <rect width="18" height="12" x="3" y="10" rx="2" /> <path d="M7 10V7a5 5 0 0 1 9.33-2.5" /> </svg> Удалить ключ',
     noLabel:'Отмена',
     onYes:()=>{
       delete keyCache[activePid];
@@ -3161,12 +3171,12 @@ window.forgetPassword=()=>{
 };
 function formatText(text){if(!text)return'';let html=esc(text);html=html.replace(/\*([^*]+)\*/g,'<b>$1</b>');html=html.replace(/_([^_]+)_/g,'<i>$1</i>');html=html.replace(/~([^~]+)~/g,'<s>$1</s>');html=html.replace(/\|\|([^|]+)\|\|/g,'<span class="spoiler">$1</span>');html=html.replace(/(https?:\/\/[^\s<]+)/g,'<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');return html;}
 
-async function forwardToFavorites(msgId){const msgs=await loadMsgs(activePid);const m=msgs.find(m=>m.id===msgId);if(!m)return;const newMsg={id:uid(),text:m.text||'',type:'sent',time:new Date().toISOString(),reactions:{},edited:false,delivered:true,forwarded:true};if(m.media){newMsg.media=m.media;newMsg.caption=m.caption;}if(m.voice){newMsg.voice=m.voice;newMsg.voiceDuration=m.voiceDuration;newMsg.voiceListened=true;}if(m.file){newMsg.file=m.file;}await upsertMsg(MY_ID,newMsg);const lastPreview=m.file?`📁 ${m.file.name}`:m.voice?'🎙 Голосовое':m.media?'📷 Фото':(m.text||'').slice(0,28);await updateChat(MY_ID,{lastMsg:lastPreview,lastMsgTime:Date.now()});if(activePid===MY_ID)appendOrReloadMsg(MY_ID,newMsg);toast('Переслано в Избранное');}
+async function forwardToFavorites(msgId){const msgs=await loadMsgs(activePid);const m=msgs.find(m=>m.id===msgId);if(!m)return;const newMsg={id:uid(),text:m.text||'',type:'sent',time:new Date().toISOString(),reactions:{},edited:false,delivered:true,forwarded:true};if(m.media){newMsg.media=m.media;newMsg.caption=m.caption;}if(m.voice){newMsg.voice=m.voice;newMsg.voiceDuration=m.voiceDuration;newMsg.voiceListened=true;}if(m.file){newMsg.file=m.file;}await upsertMsg(MY_ID,newMsg);const lastPreview=m.file?`${m.file.name}`:m.voice?'Голосовое':m.media?'Фото':(m.text||'').slice(0,28);await updateChat(MY_ID,{lastMsg:lastPreview,lastMsgTime:Date.now()});if(activePid===MY_ID)appendOrReloadMsg(MY_ID,newMsg);toast('Переслано в Избранное');}
 
 function compressImage(file,maxWidth=1024,maxHeight=1024,quality=0.7){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=e=>{const img=new Image();img.onload=()=>{let w=img.width,h=img.height;if(w>maxWidth||h>maxHeight){const r=Math.min(maxWidth/w,maxHeight/h);w=Math.round(w*r);h=Math.round(h*r);}const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);resolve({dataURL:c.toDataURL('image/jpeg',quality),type:'image/jpeg',name:file.name});};img.onerror=reject;img.src=e.target.result;};reader.onerror=reject;reader.readAsDataURL(file);});}
 
 let pendingFiles=[];
-function updateFilePreview(){const container=$('mediaPreview');if(!pendingFiles.length){$('mediaPreviewContainer').style.display='none';return;}$('mediaPreviewContainer').style.display='flex';const file=pendingFiles[0];if(file.isMedia&&file.type.startsWith('image/')&&file.data)container.innerHTML=`<img class="media-preview-img" src="${file.data}"><span class="media-preview-info">📷 ${pendingFiles.length>1?pendingFiles.length+' фото':file.name}</span>`;else if(file.isVideo||file.type.startsWith('video/'))container.innerHTML=`<span style="font-size:36px">🎬</span><span class="media-preview-info">${pendingFiles.length>1?pendingFiles.length+' видео':file.name} (${formatSize(file.size)})</span>`;else{const icon=getFileIcon(file.type);container.innerHTML=`<span style="font-size:36px">${icon}</span><span class="media-preview-info">${file.name} (${formatSize(file.size)})</span>`;}}
+function updateFilePreview(){const container=$('mediaPreview');if(!pendingFiles.length){$('mediaPreviewContainer').style.display='none';return;}$('mediaPreviewContainer').style.display='flex';const file=pendingFiles[0];if(file.isMedia&&file.type.startsWith('image/')&&file.data)container.innerHTML=`<img class="media-preview-img" src="${file.data}"><span class="media-preview-info"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <rect width="18" height="18" x="3" y="3" rx="2" ry="2" /> <circle cx="9" cy="9" r="2" /> <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" /> </svg> ${pendingFiles.length>1?pendingFiles.length+' фото':file.name}</span>`;else if(file.isVideo||file.type.startsWith('video/'))container.innerHTML=`<span style="class="media-preview-file-icon"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5" /> <rect x="2" y="6" width="14" height="12" rx="2" /> </svg></span><span class="media-preview-info">${pendingFiles.length>1?pendingFiles.length+' видео':file.name} (${formatSize(file.size)})</span>`;else{const icon=getFileIcon(file.type);container.innerHTML=`<span style="font-size:36px">${icon}</span><span class="media-preview-info">${file.name} (${formatSize(file.size)})</span>`;}}
 window.clearMediaPreview=()=>{pendingFiles=[];$('mediaPreviewContainer').style.display='none';$('mediaPreview').innerHTML='';};
 
 let processingFiles=false,queueInProgress=false,sendQueue=[];
@@ -3370,7 +3380,7 @@ async function sendSingleMsg(text,fileInfo=null){
         m.file={name:fileInfo.name,type:fileInfo.type,size:fileInfo.size,data};
       }
     }
-    await upsertMsg(MY_ID,m);const lp=fileInfo&&!fileInfo.isMedia?`📁 ${fileInfo.name}`:fileInfo&&fileInfo.isMedia?'📷 Фото':text.slice(0,28);await updateChat(MY_ID,{lastMsg:lp,lastMsgTime:ts});appendOrReloadMsg(MY_ID,m);return;
+    await upsertMsg(MY_ID,m);const lp=fileInfo&&!fileInfo.isMedia?`${fileInfo.name}`:fileInfo&&fileInfo.isMedia?'Фото':text.slice(0,28);await updateChat(MY_ID,{lastMsg:lp,lastMsgTime:ts});appendOrReloadMsg(MY_ID,m);return;
   }
   if(!wsUp){toast('Нет связи с сервером','err');throw new Error('offline');}
   const key=await ensureKey(activePid);
@@ -3383,7 +3393,7 @@ async function sendSingleMsg(text,fileInfo=null){
     wsSend({type:'send-msg',target:activePid,msgId,payload:payloadToB64(enc)});
     const m={id:msgId,text,type:'sent',time:new Date(ts).toISOString(),reactions:{},edited:false,replyTo:replyTo||null,delivered:false,forwarded:false};
     if(fileInfo&&fileInfo.isMedia){m.media=env.media;m.caption=text;}
-    await upsertMsg(activePid,m);await updateChat(activePid,{lastMsg:fileInfo&&fileInfo.isMedia?'📷 Фото':text.slice(0,28),lastMsgTime:ts});appendOrReloadMsg(activePid,m);return msgId;
+    await upsertMsg(activePid,m);await updateChat(activePid,{lastMsg:fileInfo&&fileInfo.isMedia?'Фото':text.slice(0,28),lastMsgTime:ts});appendOrReloadMsg(activePid,m);return msgId;
   }
   return sendFileToServer(fileInfo,text);
 }
@@ -3449,18 +3459,18 @@ function reRenderReactions(row,reactions,msgId){if(!row)return;const os=row.quer
 
 // ── EDIT ──
 let editId=null;
-async function startEdit(msgId){const msgs=await loadMsgs(activePid);const m=msgs.find(m=>m.id===msgId);if(!m||m.media||m.voice||m.file||m.fileAvailable)return;editId=msgId;$('editBar').classList.add('visible');$('editBarPreview').textContent=m.text;const inp=$('messageInput');inp.value=m.text;inp.focus();inp.style.height='auto';inp.style.height=Math.min(inp.scrollHeight,120)+'px';$('sendBtn').innerHTML='✓';}
-window.cancelEdit=()=>{editId=null;$('editBar').classList.remove('visible');$('messageInput').value='';$('messageInput').style.height='';$('sendBtn').innerHTML='➤';};
+async function startEdit(msgId){const msgs=await loadMsgs(activePid);const m=msgs.find(m=>m.id===msgId);if(!m||m.media||m.voice||m.file||m.fileAvailable)return;editId=msgId;$('editBar').classList.add('visible');$('editBarPreview').textContent=m.text;const inp=$('messageInput');inp.value=m.text;inp.focus();inp.style.height='auto';inp.style.height=Math.min(inp.scrollHeight,120)+'px';$('sendBtn').innerHTML='<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M20 6 9 17l-5-5" /> </svg>';}
+window.cancelEdit=()=>{editId=null;$('editBar').classList.remove('visible');$('messageInput').value='';$('messageInput').style.height='';$('sendBtn').innerHTML='<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M3.714 3.048a.498.498 0 0 0-.683.627l2.843 7.627a2 2 0 0 1 0 1.396l-2.842 7.627a.498.498 0 0 0 .682.627l18-8.5a.5.5 0 0 0 0-.904z" /> <path d="M6 12h16" /> </svg>';};
 async function commitEdit(newText){await withChatLock(activePid,async()=>{const msgs=await loadMsgs(activePid);const m=msgs.find(m=>m.id===editId);if(!m)return;m.text=newText;m.edited=true;m.editedTs=Date.now();await saveMsgs(activePid,msgs);});const row=document.querySelector(`.msg-row[data-msgid="${editId}"]`);if(row){const bt=row.querySelector('.bubble-text');if(bt){bt.innerHTML=formatText(newText);if(!bt.querySelector('.msg-edited')){const ed=document.createElement('span');ed.className='msg-edited';ed.textContent=' ред.';bt.appendChild(ed);}}}await updateChat(activePid,{lastMsg:newText,lastMsgTime:Date.now()});if(activePid!==MY_ID){const key=keyCache[activePid];if(key){const enc=await encData(ENC.encode(JSON.stringify({type:'edit',msgId:editId,newText,ts:Date.now()})),key);wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:payloadToB64(enc)});}}cancelEdit();}
 async function handleInEdit(from,msgId,newText,ts){await withChatLock(from,async()=>{const msgs=await loadMsgs(from);const m=msgs.find(m=>m.id===msgId);if(!m)return;m.text=newText;m.edited=true;m.editedTs=ts||Date.now();await saveMsgs(from,msgs);});if(activePid===from){const row=document.querySelector(`.msg-row[data-msgid="${msgId}"]`);if(row){const bt=row.querySelector('.bubble-text');if(bt){bt.innerHTML=formatText(newText);if(!bt.querySelector('.msg-edited')){const ed=document.createElement('span');ed.className='msg-edited';ed.textContent=' ред.';bt.appendChild(ed);}}}}}
 
 // ── DELETE ──
 function deleteMsg(msgId){
   showConfirm({
-    icon:'🗑',
+    icon:'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M10 11v6" /> <path d="M14 11v6" /> <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /> <path d="M3 6h18" /> <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /> </svg>',
     title:'Удалить сообщение?',
     text:'Сообщение будет удалено без возможности восстановления.',
-    yesLabel:'🗑 Удалить',
+    yesLabel:'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M10 11v6" /> <path d="M14 11v6" /> <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /> <path d="M3 6h18" /> <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /> </svg> Удалить',
     noLabel:'Отмена',
     onYes: async ()=>{
       // Удаляем blob если есть
@@ -3471,7 +3481,7 @@ function deleteMsg(msgId){
         if(_m0.voice?.blobId)deleteBlob(_m0.voice.blobId);
         if(_m0.file?.blobId)deleteBlob(_m0.file.blobId);
       }
-      await withChatLock(activePid,async()=>{const msgs=await loadMsgs(activePid);const idx=msgs.findIndex(m=>m.id===msgId);if(idx===-1)return;msgs.splice(idx,1);await saveMsgs(activePid,msgs);});const row=document.querySelector(`.msg-row[data-msgid="${msgId}"]`);if(row)(row.closest('.msg-row-outer')||row).remove();const msgs=await loadMsgs(activePid);const last=msgs[msgs.length-1];await updateChat(activePid,{lastMsg:last?.text||(last?.voice?'🎙 Голосовое':last?.media?'📷 Фото':last?.file?`📁 ${last.file.name}`:''),lastMsgTime:last?.time?new Date(last.time).getTime():null});if(activePid!==MY_ID){const key=keyCache[activePid];if(key){const enc=await encData(ENC.encode(JSON.stringify({type:'delete',msgId,ts:Date.now()})),key);wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:payloadToB64(enc)});}}
+      await withChatLock(activePid,async()=>{const msgs=await loadMsgs(activePid);const idx=msgs.findIndex(m=>m.id===msgId);if(idx===-1)return;msgs.splice(idx,1);await saveMsgs(activePid,msgs);});const row=document.querySelector(`.msg-row[data-msgid="${msgId}"]`);if(row)(row.closest('.msg-row-outer')||row).remove();const msgs=await loadMsgs(activePid);const last=msgs[msgs.length-1];await updateChat(activePid,{lastMsg:last?.text||(last?.voice?'Голосовое':last?.media?'Фото':last?.file?`${last.file.name}`:''),lastMsgTime:last?.time?new Date(last.time).getTime():null});if(activePid!==MY_ID){const key=keyCache[activePid];if(key){const enc=await encData(ENC.encode(JSON.stringify({type:'delete',msgId,ts:Date.now()})),key);wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:payloadToB64(enc)});}}
     }
   });
 }
@@ -3484,10 +3494,10 @@ async function handleInDelete(from,msgId){await withChatLock(from,async()=>{cons
 // TTL вариантов: null = выкл, 86400000 = 1 день, 604800000 = 7 дней, 2592000000 = 1 мес
 
 const AUTODEL_QUICK_OPTIONS=[
-  {key:'off',icon:'⏱',label:'Выключить',ttl:null},
-  {key:'1d', icon:'🕐',label:'1 день',   ttl:86400000},
-  {key:'7d', icon:'📅',label:'7 дней',   ttl:604800000},
-  {key:'1mo',icon:'📆',label:'1 месяц',  ttl:2592000000},
+  {key:'off',icon:'<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <line x1=\"10\" x2=\"14\" y1=\"2\" y2=\"2\" /> <line x1=\"12\" x2=\"15\" y1=\"14\" y2=\"11\" /> <circle cx=\"12\" cy=\"14\" r=\"8\" /> </svg>',label:'Выключить',ttl:null},
+  {key:'1d', icon:'<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"M12 6v6l4 2\" /> </svg>',label:'1 день',   ttl:86400000},
+  {key:'7d', icon:'<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M8 2v4\" /> <path d=\"M16 2v4\" /> <rect width=\"18\" height=\"18\" x=\"3\" y=\"4\" rx=\"2\" /> <path d=\"M3 10h18\" /> <path d=\"M8 14h.01\" /> <path d=\"M12 14h.01\" /> <path d=\"M16 14h.01\" /> <path d=\"M8 18h.01\" /> <path d=\"M12 18h.01\" /> <path d=\"M16 18h.01\" /> </svg>',label:'7 дней',   ttl:604800000},
+  {key:'1mo',icon:'<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M8 2v4\" /> <path d=\"M16 2v4\" /> <rect width=\"18\" height=\"18\" x=\"3\" y=\"4\" rx=\"2\" /> <path d=\"M3 10h18\" /> <path d=\"M8 14h.01\" /> <path d=\"M12 14h.01\" /> <path d=\"M16 14h.01\" /> <path d=\"M8 18h.01\" /> <path d=\"M12 18h.01\" /> <path d=\"M16 18h.01\" /> </svg>',label:'1 месяц',  ttl:2592000000},
 ];
 
 // Полный список для кастомного пикера "Автоудаление через..." (Telegram-стиль)
@@ -3605,7 +3615,7 @@ window.openAutoDelSheet=function(){
     const customLabel=_autoDelLabel(st.ttl,stKey)||'';
     const div=document.createElement('div');
     div.className='autodel-opt selected';
-    div.innerHTML=`<span class="autodel-opt-icon">⏱</span><span class="autodel-opt-label">${customLabel}</span><span class="autodel-opt-check">✔</span>`;
+    div.innerHTML=`<span class="autodel-opt-icon"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <line x1="10" x2="14" y1="2" y2="2" /> <line x1="12" x2="15" y1="14" y2="11" /> <circle cx="12" cy="14" r="8" /> </svg></span><span class="autodel-opt-label">${customLabel}</span><span class="autodel-opt-check"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M20 6 9 17l-5-5" /> </svg></span>`;
     div.onclick=()=>{closeAutoDelSheet();};
     opts.appendChild(div);
     const div0=document.createElement('div');
@@ -3617,7 +3627,7 @@ window.openAutoDelSheet=function(){
     const isSelected = !isCustomSelected && opt.key===stKey;
     const div=document.createElement('div');
     div.className='autodel-opt'+(isSelected?' selected':'');
-    div.innerHTML=`<span class="autodel-opt-icon">${opt.icon}</span><span class="autodel-opt-label">${opt.label}</span><span class="autodel-opt-check">✔</span>`;
+    div.innerHTML=`<span class="autodel-opt-icon">${opt.icon}</span><span class="autodel-opt-label">${opt.label}</span><span class="autodel-opt-check"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M20 6 9 17l-5-5" /> </svg></span>`;
     div.onclick=()=>{closeAutoDelSheet();_applyAutoDelChoice(opt.ttl,opt.key);};
     opts.appendChild(div);
     if(i===0){
@@ -3634,7 +3644,7 @@ window.openAutoDelSheet=function(){
 
   const gear=document.createElement('div');
   gear.className='autodel-opt autodel-opt-gear';
-  gear.innerHTML=`<span class="autodel-opt-icon">⚙️</span><span class="autodel-opt-label">Настроить</span>`;
+  gear.innerHTML=`<span class="autodel-opt-icon"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" /> <circle cx="12" cy="12" r="3" /> </svg></span><span class="autodel-opt-label">Настроить</span>`;
   gear.onclick=()=>{
     closeAutoDelSheet();
     setTimeout(()=>openAutoDelCustomSheet(),260);
@@ -3644,9 +3654,9 @@ window.openAutoDelSheet=function(){
   const titleEl=$('autoDelTitle');
   if(titleEl){
     const lbl=_autoDelLabel(st.ttl,stKey);
-    titleEl.textContent=lbl
-      ?`⏱ АВТОУДАЛЕНИЕ · ${lbl.toUpperCase()}`
-      :'⏱ АВТОУДАЛЕНИЕ СООБЩЕНИЙ';
+    titleEl.innerHTML=lbl
+      ?`<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <line x1="10" x2="14" y1="2" y2="2" /> <line x1="12" x2="15" y1="14" y2="11" /> <circle cx="12" cy="14" r="8" /> </svg> АВТОУДАЛЕНИЕ · ${lbl.toUpperCase()}`
+      :'<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <line x1=\"10\" x2=\"14\" y1=\"2\" y2=\"2\" /> <line x1=\"12\" x2=\"15\" y1=\"14\" y2=\"11\" /> <circle cx=\"12\" cy=\"14\" r=\"8\" /> </svg> АВТОУДАЛЕНИЕ СООБЩЕНИЙ';
   }
 
   sheet.classList.add('open');
@@ -3877,7 +3887,7 @@ async function _runAutoDelSweep(pid, ttl){
     // Обновляем превью чата
     const last=remaining.filter(m=>m.type!=='system').pop();
     await updateChat(pid,{
-      lastMsg:last?.text||(last?.voice?'🎙 Голосовое':last?.media?'📷 Фото':last?.file?`📁 ${last.file.name}`:''),
+      lastMsg:last?.text||(last?.voice?'Голосовое':last?.media?'Фото':last?.file?`${last.file.name}`:''),
       lastMsgTime:last?.time?new Date(last.time).getTime():null
     });
   });
@@ -3906,7 +3916,7 @@ function initAutoDelBtn(pid){
 
 // ── REPLY ──
 let replyTo=null;
-async function startReply(msgId){const msgs=await loadMsgs(activePid);const m=msgs.find(m=>m.id===msgId);if(!m)return;replyTo={id:m.id,text:(m.sticker?`${m.sticker} Стикер`:m.fileAvailable?`📎 ${m.fileAvailable.name}`:m.file?`📁 ${m.file.name}`:m.voice?'🎙 Голосовое':m.media?'📷 Фото':m.text||'')};$('replyBarPreview').textContent=replyTo.text.slice(0,80);$('replyBar').classList.add('visible');$('messageInput').focus();}
+async function startReply(msgId){const msgs=await loadMsgs(activePid);const m=msgs.find(m=>m.id===msgId);if(!m)return;replyTo={id:m.id,text:(m.sticker?`${m.sticker} Стикер`:m.fileAvailable?`${m.fileAvailable.name}`:m.file?`${m.file.name}`:m.voice?'Голосовое':m.media?'Фото':m.text||'')};$('replyBarPreview').textContent=replyTo.text.slice(0,80);$('replyBar').classList.add('visible');$('messageInput').focus();}
 window.cancelReply=()=>{replyTo=null;$('replyBar').classList.remove('visible');};
 
 // ══════════════════════════════════════════════════════
@@ -4018,7 +4028,7 @@ function observeDateSeparator(_el){/* poll-based, не нужно */}
 function updateFloatingDate(){showFloatingDate();}
 
 // ── BUILD ROW ──
-function mkMeta(m,isSent){const meta=document.createElement('span');meta.className='msg-meta';const timeEl=document.createElement('span');timeEl.className='msg-time-inline';timeEl.textContent=new Date(m.time).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});meta.appendChild(timeEl);if(isSent){const tk=document.createElement('span');tk.className='msg-ticks'+(m.delivered?' double':' single');tk.textContent=m.delivered?'✔✔':'✔';meta.appendChild(tk);}return meta;}
+function mkMeta(m,isSent){const meta=document.createElement('span');meta.className='msg-meta';const timeEl=document.createElement('span');timeEl.className='msg-time-inline';timeEl.textContent=new Date(m.time).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});meta.appendChild(timeEl);if(isSent){const tk=document.createElement('span');tk.className='msg-ticks'+(m.delivered?' double':' single');tk.innerHTML = m.delivered?'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M18 6 7 17l-5-5" /> <path d="m22 10-7.5 7.5L13 16" /> </svg>':'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M20 6 9 17l-5-5" /> </svg>';meta.appendChild(tk);}return meta;}
 
 function buildMediaUploadSpinner(fileId){
   const wrap=document.createElement('div');wrap.className='upload-overlay';
@@ -4027,7 +4037,7 @@ function buildMediaUploadSpinner(fileId){
   const track=document.createElementNS('http://www.w3.org/2000/svg','circle');track.setAttribute('cx','26');track.setAttribute('cy','26');track.setAttribute('r','21');track.classList.add('upload-spinner-track');
   const fill=document.createElementNS('http://www.w3.org/2000/svg','circle');fill.setAttribute('cx','26');fill.setAttribute('cy','26');fill.setAttribute('r','21');fill.classList.add('upload-spinner-fill');
   svg.appendChild(track);svg.appendChild(fill);
-  const icon=document.createElement('div');icon.className='upload-spinner-icon';icon.textContent='⬆';
+  const icon=document.createElement('div');icon.className='upload-spinner-icon';icon.innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M12 3v12\" /> <path d=\"m17 8-5-5-5 5\" /> <path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\" /> </svg>';
   spinnerWrap.appendChild(svg);spinnerWrap.appendChild(icon);
   const pct=document.createElement('div');pct.className='upload-pct';pct.textContent='0%';
   wrap.appendChild(spinnerWrap);wrap.appendChild(pct);
@@ -4041,7 +4051,7 @@ function buildFileUploadSpinnerEl(fileId){
   const track=document.createElementNS('http://www.w3.org/2000/svg','circle');track.setAttribute('cx','23');track.setAttribute('cy','23');track.setAttribute('r','21');track.classList.add('file-upload-spinner-track');
   const fill=document.createElementNS('http://www.w3.org/2000/svg','circle');fill.setAttribute('cx','23');fill.setAttribute('cy','23');fill.setAttribute('r','21');fill.classList.add('file-upload-spinner-fill');
   svg.appendChild(track);svg.appendChild(fill);
-  const icon=document.createElement('div');icon.className='file-upload-spinner-icon';icon.textContent='⬆';
+  const icon=document.createElement('div');icon.className='file-upload-spinner-icon';icon.innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M12 3v12\" /> <path d=\"m17 8-5-5-5 5\" /> <path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\" /> </svg>';
   spinnerEl.appendChild(svg);spinnerEl.appendChild(icon);
   registerUploadUI(fileId,spinnerEl,fill,null);
   return spinnerEl;
@@ -4058,7 +4068,7 @@ function buildTgFileMeta(m, isSent){
   if(isSent){
     const tk = document.createElement('span');
     tk.className = 'msg-ticks'+(m.delivered?' double':' single');
-    tk.textContent = m.delivered?'✔✔':'✔';
+    tk.innerHTML = m.delivered?'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M18 6 7 17l-5-5" /> <path d="m22 10-7.5 7.5L13 16" /> </svg>':'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M20 6 9 17l-5-5" /> </svg>';
     ov.appendChild(tk);
   }
   return ov;
@@ -4071,7 +4081,7 @@ function buildFileCardStatic(file, m, isSent){
 
   const icon = document.createElement('div');
   icon.className = 'tg-file-icon tg-file-icon-static';
-  icon.textContent = getFileIcon(file.type);
+  icon.innerHTML = getFileIcon(file.type);
   wrap.appendChild(icon);
 
   const info = document.createElement('div');
@@ -4130,7 +4140,7 @@ function buildFileCardUploading(file, fileId, m, isSent){
   svg.appendChild(track);svg.appendChild(fill);
   const iconEl = document.createElement('div');
   iconEl.className = 'file-upload-spinner-icon';
-  iconEl.textContent = '⬆';
+  iconEl.innerHTML = '<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M12 3v12\" /> <path d=\"m17 8-5-5-5 5\" /> <path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\" /> </svg>';
   spinnerEl.appendChild(svg);spinnerEl.appendChild(iconEl);
   registerUploadUI(fileId, spinnerEl, fill, null);
   wrap.appendChild(spinnerEl);
@@ -4185,7 +4195,7 @@ function buildFileAvailableCard(m){
     const dlBtn=document.createElement('div');
     dlBtn.className='tg-file-icon tg-file-icon-dl';
     dlBtn.style.cssText='background:rgba(0,0,0,0.55);backdrop-filter:blur(4px);';
-    dlBtn.innerHTML='⬇';
+    dlBtn.innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M12 15V3\" /> <path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\" /> <path d=\"m7 10 5 5 5-5\" /> </svg>';
     dlBtn.onclick=e=>{e.stopPropagation();startDownloadUI(dlBtn,m.id,fa.senderId);};
     overlay.appendChild(dlBtn);
     const nameEl=document.createElement('div');
@@ -4227,7 +4237,7 @@ function buildFileAvailableCard(m){
     wrap.className = 'tg-audio-pending-wrap';
     const dlBtn = document.createElement('div');
     dlBtn.className = 'tg-audio-dl-btn';
-    dlBtn.innerHTML = '⬇';
+    dlBtn.innerHTML = '<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M12 15V3\" /> <path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\" /> <path d=\"m7 10 5 5 5-5\" /> </svg>';
     dlBtn.onclick = e => { e.stopPropagation(); startDownloadUI(dlBtn, m.id, fa.senderId); };
     wrap.appendChild(dlBtn);
     const info = document.createElement('div');
@@ -4247,7 +4257,7 @@ function buildFileAvailableCard(m){
     wrap.className = 'tg-file-wrap';
     const icon = document.createElement('div');
     icon.className = 'tg-file-icon tg-file-icon-dl';
-    icon.innerHTML = '⬇';
+    icon.innerHTML = '<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M12 15V3\" /> <path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\" /> <path d=\"m7 10 5 5 5-5\" /> </svg>';
     icon.onclick = e => { e.stopPropagation(); startDownloadUI(icon, m.id, fa.senderId); };
     wrap.appendChild(icon);
     const info = document.createElement('div');
@@ -4267,7 +4277,7 @@ function buildFileAvailableCard(m){
   wrap.className = 'tg-file-wrap';
   const icon = document.createElement('div');
   icon.className = 'tg-file-icon tg-file-icon-dl';
-  icon.innerHTML = '⬇';
+  icon.innerHTML = '<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M12 15V3\" /> <path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\" /> <path d=\"m7 10 5 5 5-5\" /> </svg>';
   icon.onclick = e => { e.stopPropagation(); startDownloadUI(icon, m.id, fa.senderId); };
   wrap.appendChild(icon);
   const info = document.createElement('div');
@@ -4283,6 +4293,58 @@ function buildFileAvailableCard(m){
 }
 
 
+// ── Вспомогательная функция для свайпа (Telegram-стиль) ──
+function initSwipeToReply(outer, row, msgId) {
+  let startX = 0, currentX = 0, isSwiping = false;
+  const threshold = 60; 
+  const maxSwipe = 80;  
+
+  const indicator = document.createElement('div');
+  indicator.className = 'reply-swipe-indicator';
+  indicator.innerHTML = '<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M20 20v-7a4 4 0 0 0-4-4H4\" /> <path d=\"M9 14 4 9l5-5\" /> </svg>';
+  row.appendChild(indicator);
+
+  outer.addEventListener('touchstart', e => {
+    if (selectionMode || e.touches.length > 1) return;
+    startX = e.touches[0].clientX;
+    currentX = startX;
+    isSwiping = false;
+    row.classList.remove('swiping');
+    indicator.classList.remove('visible', 'active');
+  }, { passive: true });
+
+  outer.addEventListener('touchmove', e => {
+    if (selectionMode || e.touches.length > 1) return;
+    currentX = e.touches[0].clientX;
+    const diff = startX - currentX;
+    if (diff > 10) { 
+      isSwiping = true;
+      row.classList.add('swiping');
+      const move = Math.min(diff, maxSwipe);
+      row.style.transform = 'translateX(-' + move + 'px)';
+      indicator.classList.add('visible');
+      const isThreshold = move >= threshold;
+      if (isThreshold && !indicator.classList.contains('active')) {
+        _vib('tick');
+      }
+      indicator.classList.toggle('active', isThreshold);
+    }
+  }, { passive: true });
+
+  outer.addEventListener('touchend', () => {
+    if (!isSwiping) return;
+    const diff = startX - currentX;
+    if (diff >= threshold) {
+      _vib('tick');
+      startReply(msgId);
+    }
+    row.classList.remove('swiping');
+    row.style.transform = '';
+    indicator.classList.remove('visible', 'active');
+    isSwiping = false;
+  }, { passive: true });
+}
+
 function buildRow(m){
   // Системные сообщения (автоудаление и др.) — центрированные, не пузырь
   if(m.type==='system'){
@@ -4294,15 +4356,23 @@ function buildRow(m){
   // Внешний враппер: полная ширина, flex-row, кружок слева + msg-row справа
   const outer=document.createElement('div');outer.className='msg-row-outer';
   const slot=document.createElement('div');slot.className='msg-check-slot';
-  const check=document.createElement('div');check.className='msg-check';check.innerHTML='✓';
+  const check=document.createElement('div');check.className='msg-check';check.innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M20 6 9 17l-5-5\" /> </svg>';
   slot.appendChild(check);outer.appendChild(slot);
   const row=document.createElement('div');row.className=`msg-row ${m.type}`;row.dataset.msgid=m.id;
   // Помечаем закреплённое сообщение
-  if(activePid&&getPinnedMsgs(activePid).some(p=>p.id===m.id)){row.classList.add('pinned-msg');}
+  if(activePid&&getPinnedMsgs(activePid).some(p=>p.id===m.id)){row.classList.add('pinned-msg');
+    // Inject pin badge SVG
+    const _bubble = row.querySelector('.bubble');
+    if(_bubble && !_bubble.querySelector('.pinned-pin-badge')){
+      const _badge = document.createElement('span');
+      _badge.className = 'pinned-pin-badge';
+      _badge.innerHTML = `<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M12 17v5" /> <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" /> </svg>`;
+      _bubble.insertBefore(_badge, _bubble.firstChild);
+    }}
   outer.appendChild(row);
   const bubble=document.createElement('div');bubble.className='bubble';
-  if(m.forwarded){const fl=document.createElement('span');fl.className='forwarded-label';fl.textContent='↪️ переслано';bubble.appendChild(fl);}
-  if(m.replyTo){const rd=document.createElement('div');rd.className='reply-preview-inline';rd.textContent='↩️ '+(m.replyTo.text||'').slice(0,50);rd.onclick=async e=>{
+  if(m.forwarded){const fl=document.createElement('span');fl.className='forwarded-label';fl.innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"m15 17 5-5-5-5\" /> <path d=\"M4 18v-2a4 4 0 0 1 4-4h12\" /> </svg> переслано';bubble.appendChild(fl);}
+  if(m.replyTo){const rd=document.createElement('div');rd.className='reply-preview-inline';rd.innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M20 20v-7a4 4 0 0 0-4-4H4\" /> <path d=\"M9 14 4 9l5-5\" /> </svg> '+(m.replyTo.text||'').slice(0,50);rd.onclick=async e=>{
     e.stopPropagation();
     // Закрываем панель стикеров
     const sp=$('stickerPanel');
@@ -4451,7 +4521,7 @@ function buildRow(m){
       if(isSent){
         const tk = document.createElement('span');
         tk.className = 'msg-ticks' + (m.delivered ? ' double' : ' single');
-        tk.textContent = m.delivered ? '✔✔' : '✔';
+        tk.innerHTML = m.delivered ? '<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M18 6 7 17l-5-5" /> <path d="m22 10-7.5 7.5L13 16" /> </svg>' : '<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M20 6 9 17l-5-5" /> </svg>';
         overlay.appendChild(tk);
       }
       imgWrap.appendChild(overlay);
@@ -4533,6 +4603,7 @@ function buildRow(m){
 
   row.appendChild(bubble);
   reRenderReactions(row,m.reactions||{},m.id);
+  initSwipeToReply(outer, row, m.id);
   outer.addEventListener('click',e=>{if(selectionMode){e.stopPropagation();toggleSelectMessage(m.id,outer);}});
   bubble.addEventListener('contextmenu',e=>{e.preventDefault();if(!selectionMode)showCtx(m,bubble,e.clientX,e.clientY);});
   let pt=null;
@@ -4754,10 +4825,10 @@ function deleteSelectedMessages(){
   if(!selectedMessages.size)return;
   const count=selectedMessages.size;
   showConfirm({
-    icon:'🗑',
+    icon:'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M10 11v6" /> <path d="M14 11v6" /> <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /> <path d="M3 6h18" /> <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /> </svg>',
     title:'Удалить сообщения?',
     text:`Будет удалено ${count} ${_pluralMsgWord(count)}. Это действие нельзя отменить.`,
-    yesLabel:'🗑 Удалить',
+    yesLabel:'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M10 11v6" /> <path d="M14 11v6" /> <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /> <path d="M3 6h18" /> <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /> </svg> Удалить',
     noLabel:'Отмена',
     onYes: async ()=>{
       const pidForLock=activePid;
@@ -4776,7 +4847,7 @@ function deleteSelectedMessages(){
         await saveMsgs(pidForLock,newMsgs);
       });
       for(const id of selectedMessages){const row=document.querySelector(`.msg-row[data-msgid="${id}"]`);if(row)(row.closest('.msg-row-outer')||row).remove();if(activePid!==MY_ID){const key=keyCache[activePid];if(key){const enc=await encData(ENC.encode(JSON.stringify({type:'delete',msgId:id,ts:Date.now()})),key);wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:payloadToB64(enc)});}}}
-      const last=newMsgs[newMsgs.length-1];await updateChat(activePid,{lastMsg:last?.text||(last?.voice?'🎙 Голосовое':last?.media?'📷 Фото':last?.file?`📁 ${last.file.name}`:''),lastMsgTime:last?.time?new Date(last.time).getTime():null});exitSelectionMode();toast('Сообщения удалены');
+      const last=newMsgs[newMsgs.length-1];await updateChat(activePid,{lastMsg:last?.text||(last?.voice?'Голосовое':last?.media?'Фото':last?.file?`${last.file.name}`:''),lastMsgTime:last?.time?new Date(last.time).getTime():null});exitSelectionMode();toast('Сообщения удалены');
     }
   });
 }
@@ -4791,7 +4862,7 @@ async function loadChatHistory(pid,reset=false){
     area.innerHTML='';
     renderedCount=0;
     if(!total){
-      const ec=document.createElement('div');ec.className='empty-chat';ec.innerHTML=`<div class="empty-chat-icon">💬</div><div class="empty-chat-text">Нет сообщений<br><span style="font-size:11px;font-family:'JetBrains Mono',monospace;opacity:.6">Напишите первое сообщение</span></div>`;area.appendChild(ec);
+      const ec=document.createElement('div');ec.className='empty-chat';ec.innerHTML=`<div class="empty-chat-icon"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719" /> </svg></div><div class="empty-chat-text">Нет сообщений<br><span style="font-size:11px;font-family:'JetBrains Mono',monospace;opacity:.6">Напишите первое сообщение</span></div>`;area.appendChild(ec);
     }else{
       // Рендерим последние INITIAL_BATCH сообщений сразу
       const frag=document.createDocumentFragment();
@@ -4974,7 +5045,7 @@ function showExtendedEmojiPicker(msgId,anchor){
   hdr.className = 'emoji-picker-header';
   const cb = document.createElement('span');
   cb.className = 'emoji-picker-close';
-  cb.innerHTML = '✕';
+  cb.innerHTML = '<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M18 6 6 18" /> <path d="m6 6 12 12" /> </svg>';
   cb.addEventListener('click', e=>{e.stopPropagation(); closeAll();});
   hdr.appendChild(cb);
   panel.appendChild(hdr);
@@ -5008,18 +5079,18 @@ function showCtx(m,anchor,tx,ty){
   _vib('impactMedium'); // тактильный отклик — открыто контекстное меню (long-press)
   closeAll();mkBack();const menu=document.createElement('div');menu.className='ctx-menu';
   const add=(ic,lb,fn,danger=false)=>{const el=document.createElement('div');el.className='ctx-item'+(danger?' danger':'');el.innerHTML=`<span>${ic}</span><span>${lb}</span>`;el.addEventListener('click',e=>{e.stopPropagation();fn();});menu.appendChild(el);};
-  add('😀','Реакция',()=>{closeCtx();showEmo(m.id,anchor);});
-  add('↩️','Ответить',()=>{closeAll();startReply(m.id);});
+  add('<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"M8 14s1.5 2 4 2 4-2 4-2\" /> <line x1=\"9\" x2=\"9.01\" y1=\"9\" y2=\"9\" /> <line x1=\"15\" x2=\"15.01\" y1=\"9\" y2=\"9\" /> </svg>','Реакция',()=>{closeCtx();showEmo(m.id,anchor);});
+  add('<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M20 20v-7a4 4 0 0 0-4-4H4\" /> <path d=\"M9 14 4 9l5-5\" /> </svg>','Ответить',()=>{closeAll();startReply(m.id);});
   // ── ЗАКРЕПИТЬ / ОТКРЕПИТЬ ──
   const pinned=getPinnedMsgs(activePid);
   const isAlreadyPinned=pinned.some(p=>p.id===m.id);
   if(isAlreadyPinned){
-    add('📍','Открепить',()=>{closeAll();showConfirm({icon:'📍',title:'Открепить сообщение?',text:'Сообщение будет откреплено у всех участников чата.',yesLabel:'📍 Открепить',noLabel:'Отмена',onYes:()=>unpinMessage(m.id)});});
+    add('<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M12 17v5\" /> <path d=\"M15 9.34V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H7.89\" /> <path d=\"m2 2 20 20\" /> <path d=\"M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h11\" /> </svg>','Открепить',()=>{closeAll();showConfirm({icon:'📍',title:'Открепить сообщение?',text:'Сообщение будет откреплено у всех участников чата.',yesLabel:'📍 Открепить',noLabel:'Отмена',onYes:()=>unpinMessage(m.id)});});
   }else{
-    add('📌','Закрепить',()=>{closeAll();pinMessage(m);});
+    add('<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M12 17v5\" /> <path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\" /> </svg>','Закрепить',()=>{closeAll();pinMessage(m);});
   }
   if(m.voice){
-    add('💾','Сохранить в файлы',async()=>{
+    add('<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z\" /> <path d=\"M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7\" /> <path d=\"M7 3v4a1 1 0 0 0 1 1h7\" /> </svg>','Сохранить в файлы',async()=>{
       closeAll();
       const fname='voice_'+Date.now()+'.webm';
       if(m.voice.data){await saveToFiles(m.voice.data,'audio/webm',fname,false);}
@@ -5032,7 +5103,7 @@ function showCtx(m,anchor,tx,ty){
     const vnExt=(m.videoMime||'video/webm').split('/')[1]?.split(';')[0]||'webm';
     const vnFname='video_note_'+Date.now()+'.'+vnExt;
     const vnMime=m.videoMime||'video/webm';
-    add('💾','Сохранить видео',async()=>{
+    add('<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z\" /> <path d=\"M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7\" /> <path d=\"M7 3v4a1 1 0 0 0 1 1h7\" /> </svg>','Сохранить видео',async()=>{
       closeAll();
       if(m.videoBlobId){
         await saveToGallery(m.videoBlobId,vnMime,vnFname,true);
@@ -5047,7 +5118,7 @@ function showCtx(m,anchor,tx,ty){
     const isVid=m.media.type&&m.media.type.startsWith('video/');
     const ext=m.media.type?(m.media.type.split('/')[1]||'jpg'):'jpg';
     const fname=(isVid?'video_':'photo_')+Date.now()+'.'+ext;
-    add('💾',isVid?'Сохранить видео':'Сохранить в галерею',async()=>{
+    add('<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z\" /> <path d=\"M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7\" /> <path d=\"M7 3v4a1 1 0 0 0 1 1h7\" /> </svg>',isVid?'Сохранить видео':'Сохранить в галерею',async()=>{
       closeAll();
       if(m.media.data){await saveToGallery(m.media.data,m.media.type||'image/jpeg',fname,false);}
       else if(m.media.blobId){await saveToGallery(m.media.blobId,m.media.type||'image/jpeg',fname,true);}
@@ -5057,18 +5128,18 @@ function showCtx(m,anchor,tx,ty){
   if(m.file?.data||m.file?.blobId){
     const isAudio=m.file.type?.startsWith('audio/');
     const label=isAudio?'Сохранить аудио':'Сохранить в файлы';
-    add('💾',label,async()=>{
+    add('<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z\" /> <path d=\"M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7\" /> <path d=\"M7 3v4a1 1 0 0 0 1 1h7\" /> </svg>',label,async()=>{
       closeAll();
       if(m.file.data){await saveToFiles(m.file.data,m.file.type,m.file.name,false);}
       else if(m.file.blobId){await saveToFiles(m.file.blobId,m.file.type,m.file.name,true);}
       else toast('Файл недоступен','err');
     });
   }
-  if(m.text)add('📋','Копировать',()=>{closeAll();copyToClipboard(m.text).then(()=>toast('Скопировано ✓'));});
-  add('✅','Выбрать',()=>{closeAll();enterSelectionMode(m.id);});
-  add('⭐','В Избранное',()=>{closeAll();forwardToFavorites(m.id);});
-  if(m.type==='sent'&&!m.media&&!m.voice&&!m.file&&!m.fileAvailable)add('✏️','Редактировать',()=>{closeAll();startEdit(m.id);});
-  if(m.type==='sent'||activePid===MY_ID){const d=document.createElement('div');d.className='ctx-divider';menu.appendChild(d);add('🗑','Удалить',()=>{closeAll();deleteMsg(m.id);},true);}
+  if(m.text)add('<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <rect width=\"8\" height=\"4\" x=\"8\" y=\"2\" rx=\"1\" ry=\"1\" /> <path d=\"M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2\" /> </svg>','Копировать',()=>{closeAll();copyToClipboard(m.text).then(()=>toast('Скопировано ✓'));});
+  add('<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M21.801 10A10 10 0 1 1 17 3.335\" /> <path d=\"m9 11 3 3L22 4\" /> </svg>','Выбрать',()=>{closeAll();enterSelectionMode(m.id);});
+  add('<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z" /> </svg>','В Избранное',()=>{closeAll();forwardToFavorites(m.id);});
+  if(m.type==='sent'&&!m.media&&!m.voice&&!m.file&&!m.fileAvailable)add('<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z\" /> <path d=\"m15 5 4 4\" /> </svg>','Редактировать',()=>{closeAll();startEdit(m.id);});
+  if(m.type==='sent'||activePid===MY_ID){const d=document.createElement('div');d.className='ctx-divider';menu.appendChild(d);add('<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M10 11v6" /> <path d="M14 11v6" /> <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /> <path d="M3 6h18" /> <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /> </svg>','Удалить',()=>{closeAll();deleteMsg(m.id);},true);}
   document.body.appendChild(menu);_ctx=menu;
   requestAnimationFrame(()=>{const mw=menu.offsetWidth||180,mh=menu.offsetHeight||130;const vw=window.innerWidth,vh=window.innerHeight;let l=tx,t=ty;if(l+mw>vw-8)l=vw-mw-8;if(t+mh>vh-8)t=vh-mh-8;if(l<8)l=8;if(t<8)t=8;menu.style.left=l+'px';menu.style.top=t+'px';});
 }
@@ -5155,10 +5226,10 @@ window.deleteChat=async()=>{
   if(!activePid)return;
   if(activePid===MY_ID){toast('Чат "Избранное" нельзя удалить','warn');return;}
   showConfirm({
-    icon:'🗑',
+    icon:'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M10 11v6" /> <path d="M14 11v6" /> <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /> <path d="M3 6h18" /> <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /> </svg>',
     title:'Удалить чат?',
     text:'История сообщений и ключ шифрования будут удалены с этого устройства. Собеседник не будет уведомлён.',
-    yesLabel:'🗑 Удалить чат',
+    yesLabel:'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M10 11v6" /> <path d="M14 11v6" /> <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /> <path d="M3 6h18" /> <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /> </svg> Удалить чат',
     noLabel:'Отмена',
     onYes: async()=>{
       const pid=activePid;activePid='';stopPeerActivity();cancelEdit();cancelReply();resetMsgSearch();exitSelectionMode();closeAll();
@@ -5201,7 +5272,7 @@ function updateBlockUI(pid){
   const banner=$('blockedBanner');
   if(blocked){
     // Кнопка становится ❌ (разблокировать)
-    btn.textContent='❌';
+    btn.innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"m15 9-6 6\" /> <path d=\"m9 9 6 6\" /> </svg>';
     btn.classList.add('block-active');
     btn.title='Разблокировать контакт';
     // Статус в шапке
@@ -5213,7 +5284,7 @@ function updateBlockUI(pid){
     $('sendBtn').disabled=true;
   }else{
     // Кнопка становится 🚫 (заблокировать)
-    btn.textContent='🚫';
+    btn.innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"M4.929 4.929 19.07 19.071\" /> </svg>';
     btn.classList.remove('block-active');
     btn.title='Заблокировать контакт';
     // Возвращаем нормальный статус (только если не заблокированы самим собой)
@@ -5242,10 +5313,10 @@ window.toggleBlockContact=function(){
   if(!blocked){
     // Блокируем
     showConfirm({
-      icon:'🚫',
+      icon:'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <circle cx="12" cy="12" r="10" /> <path d="M4.929 4.929 19.07 19.071" /> </svg>',
       title:'Заблокировать контакт?',
       text:'Контакт будет заблокирован. Новые сообщения от него перестанут поступать. Вы сможете разблокировать его в любой момент.',
-      yesLabel:'🚫 Заблокировать',
+      yesLabel:'<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"M4.929 4.929 19.07 19.071\" /> </svg> Заблокировать',
       noLabel:'Отмена',
       onYes:()=>{
         setContactBlocked(activePid,true);
@@ -5258,10 +5329,10 @@ window.toggleBlockContact=function(){
   }else{
     // Разблокируем
     showConfirm({
-      icon:'❌',
+      icon:'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <circle cx="12" cy="12" r="10" /> <path d="m15 9-6 6" /> <path d="m9 9 6 6" /> </svg>',
       title:'Разблокировать контакт?',
       text:'Контакт будет разблокирован. Вы снова сможете получать от него сообщения и общаться.',
-      yesLabel:'❌ Разблокировать',
+      yesLabel:'<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"m15 9-6 6\" /> <path d=\"m9 9 6 6\" /> </svg> Разблокировать',
       noLabel:'Отмена',
       onYes:()=>{
         setContactBlocked(activePid,false);
@@ -5332,7 +5403,7 @@ window.toggleRecording=async function(){
     // не слишком редко (потеря при обрыве). Telegram использует ~200-500ms.
     mediaRecorder.start(200);
     isRecording=true;recStartTime=Date.now();initRecWaveform();
-    $('voiceRecordOverlay').classList.add('active');$('micBtn').classList.add('recording');$('micBtn').textContent='⏹';
+    $('voiceRecordOverlay').classList.add('active');$('micBtn').classList.add('recording');$('micBtn').innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" /> </svg>';
     _vib('impactMedium'); // тактильный отклик — началась запись
     recTimerInterval=setInterval(updateRecTimer,200);animateRecWaveform();
     // Сигнал "записывает голосовое" + heartbeat каждые 3с
@@ -5357,8 +5428,8 @@ window.stopRecordingForPreview=async function(){
   _recActivityHb=setInterval(()=>{if(activePid&&previewBlob)_sendActivitySignal(activePid,'sending_voice');},3000);
 };
 
-function _showPreviewBar(){const wfEl=$('pvbWaveform');wfEl.innerHTML='';pvbBarEls=[];for(let i=0;i<PREV_WF_BARS;i++){const b=document.createElement('div');b.className='pvb-bar';const v=previewWaveform[Math.floor(i*previewWaveform.length/PREV_WF_BARS)]||0.3;b.style.height=Math.max(3,Math.round(v*18))+'px';wfEl.appendChild(b);pvbBarEls.push(b);}$('pvbTimer').textContent=fmtDur(previewDur);$('pvbPlayBtn').innerHTML='▶';$('pvbPlayBtn').classList.remove('playing');$('voicePreviewBar').classList.add('active');}
-function _stopPreviewAudio(){previewPlaying=false;cancelAnimationFrame(previewRafId);if(previewAudio){try{previewAudio.pause();}catch(e){}previewAudio=null;}const pb=$('pvbPlayBtn');if(pb){pb.innerHTML='▶';pb.classList.remove('playing');}}
+function _showPreviewBar(){const wfEl=$('pvbWaveform');wfEl.innerHTML='';pvbBarEls=[];for(let i=0;i<PREV_WF_BARS;i++){const b=document.createElement('div');b.className='pvb-bar';const v=previewWaveform[Math.floor(i*previewWaveform.length/PREV_WF_BARS)]||0.3;b.style.height=Math.max(3,Math.round(v*18))+'px';wfEl.appendChild(b);pvbBarEls.push(b);}$('pvbTimer').textContent=fmtDur(previewDur);$('pvbPlayBtn').innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z\" /> </svg>';$('pvbPlayBtn').classList.remove('playing');$('voicePreviewBar').classList.add('active');}
+function _stopPreviewAudio(){previewPlaying=false;cancelAnimationFrame(previewRafId);if(previewAudio){try{previewAudio.pause();}catch(e){}previewAudio=null;}const pb=$('pvbPlayBtn');if(pb){pb.innerHTML='<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z" /> </svg>';pb.classList.remove('playing');}}
 function _updatePreviewProgress(){
   if(!previewAudio||previewAudio.paused)return;
   // Используем previewDur (сохранённая длительность записи) — всегда точная,
@@ -5382,7 +5453,7 @@ window.togglePreviewPlay=function(){
     previewAudio=new Audio(url);
     previewAudio.onended=()=>{
       previewPlaying=false;
-      $('pvbPlayBtn').innerHTML='▶';
+      $('pvbPlayBtn').innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z\" /> </svg>';
       $('pvbPlayBtn').classList.remove('playing');
       cancelAnimationFrame(previewRafId);
       $('pvbTimer').textContent=fmtDur(previewDur);
@@ -5390,7 +5461,7 @@ window.togglePreviewPlay=function(){
     };
     previewAudio.onpause=()=>{
       previewPlaying=false;
-      $('pvbPlayBtn').innerHTML='▶';
+      $('pvbPlayBtn').innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z\" /> </svg>';
       $('pvbPlayBtn').classList.remove('playing');
       cancelAnimationFrame(previewRafId);
     };
@@ -5399,7 +5470,7 @@ window.togglePreviewPlay=function(){
   }
   previewAudio.play().then(()=>{
     previewPlaying=true;
-    $('pvbPlayBtn').innerHTML='⏸';
+    $('pvbPlayBtn').innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <rect x=\"14\" y=\"3\" width=\"5\" height=\"18\" rx=\"1\" /> <rect x=\"5\" y=\"3\" width=\"5\" height=\"18\" rx=\"1\" /> </svg>';
     $('pvbPlayBtn').classList.add('playing');
     // Запускаем сразу — previewDur известен заранее
     cancelAnimationFrame(previewRafId);
@@ -5449,7 +5520,7 @@ window.resumeRecording=async function(){
     mediaRecorder=new MediaRecorder(micStream,mime?{mimeType:mime,audioBitsPerSecond:bitrate}:{audioBitsPerSecond:bitrate});
     audioChunks=oldChunks;mediaRecorder.ondataavailable=e=>{if(e.data?.size>0)audioChunks.push(e.data);};mediaRecorder.start(200);
     isRecording=true;recStartTime=Date.now()-previewDur*1000;initRecWaveform();
-    $('voiceRecordOverlay').classList.add('active');$('micBtn').classList.add('recording');$('micBtn').textContent='⏹';
+    $('voiceRecordOverlay').classList.add('active');$('micBtn').classList.add('recording');$('micBtn').innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" /> </svg>';
     _vib('impactMedium'); // тактильный отклик — запись продолжена
     recTimerInterval=setInterval(updateRecTimer,200);animateRecWaveform();previewBlob=null;previewDur=0;previewWaveform=[];
     _sendActivitySignal(activePid,'recording');
@@ -5512,7 +5583,7 @@ function _applyAudioFiltersToStream(stream, existingAudioCtx = null, existingAna
   return dest.stream;
 }
 
-function _stopRecordingInternal(){return new Promise(resolve=>{clearInterval(recTimerInterval);cancelAnimationFrame(recAnimFrame);isRecording=false;$('voiceRecordOverlay').classList.remove('active');$('micBtn').classList.remove('recording');$('micBtn').textContent='🎙';$('recLimitBar').style.width='0%';$('recLimitBar').className='rec-limit-bar';if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null;}if(audioCtx){try{audioCtx.close();}catch(e){}audioCtx=null;analyser=null;}if(mediaRecorder&&mediaRecorder.state!=='inactive'){mediaRecorder.addEventListener('stop',()=>resolve(audioChunks),{once:true});mediaRecorder.stop();}else resolve(audioChunks);});}
+function _stopRecordingInternal(){return new Promise(resolve=>{clearInterval(recTimerInterval);cancelAnimationFrame(recAnimFrame);isRecording=false;$('voiceRecordOverlay').classList.remove('active');$('micBtn').classList.remove('recording');$('micBtn').innerHTML='<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M12 19v3" /> <path d="M19 10v2a7 7 0 0 1-14 0v-2" /> <rect x="9" y="2" width="6" height="13" rx="3" /> </svg>';$('recLimitBar').style.width='0%';$('recLimitBar').className='rec-limit-bar';if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null;}if(audioCtx){try{audioCtx.close();}catch(e){}audioCtx=null;analyser=null;}if(mediaRecorder&&mediaRecorder.state!=='inactive'){mediaRecorder.addEventListener('stop',()=>resolve(audioChunks),{once:true});mediaRecorder.stop();}else resolve(audioChunks);});}
 function generateWaveform(){const arr=[];for(let i=0;i<WF_BARS;i++)arr.push(Math.max(0.08,Math.min(1,Math.random()*0.9+0.08)));return arr;}
 
 async function sendVoiceMessage(dataURL,duration,waveform){
@@ -5521,7 +5592,7 @@ async function sendVoiceMessage(dataURL,duration,waveform){
     // Сохраняем голосовое в blobs
     try{const vbuf=base64ToArrayBuffer(dataURL.replace(/^data:[^,]+,/,''));await saveBlob(msgId+'_voice',vbuf);}catch(e){}
     const m={id:msgId,text:'',type:'sent',time:new Date(ts).toISOString(),reactions:{},edited:false,replyTo:replyTo||null,delivered:true,forwarded:false,voice:{waveform,blobId:msgId+'_voice',data:dataURL},voiceDuration:duration,voiceListened:true};
-    await upsertMsg(MY_ID,m);await updateChat(MY_ID,{lastMsg:'🎙 Голосовое',lastMsgTime:ts});appendOrReloadMsg(MY_ID,m);cancelReply();return;
+    await upsertMsg(MY_ID,m);await updateChat(MY_ID,{lastMsg:'Голосовое',lastMsgTime:ts});appendOrReloadMsg(MY_ID,m);cancelReply();return;
   }
   if(!wsUp){toast('Нет связи с сервером','err');return;}
   let key;try{key=await ensureKey(activePid);}catch(e){return;}
@@ -5534,7 +5605,7 @@ async function sendVoiceMessage(dataURL,duration,waveform){
     // Сохраняем голосовое отправителя в blobs
     try{const vbuf=base64ToArrayBuffer(dataURL.replace(/^data:[^,]+,/,''));await saveBlob(msgId+'_voice',vbuf);}catch(e){}
     const m={id:msgId,text:'',type:'sent',time:new Date(ts).toISOString(),reactions:{},edited:false,replyTo:replyTo||null,delivered:false,forwarded:false,voice:{waveform:env.voice.waveform,blobId:msgId+'_voice',data:dataURL},voiceDuration:duration,voiceListened:false};
-    await upsertMsg(activePid,m);await updateChat(activePid,{lastMsg:'🎙 Голосовое',lastMsgTime:ts});appendOrReloadMsg(activePid,m);cancelReply();
+    await upsertMsg(activePid,m);await updateChat(activePid,{lastMsg:'Голосовое',lastMsgTime:ts});appendOrReloadMsg(activePid,m);cancelReply();
     _sendActivityStop(activePid); // сбрасываем статус у получателя
   }catch(e){toast('Ошибка отправки голосового','err');}
 }
@@ -5558,12 +5629,12 @@ function _applyMicMode(animate){
   if(animate){
     btn.classList.add('switch-anim');
     setTimeout(()=>{
-      btn.textContent=isVideo?'📷':'🎙';
+      btn.innerHTML=isVideo?'<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z\" /> <circle cx=\"12\" cy=\"13\" r=\"3\" /> </svg>':'<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M12 19v3\" /> <path d=\"M19 10v2a7 7 0 0 1-14 0v-2\" /> <rect x=\"9\" y=\"2\" width=\"6\" height=\"13\" rx=\"3\" /> </svg>';
       btn.classList.toggle('mode-video',isVideo);
     },120);
     setTimeout(()=>btn.classList.remove('switch-anim'),300);
   }else{
-    btn.textContent=isVideo?'📷':'🎙';
+    btn.innerHTML=isVideo?'<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z\" /> <circle cx=\"12\" cy=\"13\" r=\"3\" /> </svg>':'<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M12 19v3\" /> <path d=\"M19 10v2a7 7 0 0 1-14 0v-2\" /> <rect x=\"9\" y=\"2\" width=\"6\" height=\"13\" rx=\"3\" /> </svg>';
     btn.classList.toggle('mode-video',isVideo);
   }
 }
@@ -5771,7 +5842,7 @@ async function startVideoNote(){
 
   // Инициализируем кнопку паузы в исходное состояние
   const pauseBtnInit=$('vnPauseBtn');
-  if(pauseBtnInit){pauseBtnInit.classList.remove('paused');pauseBtnInit.textContent='⏸';pauseBtnInit.title='Пауза';}
+  if(pauseBtnInit){pauseBtnInit.classList.remove('paused');pauseBtnInit.innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <rect x=\"14\" y=\"3\" width=\"5\" height=\"18\" rx=\"1\" /> <rect x=\"5\" y=\"3\" width=\"5\" height=\"18\" rx=\"1\" /> </svg>';pauseBtnInit.title='Пауза';}
 
   // const preview=$('vnPreview'); // Перемещено выше
   // preview.srcObject=_vnStream; // Перемещено выше
@@ -5843,7 +5914,7 @@ function _stopVnInternal(){
     preview.srcObject=null;
     // Сбрасываем состояние кнопки паузы
     const pauseBtn=$('vnPauseBtn');
-    if(pauseBtn){pauseBtn.classList.remove('paused');pauseBtn.textContent='⏸';pauseBtn.title='Пауза';}
+    if(pauseBtn){pauseBtn.classList.remove('paused');pauseBtn.innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <rect x=\"14\" y=\"3\" width=\"5\" height=\"18\" rx=\"1\" /> <rect x=\"5\" y=\"3\" width=\"5\" height=\"18\" rx=\"1\" /> </svg>';pauseBtn.title='Пауза';}
     if(_vnStream){_vnStream.getTracks().forEach(t=>t.stop());_vnStream=null;}
     if(_vnMediaRecorder&&_vnMediaRecorder.state!=='inactive'){
       _vnMediaRecorder.addEventListener('stop',()=>resolve(_vnChunks),{once:true});
@@ -5938,7 +6009,7 @@ window.togglePauseVideoNote=function(){
     clearInterval(_vnActivityHb);_vnActivityHb=null;
     _vnPaused=true;
     // Визуальная обратная связь
-    if(pauseBtn){pauseBtn.classList.add('paused');pauseBtn.textContent='▶';pauseBtn.title='Продолжить запись';}
+    if(pauseBtn){pauseBtn.classList.add('paused');pauseBtn.innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z\" /> </svg>';pauseBtn.title='Продолжить запись';}
     if(timeEl)timeEl.classList.add('paused');
     if(circleWrap)circleWrap.classList.add('paused');
     if(typeof _vib==='function')_vib('impactLight');
@@ -5983,7 +6054,7 @@ window.togglePauseVideoNote=function(){
       _vnActivityHb=setInterval(()=>{if(activePid&&_vnRecording&&!_vnPaused)_sendActivitySignal(activePid,'recording');},3000);
     }
     // Визуальная обратная связь
-    if(pauseBtn){pauseBtn.classList.remove('paused');pauseBtn.textContent='⏸';pauseBtn.title='Пауза';}
+    if(pauseBtn){pauseBtn.classList.remove('paused');pauseBtn.innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <rect x=\"14\" y=\"3\" width=\"5\" height=\"18\" rx=\"1\" /> <rect x=\"5\" y=\"3\" width=\"5\" height=\"18\" rx=\"1\" /> </svg>';pauseBtn.title='Пауза';}
     if(timeEl)timeEl.classList.remove('paused');
     if(circleWrap)circleWrap.classList.remove('paused');
     if(typeof _vib==='function')_vib('impactLight');
@@ -6020,7 +6091,7 @@ async function sendVideoNoteMessageBuffer(fileBuffer, durSec, mimeType, blob) {
       videoBlobId: msgId + '_vnote', videoMime: mimeType
     };
     await upsertMsg(MY_ID, m);
-    await updateChat(MY_ID, { lastMsg: '📹 Видео-кружок', lastMsgTime: ts });
+    await updateChat(MY_ID, { lastMsg: 'Видео-кружок', lastMsgTime: ts });
     appendOrReloadMsg(MY_ID, { ...m, videoData: previewURL, _previewURL: previewURL });
     cancelReply();
     return;
@@ -6037,7 +6108,7 @@ async function sendVideoNoteMessageBuffer(fileBuffer, durSec, mimeType, blob) {
     videoBlobId: msgId + '_vnote', videoMime: mimeType
   };
   await upsertMsg(activePid, mSender);
-  await updateChat(activePid, { lastMsg: '📹 Видео-кружок', lastMsgTime: ts });
+  await updateChat(activePid, { lastMsg: 'Видео-кружок', lastMsgTime: ts });
   appendOrReloadMsg(activePid, { ...mSender, videoData: previewURL, _previewURL: previewURL });
   cancelReply();
   _sendActivityStop(activePid);
@@ -6174,7 +6245,7 @@ function buildVideoNoteBubble(m,isSent){
     ov.className='vn-dl-wrap';
     const btn=document.createElement('div');
     btn.className='vn-dl-btn';
-    btn.textContent='⬇';
+    btn.innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M12 15V3\" /> <path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\" /> <path d=\"m7 10 5 5 5-5\" /> </svg>';
     btn.title='Скачать видео-кружок';
     btn.onclick=e=>{
       e.stopPropagation();
@@ -6190,7 +6261,7 @@ function buildVideoNoteBubble(m,isSent){
     const spinner=document.createElement('div');
     spinner.className='vn-dl-spinner';
     spinner.dataset.fileid=m.id;
-    spinner.innerHTML=`<svg viewBox="0 0 42 42"><circle class="vn-dl-spinner-track" cx="21" cy="21" r="19"/><circle class="vn-dl-spinner-fill" cx="21" cy="21" r="19" stroke-dasharray="122" stroke-dashoffset="122"/></svg><div class="vn-dl-spinner-icon">⬇</div>`;
+    spinner.innerHTML=`<svg viewBox="0 0 42 42"><circle class="vn-dl-spinner-track" cx="21" cy="21" r="19"/><circle class="vn-dl-spinner-fill" cx="21" cy="21" r="19" stroke-dasharray="122" stroke-dashoffset="122"/></svg><div class="vn-dl-spinner-icon"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M12 15V3" /> <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /> <path d="m7 10 5 5 5-5" /> </svg></div>`;
     ov.appendChild(spinner);
     return ov;
   }
@@ -6319,7 +6390,7 @@ function buildVideoNoteBubble(m,isSent){
   timeEl.className='msg-time-inline';
   timeEl.textContent=new Date(m.time).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});
   metaPill.appendChild(timeEl);
-  if(isSent){const tk=document.createElement('span');tk.className='msg-ticks'+(m.delivered?' double':' single');tk.textContent=m.delivered?'✔✔':'✔';metaPill.appendChild(tk);}
+  if(isSent){const tk=document.createElement('span');tk.className='msg-ticks'+(m.delivered?' double':' single');tk.innerHTML = m.delivered?'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M18 6 7 17l-5-5" /> <path d="m22 10-7.5 7.5L13 16" /> </svg>':'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M20 6 9 17l-5-5" /> </svg>';metaPill.appendChild(tk);}
 
   outer.appendChild(durPill);
   outer.appendChild(metaPill);
@@ -6561,7 +6632,7 @@ function buildAudioPlayer(file, isSent, metaEl){
   // ── Кнопка Play/Pause (46×46, круглая — как в Telegram) ──
   const btn = document.createElement('button');
   btn.className = 'audio-play-btn';
-  btn.innerHTML = '▶';
+  btn.innerHTML = '<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z\" /> </svg>';
   btn.setAttribute('aria-label','play');
 
   // ── Правая колонка ──
@@ -6643,7 +6714,7 @@ function buildAudioPlayer(file, isSent, metaEl){
     });
     audio.onended = () => {
       isPlaying = false;
-      btn.innerHTML = '▶';
+      btn.innerHTML = '<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z\" /> </svg>';
       btn.classList.remove('playing');
       cancelAnimationFrame(rafId);
       fill.style.width = '0px';
@@ -6652,7 +6723,7 @@ function buildAudioPlayer(file, isSent, metaEl){
     };
     audio.onpause = () => {
       isPlaying = false;
-      btn.innerHTML = '▶';
+      btn.innerHTML = '<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z\" /> </svg>';
       btn.classList.remove('playing');
       cancelAnimationFrame(rafId);
     };
@@ -6678,7 +6749,7 @@ function buildAudioPlayer(file, isSent, metaEl){
     } else {
       audio.play().then(() => {
         isPlaying = true;
-        btn.innerHTML = '⏸';
+        btn.innerHTML = '<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <rect x=\"14\" y=\"3\" width=\"5\" height=\"18\" rx=\"1\" /> <rect x=\"5\" y=\"3\" width=\"5\" height=\"18\" rx=\"1\" /> </svg>';
         btn.classList.add('playing');
         currentAudio = audio;
         cancelAnimationFrame(rafId);
@@ -6787,13 +6858,13 @@ function buildAudioPlayer(file, isSent, metaEl){
     if(video.paused || video.ended){ video.play(); }
     else { video.pause(); }
   });
-  video.addEventListener('play',  ()=>{ tapIcon.textContent='▶'; showTapIcon(); startRaf(); });
-  video.addEventListener('pause', ()=>{ tapIcon.textContent='⏸'; showTapIcon(); stopRaf(); });
+  video.addEventListener('play',  ()=>{ tapIcon.innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z\" /> </svg>'; showTapIcon(); startRaf(); });
+  video.addEventListener('pause', ()=>{ tapIcon.innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <rect x=\"14\" y=\"3\" width=\"5\" height=\"18\" rx=\"1\" /> <rect x=\"5\" y=\"3\" width=\"5\" height=\"18\" rx=\"1\" /> </svg>'; showTapIcon(); stopRaf(); });
   video.addEventListener('ended', ()=>{
     stopRaf();
     fill.style.width='0%'; thumb.style.left='0%';
     timer.textContent=`0:00 / ${fmtT(getEffDur())}`;
-    tapIcon.textContent='▶'; showTapIcon();
+    tapIcon.innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z\" /> </svg>'; showTapIcon();
   });
   video.addEventListener('loadedmetadata',()=>{
     timer.textContent=`0:00 / ${fmtT(getEffDur())}`;
@@ -6879,6 +6950,7 @@ function buildVideoPlayer(file, isSent, m){
   playOverlay.className = 'vid-play-overlay';
   const playBtn = document.createElement('div');
   playBtn.className = 'vid-play-btn';
+  playBtn.innerHTML = `<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z" /> </svg>`;
   playOverlay.appendChild(playBtn);
 
   // Значок длительности (левый верхний угол)
@@ -6896,7 +6968,7 @@ function buildVideoPlayer(file, isSent, m){
   if(isSent){
     const tk = document.createElement('span');
     tk.className = 'msg-ticks' + (m.delivered?' double':' single');
-    tk.textContent = m.delivered ? '✔✔' : '✔';
+    tk.innerHTML = m.delivered ? '<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M18 6 7 17l-5-5" /> <path d="m22 10-7.5 7.5L13 16" /> </svg>' : '<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M20 6 9 17l-5-5" /> </svg>';
     metaOverlay.appendChild(tk);
   }
 
@@ -6983,7 +7055,7 @@ function buildVoiceBubble(m,isSent){
   // для data: URL может быть Infinity/NaN пока браузер не декодирует весь файл.
   const totalSec=m.voiceDuration||0;const dotHidden=!!m.voiceListened;
   const wrap=document.createElement('div');wrap.className='voice-bubble';
-  const btn=document.createElement('button');btn.className='voice-play-btn';btn.innerHTML='▶';
+  const btn=document.createElement('button');btn.className='voice-play-btn';btn.innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z\" /> </svg>';
   const right=document.createElement('div');right.className='voice-right';
   const wf=document.createElement('div');wf.className='voice-waveform';
   const waveform=m.voice?.waveform||Array.from({length:WF_BARS},()=>Math.random());
@@ -7005,7 +7077,7 @@ function buildVoiceBubble(m,isSent){
   const metaWrap=document.createElement('span');metaWrap.className='voice-meta-inline';
   const timeEl=document.createElement('span');timeEl.className='msg-time-inline';timeEl.textContent=new Date(m.time).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});
   metaWrap.appendChild(timeEl);
-  if(isSent){const tk=document.createElement('span');tk.className='msg-ticks'+(m.delivered?' double':' single');tk.textContent=m.delivered?'✔✔':'✔';metaWrap.appendChild(tk);}
+  if(isSent){const tk=document.createElement('span');tk.className='msg-ticks'+(m.delivered?' double':' single');tk.innerHTML = m.delivered?'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M18 6 7 17l-5-5" /> <path d="m22 10-7.5 7.5L13 16" /> </svg>':'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M20 6 9 17l-5-5" /> </svg>';metaWrap.appendChild(tk);}
   bot.appendChild(timerEl);bot.appendChild(dot);bot.appendChild(metaWrap);
   right.appendChild(wf);right.appendChild(bot);wrap.appendChild(btn);wrap.appendChild(right);
   let audio=null,isPlaying=false,rafId=null;
@@ -7022,7 +7094,7 @@ function buildVoiceBubble(m,isSent){
   function resetWave(){
     if(rafId){cancelAnimationFrame(rafId);rafId=null;}
     isPlaying=false;
-    btn.innerHTML='▶';btn.classList.remove('playing');
+    btn.innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z\" /> </svg>';btn.classList.remove('playing');
     timerEl.textContent=fmtDur(totalSec);
     updateProgress(0);
   }
@@ -7061,7 +7133,7 @@ function buildVoiceBubble(m,isSent){
         audio.onended=()=>{
           isPlaying=false;
           if(rafId){cancelAnimationFrame(rafId);rafId=null;}
-          btn.innerHTML='▶';btn.classList.remove('playing');
+          btn.innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z\" /> </svg>';btn.classList.remove('playing');
           timerEl.textContent=fmtDur(totalSec);
           // Сбрасываем волну — сообщение уже прослушано, заливка исчезает
           updateProgress(0);
@@ -7073,7 +7145,7 @@ function buildVoiceBubble(m,isSent){
         audio.onpause=()=>{
           isPlaying=false;
           if(rafId){cancelAnimationFrame(rafId);rafId=null;}
-          btn.innerHTML='▶';btn.classList.remove('playing');
+          btn.innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z\" /> </svg>';btn.classList.remove('playing');
         };
         audio.addEventListener('loadedmetadata',()=>{if(isPlaying)rafTick();});
         _startPlay();
@@ -7090,7 +7162,7 @@ function buildVoiceBubble(m,isSent){
     // Запускаем rafTick сразу при нажатии Play — до загрузки метаданных
     audio.play().then(async()=>{
       isPlaying=true;
-      btn.innerHTML='⏸';btn.classList.add('playing');
+      btn.innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <rect x=\"14\" y=\"3\" width=\"5\" height=\"18\" rx=\"1\" /> <rect x=\"5\" y=\"3\" width=\"5\" height=\"18\" rx=\"1\" /> </svg>';btn.classList.add('playing');
       currentAudio=audio;
       if(rafId) cancelAnimationFrame(rafId);
       rafTick();
@@ -7167,7 +7239,7 @@ async function pinMessage(m){
   _pinnedViewIdx=-1; // сбрасываем на последнее
   renderPinnedBar(activePid);
   _markRowPinned(m.id,true);
-  toast('📌 Сообщение закреплено');
+  toast('Сообщение закреплено');
   // Синхронизируем с собеседником
   await _sendPinSignal(activePid,'pin',m.id,preview,m.time);
 }
@@ -7181,23 +7253,38 @@ async function unpinMessage(msgId){
   _pinnedViewIdx=-1;
   renderPinnedBar(activePid);
   _markRowPinned(msgId,false);
-  toast('📍 Сообщение откреплено');
+  toast('Сообщение откреплено');
   await _sendPinSignal(activePid,'unpin',msgId,null,null);
 }
 
 // Краткий превью для закреплённой панели
 function _pinPreview(m){
-  if(m.voice)return'🎙 Голосовое сообщение';
-  if(m.media)return'📷 Фотография';
-  if(m.file)return`📁 ${m.file.name||'Файл'}`;
-  if(m.fileAvailable)return`📎 ${m.fileAvailable.name||'Файл'}`;
+  if(m.voice)return'Голосовое сообщение';
+  if(m.media)return'Фотография';
+  if(m.file)return`${m.file.name||'Файл'}`;
+  if(m.fileAvailable)return`${m.fileAvailable.name||'Файл'}`;
   return(m.text||'').replace(/\n/g,' ').slice(0,80)||'Сообщение';
 }
 
 // Помечаем/снимаем метку закреплённого у DOM-строки
 function _markRowPinned(msgId,isPinned){
   const row=document.querySelector(`.msg-row[data-msgid="${msgId}"]`);
-  if(row){row.classList.toggle('pinned-msg',isPinned);}
+  if(row){row.classList.toggle('pinned-msg',isPinned);
+    // Inject/remove pin badge SVG
+    const bubble = row.querySelector('.bubble');
+    if(bubble){
+      let badge = bubble.querySelector('.pinned-pin-badge');
+      if(isPinned){
+        if(!badge){
+          badge = document.createElement('span');
+          badge.className = 'pinned-pin-badge';
+          badge.innerHTML = `<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M12 17v5" /> <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" /> </svg>`;
+          bubble.insertBefore(badge, bubble.firstChild);
+        }
+      } else {
+        if(badge) badge.remove();
+      }
+    }}
 }
 
 // Перерисовать панель закреплённого вверху чата
@@ -7266,10 +7353,10 @@ window.onPinnedCloseClick=async function(e){
   const idx=_getDisplayPinIdx(pins);
   const pin=pins[idx];
   showConfirm({
-    icon:'📍',
+    icon:'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M12 17v5" /> <path d="M15 9.34V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H7.89" /> <path d="m2 2 20 20" /> <path d="M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h11" /> </svg>',
     title:'Открепить сообщение?',
     text:'Сообщение будет откреплено у всех участников чата.',
-    yesLabel:'📍 Открепить',
+    yesLabel:'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M12 17v5" /> <path d="M15 9.34V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H7.89" /> <path d="m2 2 20 20" /> <path d="M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h11" /> </svg> Открепить',
     noLabel:'Отмена',
     onYes:()=>unpinMessage(pin.id)
   });
@@ -7621,7 +7708,7 @@ function renderStickerTabs(){
     if(pack.id==='recent'&&rec.length===0)return;
     const tab=document.createElement('div');
     tab.className='sticker-pack-tab'+(idx===stickerActivePack?' active':'');
-    tab.textContent=pack.icon;
+    tab.innerHTML=pack.icon;
     tab.title=pack.name;
     tab.setAttribute('title',pack.name);
     tab.onclick=(e)=>{
@@ -7660,7 +7747,7 @@ function renderStickerGrid(packIdx,query){
       if(nameEl)nameEl.innerHTML='';
       const empty=document.createElement('div');
       empty.className='sticker-empty';
-      empty.innerHTML=`<div class="sticker-empty-icon">🔍</div><div>Ничего не найдено по запросу<br><strong style="color:var(--g)">"${q}"</strong><br><span style="opacity:.6;font-size:11px">Попробуй: вода, объятия, самолёт, огонь</span></div>`;
+      empty.innerHTML=`<div class="sticker-empty-icon"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="m21 21-4.34-4.34" /> <circle cx="11" cy="11" r="8" /> </svg></div><div>Ничего не найдено по запросу<br><strong style="color:var(--g)">"${q}"</strong><br><span style="opacity:.6;font-size:11px">Попробуй: вода, объятия, самолёт, огонь</span></div>`;
       // Вставляем empty ПЕРЕД grid (grid остаётся в DOM, просто пустой)
       gridWrap.insertBefore(empty,grid);
       return;
@@ -7678,7 +7765,7 @@ function renderStickerGrid(packIdx,query){
   if(!stickers.length){
     const empty=document.createElement('div');
     empty.className='sticker-empty';
-    empty.innerHTML=`<div class="sticker-empty-icon">${STICKER_PACKS[packIdx]?.icon||'🗿'}</div><div>Здесь пусто</div>`;
+    empty.innerHTML=`<div class="sticker-empty-icon">${STICKER_PACKS[packIdx]?.icon||'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M21 9a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 15 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2z" /> <path d="M15 3v5a1 1 0 0 0 1 1h5" /> <path d="M8 13h.01" /> <path d="M16 13h.01" /> <path d="M10 16s.8 1 2 1c1.3 0 2-1 2-1" /> </svg>'}</div><div>Здесь пусто</div>`;
     gridWrap.insertBefore(empty,grid);
     return;
   }
@@ -7789,8 +7876,8 @@ window.bioPrompt = function(){
         bioUnlock();
       } else {
         var code = result && result.error;
-        var msg  = 'Ошибка. Нажмите 👆 для повтора.';
-        if(code === 'userCanceled')        msg = 'Отменено. Нажмите 👆 для повтора.';
+        var msg  = 'Ошибка. Нажмите для повтора.';
+        if(code === 'userCanceled')        msg = 'Отменено. Нажмите для повтора.';
         if(code === 'authenticationFailed') msg = 'Не распознано. Попробуйте ещё раз.';
         if(code === 'itemNotFound'){
           // Секрет потерян (переустановка?) — сбрасываем настройку
