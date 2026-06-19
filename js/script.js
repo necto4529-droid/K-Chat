@@ -846,7 +846,7 @@ async function sendFileToServer(fileInfo,caption){
   // Сохраняем в localStorage — пережить перезагрузку страницы
   try{const _sftp=lsGet('_fileSentToPeer',{});_sftp[fileId]=activePid;lsSet('_fileSentToPeer',_sftp);}catch(e){}
 
-  await new Promise(resolve=>{const timer=setTimeout(resolve,2000);storeAckWaiters.set(fileId,{resolve:()=>{clearTimeout(timer);resolve();},timer});});
+  await new Promise(resolve=>{const timer=setTimeout(resolve,30000);storeAckWaiters.set(fileId,{resolve:()=>{clearTimeout(timer);resolve();},timer});});
   storeAckWaiters.delete(fileId);
 
   // Шифруем и отправляем чанки батчами — не блокируем UI
@@ -878,7 +878,7 @@ async function sendFileToServer(fileInfo,caption){
   await finalizeUploadUI(fileId,activePid);
   clearInterval(_fileActivityHb);
   _sendActivityStop(activePid);
-  setTimeout(()=>_sendActivityStop(activePid),2000);
+  setTimeout(()=>_sendActivityStop(activePid),30000);
   return fileId;
 }
 
@@ -956,7 +956,7 @@ async function _downloadVideoNote(fileId, senderId, videoMime){
     fileTransfers.set(fileId,{state:'downloading',chunks:[],total:0,received:0,key,senderId,retries:0,maxRetries:6,_isVideoNote:true,_vnMime:videoMime});
     wsSend({type:'fetch-file',fileId});
     const ft=fileTransfers.get(fileId);
-    ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId),300000);
+    ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId),30000);
   }catch(e){console.error('[vnote] download error',e);}
 }
 
@@ -978,7 +978,7 @@ async function downloadFileFromServer(fileId,senderId){
   wsSend({type:'fetch-file',fileId, fromIndex});
   
   if(ft._timeoutTimer) clearTimeout(ft._timeoutTimer);
-  ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId),300000);
+  ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId),30000);
 }
 
 async function _retryDownload(fileId){
@@ -1010,9 +1010,7 @@ async function _retryDownload(fileId){
   if(ft._chunksReady!==undefined&&ft._chunksReady<ft.total&&fromIndex>=ft._chunksReady){
     // Мы скачали всё что было на сервере, просто ждём новых чанков
     console.log(`[File] Waiting for new chunks on server (${ft._chunksReady}/${ft.total})`);
-    // Уменьшаем время следующей проверки до 2 секунд для "эффекта мгновенности"
-    if(ft._timeoutTimer) clearTimeout(ft._timeoutTimer);
-    ft._timeoutTimer = setTimeout(() => _retryDownload(fileId), 2000);
+    toast(`Продолжаю скачивать (${ft.retries}/${ft.maxRetries})…`,'warn');
   } else {
     toast(`Продолжаю загрузку (${ft.retries}/${ft.maxRetries})…`,'warn');
   }
@@ -1023,7 +1021,7 @@ async function _retryDownload(fileId){
     wsSend({type:'fetch-file',fileId,fromIndex});
   }
   if(ft._timeoutTimer) clearTimeout(ft._timeoutTimer);
-  ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId), 300000);
+  ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId), 30000);
 }
 
 async function handleFileDataHeader(msg){
@@ -1049,7 +1047,7 @@ async function handleFileDataHeader(msg){
   console.log(`[File] Header for ${fileId}: ${totalChunks} chunks, ready on server: ${chunksReady}, resuming from ${fromIndex}`);
   
   if(ft._timeoutTimer){clearTimeout(ft._timeoutTimer);ft._timeoutTimer=null;}
-  ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId),300000);
+  ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId),30000);
 }
 
 // Очередь декрипта чанков — обрабатываем по одному чтобы не блокировать UI
@@ -1075,7 +1073,7 @@ async function _processDecryptQueue(fileId){
         // Сбрасываем тайм-аут ожидания
         if(ft._timeoutTimer){clearTimeout(ft._timeoutTimer);ft._timeoutTimer=null;}
         if(ft.received < ft.total){
-          ft._timeoutTimer=setTimeout(()=>_retryDownload(msg.fileId),300000);
+          ft._timeoutTimer=setTimeout(()=>_retryDownload(msg.fileId),30000);
         }
       }catch(e){console.warn(`chunk decrypt error index=${msg.index}`,e);}
     }));
@@ -1093,12 +1091,11 @@ async function _processDecryptQueue(fileId){
         if(ft._timeoutTimer){clearTimeout(ft._timeoutTimer);ft._timeoutTimer=null;}
         await assembleFile(fileId);
       } else if (ft.received < ft.total) {
-        // ФИКС: Если мы скачали всё что было на сервере, но файл не закончен,
-        // ставим короткий тайм-аут (2 сек) на проверку новых чанков, 
-        // чтобы не ждать 5 минут если PUSH почему-то не сработал.
+        // Если мы скачали всё что было на сервере, но файл не закончен,
+        // запускаем retry через 30 секунд.
         if (ft.received >= ft._chunksReady) {
            if(ft._timeoutTimer) clearTimeout(ft._timeoutTimer);
-           ft._timeoutTimer = setTimeout(() => _retryDownload(fileId), 2000);
+           ft._timeoutTimer = setTimeout(() => _retryDownload(fileId), 30000);
         }
       }
     }
@@ -1219,17 +1216,31 @@ async function assembleFile(fileId){
   ft.state='done';
 }
 
-function updateSpinnerProgress(fileId,pct){
-  const spinner=document.querySelector(`.tg-spinner[data-fileid="${fileId}"]`);
-  if(spinner){
-    const fill=spinner.querySelector('.tg-spinner-fill');if(fill)fill.style.strokeDashoffset=Math.max(0,122-122*pct/100);
-    const icon=spinner.querySelector('.tg-spinner-icon');if(icon&&pct>=100){icon.textContent='✓';icon.style.color='var(--g)';}
+function updateSpinnerProgress(fileId, pct) {
+  // ФИКС: Запоминаем максимальный достигнутый процент, чтобы не было "откатов" в 0%
+  if (!window._fileMaxPct) window._fileMaxPct = new Map();
+  const currentMax = window._fileMaxPct.get(fileId) || 0;
+  if (pct < currentMax) {
+    // Если новый процент меньше текущего максимума (например, при начале скачивания),
+    // мы игнорируем его, чтобы не пугать пользователя прыжком в 0.
+    return;
+  }
+  window._fileMaxPct.set(fileId, pct);
+
+  const spinner = document.querySelector(`.tg-spinner[data-fileid="${fileId}"]`);
+  if (spinner) {
+    const fill = spinner.querySelector('.tg-spinner-fill');
+    if (fill) fill.style.strokeDashoffset = Math.max(0, 122 - 122 * pct / 100);
+    const icon = spinner.querySelector('.tg-spinner-icon');
+    if (icon && pct >= 100) { icon.textContent = '✓'; icon.style.color = 'var(--g)'; }
   }
   // Видео-кружок: спиннер по центру кружка
-  const vnSpinner=document.querySelector(`.vn-dl-spinner[data-fileid="${fileId}"]`);
-  if(vnSpinner){
-    const fill=vnSpinner.querySelector('.vn-dl-spinner-fill');if(fill)fill.style.strokeDashoffset=Math.max(0,122-122*pct/100);
-    const icon=vnSpinner.querySelector('.vn-dl-spinner-icon');if(icon&&pct>=100){icon.textContent='✓';icon.style.color='var(--g)';}
+  const vnSpinner = document.querySelector(`.vn-dl-spinner[data-fileid="${fileId}"]`);
+  if (vnSpinner) {
+    const fill = vnSpinner.querySelector('.vn-dl-spinner-fill');
+    if (fill) fill.style.strokeDashoffset = Math.max(0, 122 - 122 * pct / 100);
+    const icon = vnSpinner.querySelector('.vn-dl-spinner-icon');
+    if (icon && pct >= 100) { icon.textContent = '✓'; icon.style.color = 'var(--g)'; }
   }
 }
 function resetSpinnerToDownload(spinner,fileId,fromId){
@@ -1382,7 +1393,7 @@ function _resumeAllFileTransfers(){
       if(ft._timeoutTimer){
         clearTimeout(ft._timeoutTimer);
       }
-      ft._timeoutTimer = setTimeout(()=>_retryDownload(fileId), 300000);
+      ft._timeoutTimer = setTimeout(()=>_retryDownload(fileId), 30000);
     }
   }
 }
@@ -1473,11 +1484,17 @@ async function onWS(msg){
     // ОПТИМИЗАЦИЯ 3+4: сервер сообщает сколько чанков уже есть — обновляем UI
     case 'file-chunks-update':{
       const{fileId:cuFileId,chunksReady:cuReady,totalChunks:cuTotal}=msg;
-      // Если файл уже скачивается — обновляем прогресс спиннера
       const ft=fileTransfers.get(cuFileId);
-      if(ft&&ft.state==='downloading'){
-        const pct=Math.round((cuReady/cuTotal)*100);
-        updateSpinnerProgress(cuFileId,pct);
+      if(ft){
+        ft._chunksReady = cuReady;
+        if(ft.state==='downloading'){
+          const pct=Math.round((cuReady/cuTotal)*100);
+          updateSpinnerProgress(cuFileId,pct);
+          // Если мы "зависли" на ожидании чанков, а они появились — толкаем загрузку
+          if(ft.received >= (ft._lastReceivedIndex||0) && ft.received < cuTotal){
+            _retryDownload(cuFileId);
+          }
+        }
       }
       break;
     }
@@ -1903,8 +1920,8 @@ function fmtLastSeen(ts){
   const now = new Date();
   const d   = new Date(ts);
   const diffMs  = now - d;
-  const diffMin = Math.floor(diffMs / 60000);
-  const diffH   = Math.floor(diffMs / 3600000);
+  const diffMin = Math.floor(diffMs / 30000);
+  const diffH   = Math.floor(diffMs / 3300000);
 
   // Менее минуты назад
   if(diffMin < 1) return 'только что в сети';
@@ -3390,7 +3407,7 @@ $('sendBtn').addEventListener('click',()=>sendMsg().catch(console.warn));
 $('messageInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg().catch(console.warn);}});
 $('messageInput').addEventListener('input',function(){
   this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px';
-  if(activePid&&wsUp&&keyCache[activePid]){sendTyping(true);clearTimeout(window._tyd);window._tyd=setTimeout(()=>sendTyping(false),2000);}
+  if(activePid&&wsUp&&keyCache[activePid]){sendTyping(true);clearTimeout(window._tyd);window._tyd=setTimeout(()=>sendTyping(false),30000);}
 });
 async function sendTyping(isTyping){const key=keyCache[activePid];if(!key||!wsUp)return;try{const enc=await encData(ENC.encode(JSON.stringify({type:'typing',isTyping,ts:Date.now()})),key);wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:payloadToB64(enc),ephemeral:true});}catch(e){}}
 
@@ -3828,7 +3845,7 @@ function _scheduleAutoDelTimer(pid, ttl){
   }
   if(!ttl)return;
   // Проверяем и удаляем просроченные сообщения каждые 60 сек
-  const id=setInterval(()=>_runAutoDelSweep(pid,ttl),60000);
+  const id=setInterval(()=>_runAutoDelSweep(pid,ttl),30000);
   _autoDelTimers.set(pid,id);
   // Сразу первый прогон
   _runAutoDelSweep(pid,ttl);
