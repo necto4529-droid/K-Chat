@@ -962,11 +962,22 @@ async function _downloadVideoNote(fileId, senderId, videoMime){
 
 async function downloadFileFromServer(fileId,senderId){
   const key=await getKey(senderId);if(!key){toast('Нет ключа шифрования — введите пароль','err');return;}
-  // Инициализируем transfer с retry счётчиком
-  fileTransfers.set(fileId,{state:'downloading',chunks:[],total:0,received:0,key,senderId,retries:0,maxRetries:5});
-  wsSend({type:'fetch-file',fileId});
-  // Таймаут: если за 60с не получили ни одного чанка — retry
-  const ft=fileTransfers.get(fileId);
+  
+  // ФИКС: Не перезаписываем объект, если он уже есть (чтобы не терять прогресс)
+  let ft = fileTransfers.get(fileId);
+  if (!ft) {
+    ft = {state:'downloading',chunks:[],total:0,received:0,key,senderId,retries:0,maxRetries:5};
+    fileTransfers.set(fileId, ft);
+  } else {
+    ft.state = 'downloading';
+    ft.retries = 0;
+  }
+  
+  // ФИКС: Если мы уже что-то скачали, запрашиваем с нужного индекса
+  const fromIndex = ft._lastReceivedIndex !== undefined ? ft._lastReceivedIndex + 1 : (ft.received || 0);
+  wsSend({type:'fetch-file',fileId, fromIndex});
+  
+  if(ft._timeoutTimer) clearTimeout(ft._timeoutTimer);
   ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId),300000);
 }
 
@@ -996,8 +1007,12 @@ async function _retryDownload(fileId){
   const fromIndex = ft._lastReceivedIndex !== undefined ? ft._lastReceivedIndex + 1 : (ft.received || 0);
   
   console.warn(`[File] Retry ${ft.retries}/${ft.maxRetries} for ${fileId}, resuming from chunk ${fromIndex}/${ft.total}`);
-  if(ft._chunksReady!==undefined&&ft._chunksReady<ft.total&&fromIndex===0){
-    console.log(`[File] Waiting for chunks to appear on server (${ft._chunksReady}/${ft.total})`);
+  if(ft._chunksReady!==undefined&&ft._chunksReady<ft.total&&fromIndex>=ft._chunksReady){
+    // Мы скачали всё что было на сервере, просто ждём новых чанков
+    console.log(`[File] Waiting for new chunks on server (${ft._chunksReady}/${ft.total})`);
+    // Уменьшаем время следующей проверки до 2 секунд для "эффекта мгновенности"
+    if(ft._timeoutTimer) clearTimeout(ft._timeoutTimer);
+    ft._timeoutTimer = setTimeout(() => _retryDownload(fileId), 2000);
   } else {
     toast(`Продолжаю загрузку (${ft.retries}/${ft.maxRetries})…`,'warn');
   }
@@ -1012,18 +1027,27 @@ async function _retryDownload(fileId){
 }
 
 async function handleFileDataHeader(msg){
-  // ОПТИМИЗАЦИЯ 3+4: chunksReady — сервер может отдать часть чанков ещё до завершения загрузки
   const{fileId,senderId,name,size,mimeType,totalChunks,caption,ts,fromIndex,chunksReady}=msg;
   const ft=fileTransfers.get(fileId);if(!ft)return;
+  
   ft.total=totalChunks;
-  if(!ft.chunks||ft.chunks.length!==totalChunks){ft.chunks=new Array(totalChunks).fill(null);}
-  if(!ft.received)ft.received=0;
+  // ФИКС: Инициализируем массив чанков только если он пустой
+  if(!ft.chunks || ft.chunks.length === 0){
+    ft.chunks = new Array(totalChunks).fill(null);
+  } else if (ft.chunks.length !== totalChunks) {
+    // Если размер изменился (странно, но бывает), расширяем
+    const newArr = new Array(totalChunks).fill(null);
+    for(let i=0; i<Math.min(ft.chunks.length, totalChunks); i++) newArr[i] = ft.chunks[i];
+    ft.chunks = newArr;
+  }
+
+  if(ft.received === undefined) ft.received = 0;
   ft.name=name;ft.size=size;ft.mimeType=mimeType;ft.caption=caption;ft.ts=ts;ft.senderId=senderId;
   ft._resumeFromIndex=fromIndex||0;
-  ft._chunksReady=chunksReady||totalChunks; // сколько чанков есть на сервере сейчас
-  console.log(`[File] Header for ${fileId}: ${totalChunks} chunks, ready on server: ${chunksReady||totalChunks}, resuming from ${fromIndex||0}`);
+  ft._chunksReady=chunksReady||totalChunks;
   
-  // Сбрасываем тайм-аут при получении заголовка
+  console.log(`[File] Header for ${fileId}: ${totalChunks} chunks, ready on server: ${chunksReady}, resuming from ${fromIndex}`);
+  
   if(ft._timeoutTimer){clearTimeout(ft._timeoutTimer);ft._timeoutTimer=null;}
   ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId),300000);
 }
@@ -1060,9 +1084,22 @@ async function _processDecryptQueue(fileId){
     if(ft) {
       const pct=Math.round((ft.received/ft.total)*100);
       updateSpinnerProgress(fileId,pct);
-      if(ft.received>=ft.total && ft.chunks.every(c=>c!==null)){
+      
+      // ФИКС: Проверяем готовность к сборке.
+      // Если это последний чанк, запускаем сборку немедленно.
+      const isComplete = ft.received >= ft.total && ft.chunks.every(c => c !== null);
+      if(isComplete && ft.state !== 'done' && ft.state !== 'assembling'){
+        console.log(`[File] All chunks received for ${fileId}, assembling...`);
         if(ft._timeoutTimer){clearTimeout(ft._timeoutTimer);ft._timeoutTimer=null;}
         await assembleFile(fileId);
+      } else if (ft.received < ft.total) {
+        // ФИКС: Если мы скачали всё что было на сервере, но файл не закончен,
+        // ставим короткий тайм-аут (2 сек) на проверку новых чанков, 
+        // чтобы не ждать 5 минут если PUSH почему-то не сработал.
+        if (ft.received >= ft._chunksReady) {
+           if(ft._timeoutTimer) clearTimeout(ft._timeoutTimer);
+           ft._timeoutTimer = setTimeout(() => _retryDownload(fileId), 2000);
+        }
       }
     }
     await new Promise(r=>setTimeout(r,0));
