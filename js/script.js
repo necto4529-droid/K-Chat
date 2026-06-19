@@ -1917,8 +1917,8 @@ function fmtLastSeen(ts){
   const now = new Date();
   const d   = new Date(ts);
   const diffMs  = now - d;
-  const diffMin = Math.floor(diffMs / 30000);
-  const diffH   = Math.floor(diffMs / 3300000);
+  const diffMin = Math.floor(diffMs / 60000);
+  const diffH   = Math.floor(diffMs / 3600000);
 
   // Менее минуты назад
   if(diffMin < 1) return 'только что в сети';
@@ -3842,7 +3842,7 @@ function _scheduleAutoDelTimer(pid, ttl){
   }
   if(!ttl)return;
   // Проверяем и удаляем просроченные сообщения каждые 60 сек
-  const id=setInterval(()=>_runAutoDelSweep(pid,ttl),30000);
+  const id=setInterval(()=>_runAutoDelSweep(pid,ttl),60000);
   _autoDelTimers.set(pid,id);
   // Сразу первый прогон
   _runAutoDelSweep(pid,ttl);
