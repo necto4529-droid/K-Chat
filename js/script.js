@@ -1012,6 +1012,10 @@ async function handleFileDataHeader(msg){
   ft._resumeFromIndex=fromIndex||0;
   ft._chunksReady=chunksReady||totalChunks; // сколько чанков есть на сервере сейчас
   console.log(`[File] Header for ${fileId}: ${totalChunks} chunks, ready on server: ${chunksReady||totalChunks}, resuming from ${fromIndex||0}`);
+  
+  // Сбрасываем тайм-аут при получении заголовка
+  if(ft._timeoutTimer){clearTimeout(ft._timeoutTimer);ft._timeoutTimer=null;}
+  ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId),60000);
 }
 
 // Очередь декрипта чанков — обрабатываем по одному чтобы не блокировать UI
@@ -1029,10 +1033,18 @@ async function _processDecryptQueue(fileId){
       const decBuf=await decData(encBuf,ft.key);
       ft.chunks[msg.index]=decBuf;
       ft.received=(ft.received||0)+1;
+      
+      // Сбрасываем тайм-аут ожидания при получении любого чанка
+      if(ft._timeoutTimer){clearTimeout(ft._timeoutTimer);ft._timeoutTimer=null;}
+      // Если это не последний чанк файла, ставим новый тайм-аут
+      if(ft.received < ft.total){
+        ft._timeoutTimer=setTimeout(()=>_retryDownload(msg.fileId),60000);
+      }
     }catch(e){console.warn(`chunk decrypt error index=${msg.index}`,e);}
     const pct=Math.round((ft.received/ft.total)*100);
     updateSpinnerProgress(msg.fileId,pct);
     if(ft.received>=ft.total&&ft.chunks.every(c=>c!==null)){
+      if(ft._timeoutTimer){clearTimeout(ft._timeoutTimer);ft._timeoutTimer=null;}
       await assembleFile(msg.fileId);
     }
     // Yield UI thread
