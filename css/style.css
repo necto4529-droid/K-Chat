@@ -605,7 +605,7 @@
     .file-icon-download:active{transform:scale(.92)}
     .file-dl-arrow{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:18px}
     .tg-spinner{width:42px;height:42px;position:relative;flex-shrink:0}
-    .tg-spinner svg{width:42px;height:42px;transform:rotate(-90deg)}
+    .tg-spinner svg{width:42px;height:42px;}
     .tg-spinner-track{fill:none;stroke:rgba(255,255,255,.12);stroke-width:3}
     .tg-spinner-fill{fill:none;stroke:var(--g);stroke-width:3;stroke-linecap:round;stroke-dasharray:122;stroke-dashoffset:122;transition:stroke-dashoffset .25s ease}
     .tg-spinner-icon{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--g)}
@@ -631,7 +631,7 @@
     /* Кнопка Play поверх превью */
     .vid-play-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
     .vid-play-btn{width:54px;height:54px;border-radius:50%;background:rgba(0,0,0,.52);backdrop-filter:blur(6px);border:2.5px solid rgba(255,255,255,.75);display:flex;align-items:center;justify-content:center;font-size:20px;color:#fff;flex-shrink:0;pointer-events:none}
-    .vid-play-btn::after{content:'▶';margin-left:3px}
+    /* vid-play-btn icon injected via JS */
     /* Длительность в левом верхнем углу */
     .vid-dur-badge{position:absolute;top:7px;left:8px;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);border-radius:8px;padding:2px 7px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:#fff;pointer-events:none;line-height:1.4}
     /* Мета (время+галочки) поверх превью — правый нижний угол */
@@ -667,13 +667,13 @@
     .upload-media-wrap{position:relative;display:inline-block;border-radius:12px;overflow:hidden;max-width:260px}
     .upload-media-wrap img{width:100%;height:auto;display:block;opacity:.75;filter:brightness(.6)}
     .upload-overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;pointer-events:none}
-    .upload-spinner-svg{width:52px;height:52px;transform:rotate(-90deg);filter:drop-shadow(0 2px 6px rgba(0,0,0,.5))}
+    .upload-spinner-svg{width:52px;height:52px;filter:drop-shadow(0 2px 6px rgba(0,0,0,.5))}
     .upload-spinner-track{fill:rgba(0,0,0,.35);stroke:rgba(255,255,255,.2);stroke-width:3}
     .upload-spinner-fill{fill:none;stroke:#fff;stroke-width:3;stroke-linecap:round;stroke-dasharray:132;stroke-dashoffset:132;transition:stroke-dashoffset .3s ease}
     .upload-spinner-icon{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff;filter:drop-shadow(0 1px 3px rgba(0,0,0,.6))}
     .upload-pct{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.8);letter-spacing:.5px}
     .file-upload-spinner{width:42px;height:42px;position:relative;flex-shrink:0}
-    .file-upload-spinner svg{width:42px;height:42px;transform:rotate(-90deg)}
+    .file-upload-spinner svg{width:42px;height:42px;}
     .file-upload-spinner-track{fill:rgba(0,0,0,.25);stroke:rgba(255,255,255,.15);stroke-width:3}
     .file-upload-spinner-fill{fill:none;stroke:var(--g);stroke-width:3;stroke-linecap:round;stroke-dasharray:122;stroke-dashoffset:122;transition:stroke-dashoffset .3s ease}
     .file-upload-spinner-icon{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:15px;color:var(--g)}
@@ -801,12 +801,12 @@
     .attach-sheet{
       position:fixed;bottom:0;left:0;right:0;z-index:199;
       background:rgba(8,8,18,.99);
-      /* backdrop-filter убран — фон полностью непрозрачный, blur только грузит GPU при старте анимации */
       border-top:1px solid var(--g-18);
       border-radius:22px 22px 0 0;
       box-shadow:0 -12px 60px rgba(0,0,0,.8),0 -1px 0 var(--g-08);
       transform:translateY(100%);
-      transition:transform .38s cubic-bezier(.25,.46,.45,.94);
+      /* Быстрый spring slide-in — sheet достигает позиции за ~300ms */
+      transition:transform .32s cubic-bezier(.22,.88,.38,1.05);
       padding:0 0 max(20px,env(safe-area-inset-bottom));
       will-change:transform;
     }
@@ -829,23 +829,29 @@
       display:flex;flex-direction:column;align-items:center;gap:9px;
       padding:10px 4px 12px;border-radius:16px;cursor:pointer;
       transition:background .15s,transform .12s;
-      opacity:0;transform:translateY(10px) scale(.95);
+      /* Начальное состояние: скрыт, немного смещён вниз */
+      opacity:0;
+      transform:translateY(14px) scale(.88);
     }
-    .attach-sheet.open .attach-item{
-      animation:attachItemIn .32s cubic-bezier(.34,1.3,.4,1) forwards;
+    /*
+     * Анимация items запускается через JS-класс .attach-items-animate
+     * который добавляется ПОСЛЕ того как sheet закончил slide-in transition.
+     * Это гарантирует что анимация видна пользователю, а не "съедается"
+     * одновременным slide-up sheet-а. Каждый item получает nth-child задержку.
+     */
+    .attach-grid.attach-items-animate .attach-item{
+      animation:attachItemIn .28s cubic-bezier(.34,1.56,.64,1) both;
     }
-    .attach-sheet.open .attach-item:nth-child(1){animation-delay:.04s}
-    .attach-sheet.open .attach-item:nth-child(2){animation-delay:.08s}
-    .attach-sheet.open .attach-item:nth-child(3){animation-delay:.12s}
-    .attach-sheet.open .attach-item:nth-child(4){animation-delay:.16s}
-    .attach-sheet.open .attach-item:nth-child(5){animation-delay:.20s}
-    .attach-sheet.open .attach-item:nth-child(6){animation-delay:.24s}
-    .attach-sheet.open .attach-item:nth-child(7){animation-delay:.28s}
-    .attach-sheet.open .attach-item:nth-child(8){animation-delay:.32s}
+    .attach-grid.attach-items-animate .attach-item:nth-child(1){animation-delay:0ms}
+    .attach-grid.attach-items-animate .attach-item:nth-child(2){animation-delay:40ms}
+    .attach-grid.attach-items-animate .attach-item:nth-child(3){animation-delay:70ms}
+    .attach-grid.attach-items-animate .attach-item:nth-child(4){animation-delay:95ms}
     @keyframes attachItemIn{
-      to{opacity:1;transform:translateY(0) scale(1)}
+      0%  {opacity:0;transform:translateY(14px) scale(.88)}
+      60% {opacity:1;transform:translateY(-3px) scale(1.04)}
+      100%{opacity:1;transform:translateY(0) scale(1)}
     }
-    .attach-item:active{transform:scale(.93);background:rgba(255,255,255,.05)}
+    .attach-item:active{transform:scale(.91)!important;background:rgba(255,255,255,.06)}
     .attach-item-icon{
       width:52px;height:52px;border-radius:15px;
       display:flex;align-items:center;justify-content:center;
@@ -874,6 +880,7 @@
     body.power-save .attach-backdrop{transition:opacity .1s ease!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
     body.power-save .attach-sheet{transition:transform .15s ease!important}
     body.power-save .attach-item{animation:none!important;opacity:1!important;transform:none!important}
+    body.power-save .attach-grid.attach-items-animate .attach-item{animation:none!important;opacity:1!important;transform:none!important}
     .vn-control-capsule{
       position:absolute;bottom:max(28px,env(safe-area-inset-bottom));left:50%;
       transform:translate(-50%,30px);
@@ -960,7 +967,7 @@
     .vn-dl-btn:active{transform:scale(.92)}
     .vn-dl-spinner{width:42px;height:42px;position:relative;animation:vnDlPulse 1.8s ease-in-out infinite}
     @keyframes vnDlPulse{0%,100%{filter:drop-shadow(0 0 0 transparent)}50%{filter:drop-shadow(0 0 6px var(--g-40))}}
-    .vn-dl-spinner svg{width:42px;height:42px;transform:rotate(-90deg)}
+    .vn-dl-spinner svg{width:42px;height:42px;}
     .vn-dl-spinner-track{fill:none;stroke:rgba(255,255,255,.18);stroke-width:3}
     .vn-dl-spinner-fill{fill:none;stroke:var(--g);stroke-width:3;stroke-linecap:round;stroke-dasharray:122;stroke-dashoffset:122;transition:stroke-dashoffset .25s ease}
     .vn-dl-spinner-icon{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff}
@@ -1163,7 +1170,8 @@
     .pinned-close:hover{background:rgba(255,255,255,.14);color:var(--text)}
     .pinned-close:active{transform:scale(.88)}
     /* msg-row помечаем как закреплённое */
-    .msg-row.pinned-msg .bubble::after{content:'📌';position:absolute;top:5px;left:7px;font-size:10px;opacity:.50;pointer-events:none;line-height:1}
+    .msg-row.pinned-msg .bubble .pinned-pin-badge{position:absolute;top:5px;left:6px;font-size:0;line-height:1;opacity:.55;pointer-events:none;color:var(--text)}
+    .msg-row.pinned-msg .bubble .pinned-pin-badge svg{width:10px;height:10px}
     .msg-row.pinned-msg .bubble{padding-left:22px}
 
     /* ══════════════════════════════════════════════════════
@@ -1433,3 +1441,165 @@
     /* Недавние стикеры */
     .sticker-recents-divider{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,.3);padding:6px 6px 3px;grid-column:1/-1}
 
+
+/* ── SWIPE TO REPLY (Telegram Style) ── */
+.msg-row-outer {
+  position: relative;
+  touch-action: pan-y;
+}
+
+.msg-row {
+  transition: transform 0.15s ease-out;
+  will-change: transform;
+}
+
+.msg-row.swiping {
+  transition: none;
+}
+
+.reply-swipe-indicator {
+  position: absolute;
+  right: -32px;
+  top: 50%;
+  transform: translateY(-50%) scale(0.4);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--g-15);
+  border: 1px solid var(--g-35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--g);
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.2s;
+  z-index: 5;
+}
+
+.reply-swipe-indicator.visible {
+  opacity: 1;
+  transform: translateY(-50%) scale(1);
+}
+
+.reply-swipe-indicator.active {
+  background: var(--g);
+  color: #000;
+  transform: translateY(-50%) scale(1.1);
+  box-shadow: 0 0 8px rgba(var(--g-rgb), 0.3);
+}
+
+/* ═══════════════════════════════════════════════════════
+   LUCIDE SVG ICONS — global styling
+   ═══════════════════════════════════════════════════════ */
+
+/* Base SVG icon style */
+.lucide-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+/* Message ticks */
+.msg-ticks svg, .last-msg-ticks svg {
+  width: 14px !important;
+  height: 14px !important;
+  vertical-align: middle;
+}
+.msg-ticks { font-size: 0; line-height: 1; }
+
+/* Send button */
+.send-btn svg.lucide-icon { width: 20px; height: 20px; pointer-events: none; }
+
+/* Mic button */
+.mic-btn svg.lucide-icon { width: 20px; height: 20px; pointer-events: none; }
+
+/* Attach button */
+.attach-btn svg.lucide-icon { width: 20px; height: 20px; }
+
+/* Voice play button */
+.voice-play-btn svg.lucide-icon, .pvb-play svg.lucide-icon { width: 18px; height: 18px; pointer-events: none; }
+
+/* Context menu items */
+.ctx-item svg.lucide-icon { width: 16px; height: 16px; flex-shrink: 0; opacity: 0.85; }
+
+/* Settings icons */
+.settings-hdr-icon svg.lucide-icon { width: 16px; height: 16px; }
+.settings-tog-icon svg.lucide-icon { width: 16px; height: 16px; }
+.settings-danger-icon svg.lucide-icon { width: 15px; height: 15px; }
+
+/* Danger dialog */
+.danger-dialog-icon-wrap svg.lucide-icon { width: 22px; height: 22px; }
+.danger-dialog-warning-icon svg.lucide-icon { width: 14px; height: 14px; }
+
+/* Confirm dialog */
+.confirm-icon svg.lucide-icon { width: 24px; height: 24px; }
+
+/* Empty states */
+.empty-chats-icon svg.lucide-icon { width: 44px; height: 44px; }
+.empty-state-icon svg.lucide-icon { width: 40px; height: 40px; }
+.empty-chat-icon svg.lucide-icon { width: 42px; height: 42px; }
+.sticker-empty-icon svg.lucide-icon { width: 36px; height: 36px; }
+
+/* Autodelete */
+.autodel-opt-icon svg.lucide-icon { width: 20px; height: 20px; }
+.autodel-opt-check svg.lucide-icon { width: 14px; height: 14px; }
+
+/* Pin badge */
+.chat-pin-badge svg.lucide-icon { width: 10px; height: 10px; }
+.pinned-bar-icon svg.lucide-icon { width: 14px; height: 14px; }
+
+/* Block banner */
+.block-banner-icon svg.lucide-icon { width: 18px; height: 18px; }
+
+/* Edit/reply bar */
+.edit-bar-cancel svg.lucide-icon, .reply-bar-cancel svg.lucide-icon { width: 18px; height: 18px; }
+
+/* File card icons */
+.tg-file-icon svg.lucide-icon { width: 28px !important; height: 28px !important; }
+
+/* Upload/download spinner icons */
+.upload-spinner-icon svg.lucide-icon, .file-upload-spinner-icon svg.lucide-icon { width: 18px; height: 18px; }
+
+/* Share */
+.share-preview-icon svg.lucide-icon { width: 18px; height: 18px; }
+.share-send-fab svg.lucide-icon { width: 24px; height: 24px; }
+
+/* FAB */
+.fab-main svg.lucide-icon { width: 26px; height: 26px; }
+.fab-menu-btn svg.lucide-icon { width: 22px; height: 22px; }
+
+/* Contact actions */
+.contact-del-btn svg.lucide-icon { width: 14px; height: 14px; }
+.icon-btn-sm svg.lucide-icon { width: 16px; height: 16px; }
+
+/* Media preview */
+.media-preview-file-icon { display: flex; align-items: center; justify-content: center; }
+.media-preview-file-icon svg.lucide-icon { width: 36px; height: 36px; }
+.media-preview-info svg.lucide-icon { width: 14px; height: 14px; vertical-align: middle; margin-right: 2px; }
+
+/* Header buttons */
+.hdr-btn svg.lucide-icon, .home-hdr-btn svg.lucide-icon { width: 20px; height: 20px; }
+
+/* Key modal */
+.key-modal-title svg.lucide-icon { width: 18px; height: 18px; }
+
+/* Biometric lock */
+.bio-lock-icon svg.lucide-icon { width: 48px; height: 48px; }
+
+/* Video note download */
+.vn-dl-btn svg.lucide-icon { width: 20px; height: 20px; }
+
+/* Video lightbox play */
+.vid-play-overlay svg.lucide-icon { width: 32px; height: 32px; }
+
+/* Confirm dialog buttons */
+.confirm-yes svg.lucide-icon, .confirm-no svg.lucide-icon { width: 14px; height: 14px; vertical-align: middle; margin-right: 3px; }
+
+/* Generic button icons */
+button svg.lucide-icon, .btn svg.lucide-icon { vertical-align: middle; }
