@@ -757,7 +757,7 @@ let _dh = null; // Diffie-Hellman object
 let _serverRsaPublicKey = null; // Public key for RSA encryption of DH handshake
 
 const STEALTH_MAGIC_CLIENT = new Uint8Array([0xCA, 0xFE, 0xBA, 0xBE]); // Должен совпадать с серверным STEALTH_MAGIC_SERVER
-const STEALTH_VER = 0x07;
+const STEALTH_VER = 0x06;
 const STEALTH_PAD_MIN = 8;
 const STEALTH_PAD_MAX = 128;
 // Bimodal Traffic Shaping parameters
@@ -785,40 +785,39 @@ function _stealthRandBytes(n) {
   return buf;
 }
 
-// AES-GCM шифрование/дешифрование
-async function _stealthEncryptAESGCM(payload, key) {
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const algo = { name: "AES-GCM", iv: iv };
-  const encrypted = await crypto.subtle.encrypt(algo, key, payload);
-  const result = new Uint8Array(encrypted);
-  const authTag = result.slice(result.length - 16);
-  const ciphertext = result.slice(0, result.length - 16);
-  return { iv, encrypted: ciphertext, authTag };
-}
-
-async function _stealthDecryptAESGCM(encryptedPayload, key, iv, authTag) {
-  const algo = { name: "AES-GCM", iv: iv, tagLength: 128 }; // tagLength in bits
-  const fullPayload = new Uint8Array(encryptedPayload.length + authTag.length);
-  fullPayload.set(encryptedPayload, 0);
-  fullPayload.set(authTag, encryptedPayload.length);
-  const decrypted = await crypto.subtle.decrypt(algo, key, fullPayload);
-  return new Uint8Array(decrypted);
+// XOR-поток: шифрует/дешифрует Uint8Array с rolling-счётчиком
+function _stealthXor(buf, key, counter) {
+  const out = new Uint8Array(buf.length);
+  for (let i = 0; i < buf.length; i++) {
+    out[i] = buf[i] ^ key[(counter + i) % 32] ^ ((counter >> 8) & 0xFF) ^ (i & 0xFF);
+  }
+  return out;
 }
 
 // Упаковать объект в Stealth-фрейм → ArrayBuffer
-async function _stealthEncode(obj, key) {
+function _stealthEncode(obj, key, counter) {
   const jsonBytes = new TextEncoder().encode(JSON.stringify(obj));
+  const padLen = STEALTH_PAD_MIN + Math.floor(Math.random() * (STEALTH_PAD_MAX - STEALTH_PAD_MIN));
+  const padding = _stealthRandBytes(padLen);
 
-  // Шифруем payload AES-GCM
-  const { iv, encrypted, authTag } = await _stealthEncryptAESGCM(jsonBytes, key);
+  // Маскируем magic
+  const magic = new Uint8Array(4);
+  for (let i = 0; i < 4; i++) magic[i] = STEALTH_MAGIC_CLIENT[i] ^ key[i] ^ STEALTH_VER;
 
-  // Собираем фрейм: WASM_MAGIC_BYTES + IV + Auth Tag + Encrypted Payload
-  const WASM_MAGIC_BYTES = new Uint8Array([0x00, 0x61, 0x73, 0x6D]); // \0asm
-  const rawFrame = new Uint8Array(WASM_MAGIC_BYTES.length + iv.length + authTag.length + encrypted.length);
-  rawFrame.set(WASM_MAGIC_BYTES, 0);
-  rawFrame.set(iv, WASM_MAGIC_BYTES.length);
-  rawFrame.set(authTag, WASM_MAGIC_BYTES.length + iv.length);
-  rawFrame.set(encrypted, WASM_MAGIC_BYTES.length + iv.length + authTag.length);
+  // Длина padding (2 байта LE, XOR'd)
+  const padLenBytes = new Uint8Array(2);
+  padLenBytes[0] = (padLen & 0xFF) ^ key[4];
+  padLenBytes[1] = ((padLen >> 8) & 0xFF) ^ key[5];
+
+  // Шифруем payload
+  const encPayload = _stealthXor(jsonBytes, key, counter);
+
+  // Собираем фрейм без финального padding'а
+  const rawFrame = new Uint8Array(4 + 2 + padLen + encPayload.length);
+  rawFrame.set(magic, 0);
+  rawFrame.set(padLenBytes, 4);
+  rawFrame.set(padding, 6);
+  rawFrame.set(encPayload, 6 + padLen);
 
   // Dynamic Traffic Shaping (Bimodal Distribution)
   let targetSize;
@@ -840,25 +839,28 @@ async function _stealthEncode(obj, key) {
 }
 
 // Распаковать Stealth-фрейм → объект
-async function _stealthDecode(buf, key) {
+function _stealthDecode(buf, key, counter) {
   const data = new Uint8Array(buf);
-  const WASM_MAGIC_BYTES = new Uint8Array([0x00, 0x61, 0x73, 0x6D]); // \0asm
-  const AES_GCM_IV_LENGTH = 12;
-  const AES_GCM_TAG_LENGTH = 16;
+  // Сначала убираем дополнительный padding от Traffic Shaping
+  const originalData = data; // In v5 we read dynamically
+  if (originalData.length < 6) return null;
 
-  // Проверяем WASM_MAGIC_BYTES
-  if (data.length < WASM_MAGIC_BYTES.length + AES_GCM_IV_LENGTH + AES_GCM_TAG_LENGTH) return null;
-  if (!data.slice(0, WASM_MAGIC_BYTES.length).every((val, i) => val === WASM_MAGIC_BYTES[i])) return null;
+  // Проверяем magic
+  for (let i = 0; i < 4; i++) {
+    if (originalData[i] !== (STEALTH_MAGIC_CLIENT[i] ^ key[i] ^ STEALTH_VER)) return null;
+  }
 
-  const iv = data.slice(WASM_MAGIC_BYTES.length, WASM_MAGIC_BYTES.length + AES_GCM_IV_LENGTH);
-  const authTag = data.slice(WASM_MAGIC_BYTES.length + AES_GCM_IV_LENGTH, WASM_MAGIC_BYTES.length + AES_GCM_IV_LENGTH + AES_GCM_TAG_LENGTH);
-  const encryptedPayload = data.slice(WASM_MAGIC_BYTES.length + AES_GCM_IV_LENGTH + AES_GCM_TAG_LENGTH);
+  // Читаем длину padding
+  const padLen = ((originalData[4] ^ key[4]) | ((originalData[5] ^ key[5]) << 8));
+  if (originalData.length < 6 + padLen) return null;
+
+  // Расшифровываем payload
+  const encPayload = originalData.slice(6 + padLen);
+  const jsonBytes = _stealthXor(encPayload, key, counter);
 
   try {
-    const jsonBytes = await _stealthDecryptAESGCM(encryptedPayload, key, iv, authTag);
     return JSON.parse(new TextDecoder().decode(jsonBytes));
-  } catch (e) {
-    console.warn("[Stealth] Decryption error:", e.message);
+  } catch {
     return null;
   }
 }
@@ -894,9 +896,9 @@ async function _stealthInit() {
           'User-Agent': getRandomElement(USER_AGENTS),
           'Accept-Language': getRandomElement(ACCEPT_LANGUAGES),
           'Referer': getRandomElement(REFERERS),
-
+          'X-Client-Public-Key': encryptedClientPublicKeyB64 // Send RSA-encrypted public key in header
         },
-        body: JSON.stringify({ v: STEALTH_VER, clientPublicKeyB64: encryptedClientPublicKeyB64 }),
+        body: JSON.stringify({ v: STEALTH_VER }),
         credentials: 'omit',
         cache: 'no-store'
       });
@@ -956,19 +958,19 @@ async function _stealthHttpSend(obj) {
     if (!ok) throw new Error('Stealth not ready');
   }
 
-  const frame = await _stealthEncode(obj, _stealthKey);
+  const frame = _stealthEncode(obj, _stealthKey, _stealthTxCounter);
+  _stealthTxCounter += JSON.stringify(obj).length;
 
   
   // Cookie-маскировка
   document.cookie = `_ga=${_stealthSid}; path=/; max-age=3600`;
   
-  // IAT Shaping: случайная задержка перед отправкой
-  await new Promise(r => setTimeout(r, 50 + Math.random() * 200)); // 50-250ms задержка
-
   const resp = await fetch(STEALTH_HTTP_BASE_URL + getRandomPath(STEALTH_POLL_PATHS), {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/wasm'
+      'Content-Type': 'application/octet-stream',
+      // 'X-Session-Id': _stealthSid, // Cookie-маскировка теперь используется вместо явного заголовка
+      'X-Seq': String(_httpPollSeq++)
     },
     body: frame,
     credentials: 'omit',
@@ -979,7 +981,8 @@ async function _stealthHttpSend(obj) {
 
   // Декодируем ответ (бинарный Stealth-фрейм с batch)
   const respBuf = await resp.arrayBuffer();
-  const decoded = await _stealthDecode(respBuf, _stealthKey);
+  const decoded = _stealthDecode(respBuf, _stealthKey, _stealthRxCounter);
+  _stealthRxCounter += respBuf.byteLength;
 
   if (decoded && decoded.batch && Array.isArray(decoded.batch)) {
     for (const msg of decoded.batch) {
@@ -1051,7 +1054,8 @@ function ensureWS() {
 
     if (stealthOk) {
       // Отправляем stealth-hello — активируем бинарный режим на сервере
-      const helloFrame = await _stealthEncode({ type: 'stealth-hello', sid: _stealthSid, v: STEALTH_VER }, _stealthKey);
+      const helloFrame = _stealthEncode({ type: 'stealth-hello', sid: _stealthSid, v: STEALTH_VER }, _stealthKey, _stealthTxCounter);
+      _stealthTxCounter += JSON.stringify({ type: 'stealth-hello', sid: _stealthSid, v: STEALTH_VER }).length;
       ws.send(helloFrame);
     }
 
@@ -1073,8 +1077,10 @@ function ensureWS() {
     if (raw instanceof ArrayBuffer) {
       // Бинарный фрейм — декодируем как Stealth
       if (_stealthReady && _stealthKey) {
-        d = await _stealthDecode(raw, _stealthKey);
-        if (!d) {
+        d = _stealthDecode(raw, _stealthKey, _stealthRxCounter);
+        if (d) {
+          _stealthRxCounter += raw.byteLength;
+        } else {
           // Не Stealth-фрейм — пробуем как plain JSON в бинарном буфере
           try { d = JSON.parse(new TextDecoder().decode(raw)); } catch { return; }
         }
