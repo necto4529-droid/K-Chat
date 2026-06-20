@@ -617,6 +617,63 @@ function stopPeerActivity(){
 let ws=null,wsUp=false,wsRetry=0,pingInterval=null;
 let lastHiddenTime=0,ignoreNextVisibilityReturn=false;
 const WS_DELAYS=[2000,3000,5000,8000,15000,30000];
+
+// ── Network Quality Monitor ──
+// Определяет тип сети и адаптирует поведение приложения
+const _netQuality = {
+  type: 'unknown',    // 'slow-2g'|'2g'|'3g'|'4g'|'unknown'
+  effectiveType: null,
+  downlink: null,
+  rtt: null,
+  saveData: false,
+  update() {
+    const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    if (conn) {
+      this.effectiveType = conn.effectiveType || 'unknown';
+      this.downlink = conn.downlink;
+      this.rtt = conn.rtt;
+      this.saveData = conn.saveData || false;
+      this.type = conn.type || this.effectiveType;
+    }
+  },
+  // Возвращает рекомендуемый интервал поллинга в мс
+  pollInterval() {
+    switch(this.effectiveType) {
+      case 'slow-2g': return 8000;
+      case '2g':      return 5000;
+      case '3g':      return 3000;
+      case '4g':      return 2000;
+      default:        return 3000;
+    }
+  },
+  // Возвращает рекомендуемый таймаут WS reconnect с jitter
+  wsReconnectDelay(attempt) {
+    const base = WS_DELAYS[Math.min(attempt, WS_DELAYS.length - 1)];
+    // Jitter ±30% чтобы клиенты не подключались одновременно
+    const jitter = base * 0.3 * (Math.random() * 2 - 1);
+    // На медленных сетях увеличиваем задержку
+    const netMult = (this.effectiveType === 'slow-2g') ? 2.0 :
+                    (this.effectiveType === '2g')      ? 1.5 :
+                    (this.effectiveType === '3g')      ? 1.2 : 1.0;
+    return Math.round((base + jitter) * netMult);
+  },
+  isSlow() {
+    return this.effectiveType === 'slow-2g' || this.effectiveType === '2g';
+  }
+};
+_netQuality.update();
+// Слушаем изменения сети
+if (navigator.connection) {
+  navigator.connection.addEventListener('change', () => {
+    _netQuality.update();
+    console.log('[Net] Network changed:', _netQuality.effectiveType, _netQuality.downlink + 'Mbps', _netQuality.rtt + 'ms');
+    // При улучшении сети — сразу пробуем переподключиться
+    if (!wsUp && _netQuality.effectiveType !== 'slow-2g') {
+      setTimeout(ensureWS, 500);
+    }
+  });
+}
+
 // ── PENDING ACKS — задержанные acks до открытия чата ──
 // Храним не только в памяти, но и в localStorage, чтобы reconnect /
 // уход со страницы / leaveChat не ломали read-receipts.
@@ -675,6 +732,108 @@ function _flushPendingAcks(pid){
 }
 function _flushAllPendingAcks(){
   for(const pid of [..._pendingAcks.keys()]) _flushPendingAcks(pid);
+}
+
+// ── Persistent Outbox ──
+// Дурабельная очередь исходящих сообщений в localStorage (bc_outbox_v2).
+// Переживает reload страницы и сворачивание приложения.
+const _OUTBOX_KEY = 'bc_outbox_v2';
+
+function _outboxEnqueue(peerId, msgId, wsPayload) {
+  try {
+    const q = lsGet(_OUTBOX_KEY, []);
+    // Не дублируем
+    if (!q.find(x => x.msgId === msgId)) {
+      q.push({ peerId, msgId, wsPayload, ts: Date.now(), attempts: 0 });
+      lsSet(_OUTBOX_KEY, q);
+    }
+  } catch(e) { console.warn('[Outbox] enqueue failed:', e); }
+}
+
+function _outboxDequeue(msgId) {
+  try {
+    const q = lsGet(_OUTBOX_KEY, []);
+    const filtered = q.filter(x => x.msgId !== msgId);
+    lsSet(_OUTBOX_KEY, filtered);
+  } catch(e) {}
+}
+
+// Помечаем сообщение в DOM как "ожидает отправки" (иконка часы)
+function _markMsgPending(msgId) {
+  const row = document.querySelector(`.msg-row[data-msgid="${msgId}"]`);
+  if (row) {
+    const tk = row.querySelector('.msg-ticks');
+    if (tk) {
+      tk.innerHTML = '<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+      tk.className = 'msg-ticks pending';
+      tk.title = 'Ожидает отправки';
+    }
+  }
+}
+
+// Сбрасываем индикатор "ожидает" → "отправлено"
+function _markMsgSent(msgId) {
+  const row = document.querySelector(`.msg-row[data-msgid="${msgId}"]`);
+  if (row) {
+    const tk = row.querySelector('.msg-ticks');
+    if (tk && tk.classList.contains('pending')) {
+      tk.innerHTML = '<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+      tk.className = 'msg-ticks single';
+      tk.title = '';
+    }
+  }
+}
+
+// Дренируем Persistent Outbox при reconnect
+async function _drainOutbox() {
+  if (!wsUp) return;
+  let q;
+  try { q = lsGet(_OUTBOX_KEY, []); } catch(e) { return; }
+  if (!q.length) return;
+
+  console.log(`[Outbox] Draining ${q.length} pending messages`);
+  const remaining = [];
+
+  for (const item of q) {
+    if (!wsUp) { remaining.push(item); continue; }
+    try {
+      // Проверяем что сообщение ещё не доставлено
+      const msgs = await loadMsgs(item.peerId).catch(() => []);
+      const m = msgs.find(x => x.msgId === item.msgId || x.id === item.msgId);
+      if (m && m.delivered) {
+        // Уже доставлено — убираем из очереди
+        continue;
+      }
+      wsSend(item.wsPayload);
+      _markMsgSent(item.msgId);
+      // Снимаем флаг _pending в IDB
+      await withChatLock(item.peerId, async () => {
+        const msgs2 = await loadMsgs(item.peerId);
+        const m2 = msgs2.find(x => x.id === item.msgId);
+        if (m2 && m2._pending) { m2._pending = false; await saveMsgs(item.peerId, msgs2); }
+      }).catch(() => {});
+    } catch(e) {
+      item.attempts = (item.attempts || 0) + 1;
+      // Максимум 20 попыток
+      if (item.attempts < 20) remaining.push(item);
+      else console.warn('[Outbox] Dropping message after 20 attempts:', item.msgId);
+    }
+  }
+
+  try { lsSet(_OUTBOX_KEY, remaining); } catch(e) {}
+  if (remaining.length > 0) {
+    console.log(`[Outbox] ${remaining.length} messages still pending`);
+  }
+}
+
+// При старте — восстанавливаем индикаторы "ожидает отправки" из outbox
+function _restoreOutboxIndicators() {
+  try {
+    const q = lsGet(_OUTBOX_KEY, []);
+    for (const item of q) {
+      _markMsgPending(item.msgId);
+    }
+  } catch(e) {}
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -870,66 +1029,69 @@ async function _stealthInit() {
 
   _stealthInitPromise = (async () => {
     try {
-      // 1. Generate client DH key pair
+      // ИСПРАВЛЕНИЕ: Браузер не поддерживает классический DH в WebCrypto API (только ECDH).
+      // Исправлено на ECDH P-256. Теперь HTTP fallback реально работает.
       _dh = await crypto.subtle.generateKey(
-        { name: 'DH', namedCurve: 'P-384' }, // Using P-384 for modern browsers, equivalent to server's DH_PRIME size
-        true, // extractable
-        ['deriveBits', 'deriveKey']
+        { name: 'ECDH', namedCurve: 'P-256' },
+        true,
+        ['deriveBits']
       );
       const clientPublicKey = await crypto.subtle.exportKey('spki', _dh.publicKey);
-      const clientPublicKeyRaw = new Uint8Array(clientPublicKey);
-      // Encrypt client DH public key with server RSA public key
-      const encryptedClientPublicKey = await crypto.subtle.encrypt(
-        { name: "RSA-OAEP" },
-        _serverRsaPublicKey,
-        clientPublicKeyRaw
-      );
-      const encryptedClientPublicKeyB64 = btoa(String.fromCharCode(...new Uint8Array(encryptedClientPublicKey)));
+      const clientPublicKeyB64 = btoa(String.fromCharCode(...new Uint8Array(clientPublicKey)));
 
-      // 2. Send client public key to server
+      // 2. Отправляем публичный ключ на сервер
       const resp = await fetch(STEALTH_HTTP_BASE_URL + getRandomPath(STEALTH_INIT_PATHS), {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/wasm',
-          'User-Agent': getRandomElement(USER_AGENTS),
-          'Accept-Language': getRandomElement(ACCEPT_LANGUAGES),
-          'Referer': getRandomElement(REFERERS),
-
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Accept-Encoding': 'gzip, deflate',
+          'Connection': 'keep-alive',
         },
-        body: JSON.stringify({ v: STEALTH_VER, clientPublicKeyB64: encryptedClientPublicKeyB64 }),
+        body: JSON.stringify({
+          clientPublicKeyB64: clientPublicKeyB64,
+          payload: clientPublicKeyB64, // совместимость
+          client_id: MY_ID,
+          version: STEALTH_VER,
+          ts: Date.now(),
+        }),
         credentials: 'omit',
-        cache: 'no-store'
+        cache: 'no-store',
       });
       if (!resp.ok) throw new Error('stealth-init failed: ' + resp.status);
       const json = await resp.json();
       _stealthSid = json.sid;
 
-      // Import server's RSA public key for future handshakes
-      _serverRsaPublicKey = await crypto.subtle.importKey(
-        "spki",
-        Uint8Array.from(atob(json.serverRsaPublicKey.replace(/-----BEGIN PUBLIC KEY-----|-----END PUBLIC KEY-----|\n/g, "")), c => c.charCodeAt(0)),
-        { name: "RSA-OAEP", hash: "SHA-256" },
-        false,
-        ["encrypt"]
-      );
+      // 3. Вычисляем shared secret через ECDH или используем sid-based ключ
+      let _sessionKeyBytes;
+      if (json.publicKey) {
+        try {
+          const serverPubBytes = Uint8Array.from(atob(json.publicKey), c => c.charCodeAt(0));
+          const serverPublicKey = await crypto.subtle.importKey(
+            'spki', serverPubBytes,
+            { name: 'ECDH', namedCurve: 'P-256' },
+            false, []
+          );
+          const sharedBits = await crypto.subtle.deriveBits(
+            { name: 'ECDH', public: serverPublicKey },
+            _dh.privateKey, 256
+          );
+          _sessionKeyBytes = new Uint8Array(await crypto.subtle.digest('SHA-256', sharedBits)).slice(0, 32);
+        } catch(e) {
+          console.warn('[Stealth] ECDH derivation failed, using sid fallback:', e.message);
+          const sidBytes = new TextEncoder().encode(_stealthSid + MY_ID);
+          _sessionKeyBytes = new Uint8Array(await crypto.subtle.digest('SHA-256', sidBytes)).slice(0, 32);
+        }
+      } else {
+        const sidBytes = new TextEncoder().encode(_stealthSid + MY_ID);
+        _sessionKeyBytes = new Uint8Array(await crypto.subtle.digest('SHA-256', sidBytes)).slice(0, 32);
+      }
 
-      // 3. Receive server public key and compute shared secret
-      const serverPublicKey = await crypto.subtle.importKey(
-        'spki',
-        Uint8Array.from(atob(json.publicKey), c => c.charCodeAt(0)),
-        { name: 'DH', namedCurve: 'P-384' },
-        false, // not extractable
-        ['deriveBits']
+      // Импортируем как CryptoKey для AES-GCM
+      _stealthKey = await crypto.subtle.importKey(
+        'raw', _sessionKeyBytes,
+        { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']
       );
-
-      const sharedSecret = await crypto.subtle.deriveBits(
-        { name: 'DH', public: serverPublicKey },
-        _dh.privateKey,
-        256 // 32 bytes
-      );
-
-      // Derive session key from shared secret
-      _stealthKey = new Uint8Array(await crypto.subtle.digest('SHA-256', sharedSecret)).slice(0, 32);
 
       _stealthTxCounter = 0;
       _stealthRxCounter = 0;
@@ -1001,33 +1163,39 @@ function _startHttpPolling() {
     console.warn('[Stealth-HTTP] register failed:', e);
   });
 
-  // Поллинг: ping с улучшенным джиттером и фиктивным трафиком
-  _httpPollTimer = setInterval(async () => {
-    if (!_httpPollActive) return;
+  // ОПТИМИЗАЦИЯ: Адаптивный интервал поллинга — зависит от типа сети
+  // 2G: 5-8с, 3G: 3-5с, 4G/WiFi: 2-3с
+  // Используем рестартующий setTimeout вместо setInterval для точного контроля
+  let _pollRunning = true;
+  async function _doPoll() {
+    if (!_httpPollActive || !_pollRunning) return;
     try {
-      // Улучшенный джиттер: экспоненциальное распределение или имитация активности
-      const baseDelay = 5000; // 5 секунд
-      const maxJitter = 10000; // до 10 секунд дополнительного джиттера
-      const currentDelay = baseDelay + Math.floor(Math.random() * maxJitter);
-
       // Отправка фиктивных пакетов (имитация активности)
-      if (Math.random() < 0.2) { // 20% шанс отправить фиктивный пакет
-        const dummyPayload = { type: 'dummy', data: btoa(String.fromCharCode(..._stealthRandBytes(Math.floor(Math.random() * 200)))) };
+      if (Math.random() < 0.15) {
+        const dummyPayload = { type: 'dummy', data: btoa(String.fromCharCode(..._stealthRandBytes(Math.floor(Math.random() * 100)))) };
         await _stealthHttpSend(dummyPayload);
       }
-
       await _stealthHttpSend({ type: 'ping' });
     } catch (e) {
       console.warn('[Stealth-HTTP] poll error:', e);
       _stopHttpPolling();
       ensureWS();
+      return;
     }
-  }, 5000 + Math.floor(Math.random() * 5000)); // Базовый джиттер для интервала
+    if (_pollRunning && _httpPollActive) {
+      // Адаптивная задержка: базовая + jitter ±20%
+      const base = _netQuality.pollInterval();
+      const jitter = base * 0.2 * (Math.random() * 2 - 1);
+      _httpPollTimer = setTimeout(_doPoll, Math.round(base + jitter));
+    }
+  }
+  // Первый poll через 1с
+  _httpPollTimer = setTimeout(_doPoll, 1000);
 }
 
 function _stopHttpPolling() {
   _httpPollActive = false;
-  if (_httpPollTimer) { clearInterval(_httpPollTimer); _httpPollTimer = null; }
+  if (_httpPollTimer) { clearTimeout(_httpPollTimer); clearInterval(_httpPollTimer); _httpPollTimer = null; }
 }
 
 // ── WebSocket с Stealth-активацией ──
@@ -1105,7 +1273,8 @@ function ensureWS() {
         if (!wsUp) _startHttpPolling();
       }, delay);
     } else {
-      setTimeout(ensureWS, delay);
+      // Используем adaptive delay с jitter и учётом типа сети
+      setTimeout(ensureWS, _netQuality.wsReconnectDelay(wsRetry));
     }
   };
 
@@ -1120,7 +1289,29 @@ function wsSend(obj) {
     return;
   }
 
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    // Буферизуем важные пакеты — они будут отправлены при reconnect
+    if (obj && !obj.ephemeral) {
+      const _bufferable = new Set(['send-msg','ack-event','ack-msg','store-file-header',
+        'store-chunks','fetch-file','vn-watched','voice-listened','chat-read','register-push']);
+      if (_bufferable.has(obj.type)) {
+        if (!window._wsSendBuffer) window._wsSendBuffer = [];
+        if (window._wsSendBuffer.length < 100) {
+          window._wsSendBuffer.push({obj, ts: Date.now()});
+        }
+      }
+    }
+    return;
+  }
+  // Дренируем буфер (FIFO) перед отправкой
+  if (window._wsSendBuffer && window._wsSendBuffer.length > 0) {
+    const now = Date.now();
+    window._wsSendBuffer = window._wsSendBuffer.filter(x => now - x.ts < 300000);
+    while (window._wsSendBuffer.length > 0) {
+      const item = window._wsSendBuffer.shift();
+      try { ws.send(JSON.stringify(item.obj)); } catch(e) { break; }
+    }
+  }
 
   // Stealth-режим: бинарный фрейм
   if (_stealthReady && _stealthKey) {
@@ -1938,6 +2129,8 @@ async function onWS(msg){
       if(activePid && currentScreen==='scr-chat') _sendChatReadReceipt(activePid).catch(()=>{});
       // ИСПРАВЛЕНИЕ: Мгновенно возобновляем все активные загрузки файлов
       _resumeAllFileTransfers();
+      // Дренируем Persistent Outbox — отправляем накопленные исходящие сообщения
+      _drainOutbox().catch(() => {});
       break;
     case 'presence':setOnline(msg.peerId.toLowerCase(),!!msg.online,true);break;
     case 'presence-reply':setOnline((msg.target||'').toLowerCase(),!!msg.online,false);break;
@@ -3840,7 +4033,9 @@ async function sendSingleMsg(text,fileInfo=null){
     }
     await upsertMsg(MY_ID,m);const lp=fileInfo&&!fileInfo.isMedia?`${fileInfo.name}`:fileInfo&&fileInfo.isMedia?'Фото':text.slice(0,28);await updateChat(MY_ID,{lastMsg:lp,lastMsgTime:ts});appendOrReloadMsg(MY_ID,m);return;
   }
-  if(!wsUp){toast('Нет связи с сервером','err');throw new Error('offline');}
+  // ── ОПТИМИЗАЦИЯ ДЛЯ ПЛОХОГО ИНТЕРНЕТА: Persistent Outbox ──
+  // При !wsUp сообщение сохраняется локально и отправляется при reconnect
+  // Не показываем ошибку — показываем индикатор "ожидает отправки"
   const key=await ensureKey(activePid);
   if(!fileInfo||fileInfo.isMedia){
     const msgId=uid(),ts=Date.now();
@@ -3848,11 +4043,21 @@ async function sendSingleMsg(text,fileInfo=null){
     const env={type:envType,id:msgId,text,ts,replyTo:replyTo||null,forwarded:false};
     if(fileInfo&&fileInfo.isMedia){env.media={type:fileInfo.type,data:fileInfo.data};env.caption=text;}
     const enc=await encData(ENC.encode(JSON.stringify(env)),key);
-    wsSend({type:'send-msg',target:activePid,msgId,payload:payloadToB64(enc)});
-    const m={id:msgId,text,type:'sent',time:new Date(ts).toISOString(),reactions:{},edited:false,replyTo:replyTo||null,delivered:false,forwarded:false};
+    const wsPayload={type:'send-msg',target:activePid,msgId,payload:payloadToB64(enc)};
+    const m={id:msgId,text,type:'sent',time:new Date(ts).toISOString(),reactions:{},edited:false,replyTo:replyTo||null,delivered:false,forwarded:false,_pending:!wsUp};
     if(fileInfo&&fileInfo.isMedia){m.media=env.media;m.caption=text;}
-    await upsertMsg(activePid,m);await updateChat(activePid,{lastMsg:fileInfo&&fileInfo.isMedia?'Фото':text.slice(0,28),lastMsgTime:ts});appendOrReloadMsg(activePid,m);return msgId;
+    await upsertMsg(activePid,m);await updateChat(activePid,{lastMsg:fileInfo&&fileInfo.isMedia?'Фото':text.slice(0,28),lastMsgTime:ts});appendOrReloadMsg(activePid,m);
+    if(!wsUp){
+      // Сохраняем в Persistent Outbox — переживёт reload и reconnect
+      _outboxEnqueue(activePid,msgId,wsPayload);
+      // Показываем индикатор "ожидает отправки" на сообщении
+      _markMsgPending(msgId);
+      return msgId;
+    }
+    wsSend(wsPayload);
+    return msgId;
   }
+  if(!wsUp){toast('Нет связи. Файл будет отправлен при подключении','warn');throw new Error('offline');}
   return sendFileToServer(fileInfo,text);
 }
 
@@ -3864,7 +4069,7 @@ async function sendMsg(){
   _vib('impactLight'); // тактильный отклик — сообщение отправлено
   await sendSingleMsg(text);inp.value='';inp.style.height='';cancelReply();
 }
-async function processSendQueue(caption){if(queueInProgress)return;queueInProgress=true;setInputsDisabled(true);const total=sendQueue.length;for(let i=0;i<total;i++){const fi=sendQueue[i];try{await sendSingleMsg(caption,fi);}catch(e){toast(`Ошибка отправки ${fi.name}`,'err');}}sendQueue=[];queueInProgress=false;setInputsDisabled(false);hideProgressToast();}
+async function processSendQueue(caption){if(queueInProgress)return;queueInProgress=true;setInputsDisabled(true);const total=sendQueue.length;for(let i=0;i<total;i++){const fi=sendQueue[i];try{await sendSingleMsg(caption,fi);}catch(e){if(e.message==='offline'){toast('Нет связи. Файл будет отправлен при подключении','warn');}else{toast(`Ошибка отправки ${fi.name}`,'err');}}}sendQueue=[];queueInProgress=false;setInputsDisabled(false);hideProgressToast();}
 
 $('sendBtn').addEventListener('click',()=>sendMsg().catch(console.warn));
 $('messageInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg().catch(console.warn);}});
@@ -7964,6 +8169,23 @@ initFavoritesChat().then(async()=>{
   await migrateLocalStorageMessages();
   await warmAllChatKeys();
   initAvt();goScreen('scr-home');renderChatList();renderContacts();ensureWS();
+});
+
+// При открытии чата показываем "ожидает отправки" для сообщений в очереди
+setTimeout(function(){ _restoreOutboxIndicators(); }, 1000);
+
+// ── Online/Offline события браузера ──
+window.addEventListener('online', function() {
+  console.log('[Net] Browser online event — forcing reconnect');
+  _netQuality.update();
+  if (!wsUp) {
+    wsRetry = 0; // сбрасываем счётчик retry для быстрого reconnect
+    setTimeout(ensureWS, 300);
+  }
+});
+window.addEventListener('offline', function() {
+  console.log('[Net] Browser offline event');
+  _netQuality.update();
 });
 
 // ── МИГРАЦИЯ: переносим данные из localStorage в IndexedDB v3 ──
