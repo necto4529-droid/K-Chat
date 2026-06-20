@@ -616,47 +616,6 @@ function stopPeerActivity(){
 // ── WEBSOCKET ──
 let ws=null,wsUp=false,wsRetry=0,pingInterval=null;
 let lastHiddenTime=0,ignoreNextVisibilityReturn=false;
-
-// Network Quality Monitor
-let _netQuality = '4g';
-function _updateNetQuality() {
-  if (navigator.connection) {
-    _netQuality = navigator.connection.effectiveType || '4g';
-  } else {
-    _netQuality = '4g';
-  }
-}
-if (navigator.connection) {
-  navigator.connection.addEventListener('change', _updateNetQuality);
-  _updateNetQuality();
-}
-
-// Persistent Outbox
-const OUTBOX_KEY = 'bc_outbox_v2';
-function _getOutbox() { return lsGet(OUTBOX_KEY, []); }
-function _saveOutbox(queue) { lsSet(OUTBOX_KEY, queue); }
-function _addToOutbox(msg) {
-  const q = _getOutbox();
-  q.push({ ...msg, _ts: Date.now() });
-  _saveOutbox(q);
-}
-function _drainOutbox() {
-  const q = _getOutbox();
-  if (!q.length || !wsUp) return;
-  _saveOutbox([]); // Clear outbox before sending to avoid dupes if reconnecting
-  for (const msg of q) {
-    // Only send if it's not too old (e.g., 24h)
-    if (Date.now() - msg._ts < 86400000) {
-      wsSend(msg);
-    }
-  }
-}
-
-// Offline/Online Event Listeners
-window.addEventListener('online', () => {
-  wsRetry = 0;
-  if (!wsUp) setTimeout(ensureWS, 300);
-});
 const WS_DELAYS=[2000,3000,5000,8000,15000,30000];
 // ── PENDING ACKS — задержанные acks до открытия чата ──
 // Храним не только в памяти, но и в localStorage, чтобы reconnect /
@@ -911,9 +870,9 @@ async function _stealthInit() {
 
   _stealthInitPromise = (async () => {
     try {
-      // 1. Generate client DH key pair (using ECDH P-256 for browser compatibility)
+      // 1. Generate client DH key pair
       _dh = await crypto.subtle.generateKey(
-        { name: 'ECDH', namedCurve: 'P-256' },
+        { name: 'DH', namedCurve: 'P-384' }, // Using P-384 for modern browsers, equivalent to server's DH_PRIME size
         true, // extractable
         ['deriveBits', 'deriveKey']
       );
@@ -937,7 +896,7 @@ async function _stealthInit() {
           'Referer': getRandomElement(REFERERS),
 
         },
-        body: JSON.stringify({ v: STEALTH_VER, clientPublicKeyB64: encryptedClientPublicKeyB64, useECDH: true }),
+        body: JSON.stringify({ v: STEALTH_VER, clientPublicKeyB64: encryptedClientPublicKeyB64 }),
         credentials: 'omit',
         cache: 'no-store'
       });
@@ -958,13 +917,13 @@ async function _stealthInit() {
       const serverPublicKey = await crypto.subtle.importKey(
         'spki',
         Uint8Array.from(atob(json.publicKey), c => c.charCodeAt(0)),
-        { name: 'ECDH', namedCurve: 'P-256' },
+        { name: 'DH', namedCurve: 'P-384' },
         false, // not extractable
         ['deriveBits']
       );
 
       const sharedSecret = await crypto.subtle.deriveBits(
-        { name: 'ECDH', public: serverPublicKey },
+        { name: 'DH', public: serverPublicKey },
         _dh.privateKey,
         256 // 32 bytes
       );
@@ -1087,9 +1046,6 @@ function ensureWS() {
     wsRetry = 0;
     _stopHttpPolling(); // WS работает — отключаем HTTP fallback
 
-    // Drain buffer of critical packets
-    _drainWsBuffer();
-
     // Ждём готовности Stealth-ключа (обычно уже готов)
     const stealthOk = await _stealthInit();
 
@@ -1149,25 +1105,11 @@ function ensureWS() {
         if (!wsUp) _startHttpPolling();
       }, delay);
     } else {
-      let adaptiveDelay = delay;
-      if (_netQuality === 'slow-2g') adaptiveDelay *= 2;
-      else if (_netQuality === '2g') adaptiveDelay *= 1.5;
-      const jitter = adaptiveDelay * 0.3 * (Math.random() * 2 - 1);
-      setTimeout(ensureWS, adaptiveDelay + jitter);
+      setTimeout(ensureWS, delay);
     }
   };
 
   ws.onerror = () => { wsUp = false; updateSendBtn(); };
-}
-
-// Buffer for critical packets when WS is down
-window._wsSendBuffer = [];
-function _drainWsBuffer() {
-  const buf = window._wsSendBuffer;
-  window._wsSendBuffer = [];
-  for (const item of buf) {
-    if (Date.now() - item.ts < 300000) wsSend(item.obj);
-  }
 }
 
 // ── wsSend: отправка с Stealth-кодированием ──
@@ -1178,13 +1120,7 @@ function wsSend(obj) {
     return;
   }
 
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
-    if (['send-msg', 'ack-msg', 'chat-read'].includes(obj.type)) {
-      window._wsSendBuffer.push({ obj, ts: Date.now() });
-      if (window._wsSendBuffer.length > 100) window._wsSendBuffer.shift();
-    }
-    return;
-  }
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
   // Stealth-режим: бинарный фрейм
   if (_stealthReady && _stealthKey) {
@@ -1828,7 +1764,7 @@ async function markDelivered(msgId,peerId,isExplicitFileDelivered){
   await withChatLock(peerId, async()=>{
     const msgs = await loadMsgs(peerId);
     const m = msgs.find(m=>m.id===msgId);
-    if(m && (!m.delivered || m._pending)){
+    if(m && !m.delivered){
       // ИСПРАВЛЕНИЕ: Файлы и видео-кружки помечаются доставленными (✔✔)
       // ТОЛЬКО через явный сигнал 'file-delivered' от получателя.
       // Игнорируем для них системный 'msg-delivered' от сервера (который
@@ -1837,7 +1773,6 @@ async function markDelivered(msgId,peerId,isExplicitFileDelivered){
       if(isAttachment && !isExplicitFileDelivered) return;
 
       m.delivered = true;
-      m._pending = false;
       await saveMsgs(peerId, msgs);
     }
   });
@@ -1992,7 +1927,6 @@ async function onWS(msg){
       if(activePid) wsSend({type:'query-presence',target:activePid});
       registerPushNotifications().catch(()=>{});
       broadcastLastSeen().catch(()=>{});
-      _drainOutbox(); // Send messages queued while offline
       // После reconnect — drain все pending сообщения у которых есть ключ
       _drainAllPendingOnReconnect().catch(()=>{});
       // Flush ВСЕ pending ack'и: пользователь мог уже прочитать чат,
@@ -3631,11 +3565,7 @@ window.openChatById=async function(pid){
   activePid=pid;stopPeerActivity();
   const chat=(await loadChats()).find(c=>c.peerId===pid)||{};
   $('peerName').textContent=chat.peerName||pid;
-  if(pid !== MY_ID) {
-    setPeerStatus('offline','Не в сети');$('sendBtn').disabled=true;_startConnDots('Подключение');
-  } else {
-    setPeerStatus('online','Избранное');$('sendBtn').disabled=false;
-  }
+  setPeerStatus('offline','Не в сети');$('sendBtn').disabled=true;_startConnDots('Подключение');
   renderedCount=0;clearMediaPreview();
   // Инициализируем UI блокировки
   const blockBtn=$('blockContactBtn');
@@ -3910,24 +3840,8 @@ async function sendSingleMsg(text,fileInfo=null){
     }
     await upsertMsg(MY_ID,m);const lp=fileInfo&&!fileInfo.isMedia?`${fileInfo.name}`:fileInfo&&fileInfo.isMedia?'Фото':text.slice(0,28);await updateChat(MY_ID,{lastMsg:lp,lastMsgTime:ts});appendOrReloadMsg(MY_ID,m);return;
   }
+  if(!wsUp){toast('Нет связи с сервером','err');throw new Error('offline');}
   const key=await ensureKey(activePid);
-  if(!wsUp){
-    // Offline mode: save locally and add to Outbox
-    const msgId=uid(),ts=Date.now();
-    const envType=fileInfo&&fileInfo.isMedia?'media':'msg';
-    const env={type:envType,id:msgId,text,ts,replyTo:replyTo||null,forwarded:false};
-    if(fileInfo&&fileInfo.isMedia){env.media={type:fileInfo.type,data:fileInfo.data};env.caption=text;}
-    const enc=await encData(ENC.encode(JSON.stringify(env)),key);
-    
-    // Add to outbox instead of sending directly
-    _addToOutbox({type:'send-msg',target:activePid,msgId,payload:payloadToB64(enc)});
-    
-    const m={id:msgId,text,type:'sent',time:new Date(ts).toISOString(),reactions:{},edited:false,replyTo:replyTo||null,delivered:false,forwarded:false,_pending:true};
-    if(fileInfo&&fileInfo.isMedia){m.media=env.media;m.caption=text;}
-    await upsertMsg(activePid,m);await updateChat(activePid,{lastMsg:fileInfo&&fileInfo.isMedia?'Фото':text.slice(0,28),lastMsgTime:ts});appendOrReloadMsg(activePid,m);
-    toast('Нет связи. Сообщение будет отправлено при подключении.', 'warn');
-    return msgId;
-  }
   if(!fileInfo||fileInfo.isMedia){
     const msgId=uid(),ts=Date.now();
     const envType=fileInfo&&fileInfo.isMedia?'media':'msg';
@@ -3950,7 +3864,7 @@ async function sendMsg(){
   _vib('impactLight'); // тактильный отклик — сообщение отправлено
   await sendSingleMsg(text);inp.value='';inp.style.height='';cancelReply();
 }
-async function processSendQueue(caption){if(queueInProgress)return;queueInProgress=true;setInputsDisabled(true);const total=sendQueue.length;for(let i=0;i<total;i++){const fi=sendQueue[i];try{await sendSingleMsg(caption,fi);}catch(e){if(e.message==='offline'){toast('Нет связи. Файл будет отправлен при подключении.','warn');}else{toast(`Ошибка отправки ${fi.name}`,'err');}}}sendQueue=[];queueInProgress=false;setInputsDisabled(false);hideProgressToast();}
+async function processSendQueue(caption){if(queueInProgress)return;queueInProgress=true;setInputsDisabled(true);const total=sendQueue.length;for(let i=0;i<total;i++){const fi=sendQueue[i];try{await sendSingleMsg(caption,fi);}catch(e){toast(`Ошибка отправки ${fi.name}`,'err');}}sendQueue=[];queueInProgress=false;setInputsDisabled(false);hideProgressToast();}
 
 $('sendBtn').addEventListener('click',()=>sendMsg().catch(console.warn));
 $('messageInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg().catch(console.warn);}});
@@ -4572,7 +4486,7 @@ function observeDateSeparator(_el){/* poll-based, не нужно */}
 function updateFloatingDate(){showFloatingDate();}
 
 // ── BUILD ROW ──
-function mkMeta(m,isSent){const meta=document.createElement('span');meta.className='msg-meta';const timeEl=document.createElement('span');timeEl.className='msg-time-inline';timeEl.textContent=new Date(m.time).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});meta.appendChild(timeEl);if(isSent){const tk=document.createElement('span');tk.className='msg-ticks'+(m.delivered?' double':m._pending?' pending':' single');let icon=m.delivered?'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M18 6 7 17l-5-5" /> <path d="m22 10-7.5 7.5L13 16" /> </svg>':'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M20 6 9 17l-5-5" /> </svg>';if(m._pending)icon='<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <circle cx="12" cy="12" r="10" /> <polyline points="12 6 12 12 16 14" /> </svg>';tk.innerHTML=icon;meta.appendChild(tk);}return meta;}
+function mkMeta(m,isSent){const meta=document.createElement('span');meta.className='msg-meta';const timeEl=document.createElement('span');timeEl.className='msg-time-inline';timeEl.textContent=new Date(m.time).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});meta.appendChild(timeEl);if(isSent){const tk=document.createElement('span');tk.className='msg-ticks'+(m.delivered?' double':' single');tk.innerHTML = m.delivered?'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M18 6 7 17l-5-5" /> <path d="m22 10-7.5 7.5L13 16" /> </svg>':'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M20 6 9 17l-5-5" /> </svg>';meta.appendChild(tk);}return meta;}
 
 function buildMediaUploadSpinner(fileId){
   const wrap=document.createElement('div');wrap.className='upload-overlay';
@@ -4611,10 +4525,8 @@ function buildTgFileMeta(m, isSent){
   ov.appendChild(tEl);
   if(isSent){
     const tk = document.createElement('span');
-    tk.className = 'msg-ticks'+(m.delivered?' double':m._pending?' pending':' single');
-    let icon = m.delivered?'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M18 6 7 17l-5-5" /> <path d="m22 10-7.5 7.5L13 16" /> </svg>':'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M20 6 9 17l-5-5" /> </svg>';
-    if(m._pending)icon='<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <circle cx="12" cy="12" r="10" /> <polyline points="12 6 12 12 16 14" /> </svg>';
-    tk.innerHTML = icon;
+    tk.className = 'msg-ticks'+(m.delivered?' double':' single');
+    tk.innerHTML = m.delivered?'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M18 6 7 17l-5-5" /> <path d="m22 10-7.5 7.5L13 16" /> </svg>':'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M20 6 9 17l-5-5" /> </svg>';
     ov.appendChild(tk);
   }
   return ov;
