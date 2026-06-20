@@ -677,8 +677,330 @@ function _flushAllPendingAcks(){
   for(const pid of [..._pendingAcks.keys()]) _flushPendingAcks(pid);
 }
 
-function ensureWS(){if(ws&&(ws.readyState===WebSocket.OPEN||ws.readyState===WebSocket.CONNECTING))return;if(ws)try{ws.close();}catch(e){}ws=new WebSocket(SIGNAL_URL);ws.onopen=()=>{wsUp=true;wsRetry=0;ws.send(JSON.stringify({type:'register',peerId:MY_ID}));updateSendBtn();if(activePid)wsSend({type:'query-presence',target:activePid});if(pingInterval)clearInterval(pingInterval);pingInterval=setInterval(()=>{if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'ping'}));},30000);};ws.onmessage=async e=>{let d;try{d=JSON.parse(e.data);}catch{return;}await onWS(d);};ws.onclose=()=>{wsUp=false;updateSendBtn();if(activePid&&currentScreen==='scr-chat'){_stopConnDots();_startConnDots('Переподключение');}if(pingInterval){clearInterval(pingInterval);pingInterval=null;}setTimeout(ensureWS,WS_DELAYS[Math.min(wsRetry++,WS_DELAYS.length-1)]);};ws.onerror=()=>{wsUp=false;updateSendBtn();};}
-function wsSend(obj){if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(obj));}
+// ═══════════════════════════════════════════════════════════════════════════
+// ── STEALTH-TRANSPORT v2 ─────────────────────────────────────────────────
+// Маскировка трафика под случайный бинарный мусор для обхода DPI/ТСПУ.
+//
+// Режимы работы:
+//   1. WebSocket + Stealth-бинарный фрейм (основной)
+//   2. HTTP POST fallback (если WS заблокирован)
+//
+// Протокол фрейма:
+//   [4 байта] magic XOR'd  — всегда разные, не детектируемые
+//   [2 байта] pad_len LE   — длина шума (XOR'd)
+//   [pad_len] padding      — случайный мусор
+//   [остаток] payload      — XOR-поток с rolling-ключом
+// ═══════════════════════════════════════════════════════════════════════════
+
+// URL для HTTP fallback (тот же хост, другой порт/путь)
+const STEALTH_HTTP_URL = SIGNAL_URL
+  .replace('wss://', 'https://')
+  .replace('ws://', 'http://')
+  .replace(/:\d+$/, ''); // убираем порт если есть — используем стандартный
+
+const STEALTH_MAGIC_CLIENT = new Uint8Array([0xDE, 0xAD, 0xBE, 0xEF]);
+const STEALTH_VER = 0x02;
+const STEALTH_PAD_MIN = 8;
+const STEALTH_PAD_MAX = 128;
+
+// Состояние Stealth-сессии
+let _stealthSid = null;          // session ID от сервера
+let _stealthKey = null;          // Uint8Array[32] — сессионный ключ
+let _stealthTxCounter = 0;       // счётчик исходящих байт
+let _stealthRxCounter = 0;       // счётчик входящих байт
+let _stealthReady = false;       // ключ получен и активирован
+let _stealthMode = 'ws';         // 'ws' | 'http'
+let _stealthInitPromise = null;  // Promise инициализации
+let _httpPollTimer = null;       // таймер HTTP-поллинга
+let _httpPollSeq = 0;            // счётчик HTTP-запросов
+let _httpPollActive = false;     // флаг активного поллинга
+
+// Генерация случайных байт (браузерный crypto)
+function _stealthRandBytes(n) {
+  const buf = new Uint8Array(n);
+  crypto.getRandomValues(buf);
+  return buf;
+}
+
+// XOR-поток: шифрует/дешифрует Uint8Array с rolling-счётчиком
+function _stealthXor(buf, key, counter) {
+  const out = new Uint8Array(buf.length);
+  for (let i = 0; i < buf.length; i++) {
+    out[i] = buf[i] ^ key[(counter + i) % 32] ^ ((counter >> 8) & 0xFF) ^ (i & 0xFF);
+  }
+  return out;
+}
+
+// Упаковать объект в Stealth-фрейм → ArrayBuffer
+function _stealthEncode(obj, key, counter) {
+  const jsonBytes = new TextEncoder().encode(JSON.stringify(obj));
+  const padLen = STEALTH_PAD_MIN + Math.floor(Math.random() * (STEALTH_PAD_MAX - STEALTH_PAD_MIN));
+  const padding = _stealthRandBytes(padLen);
+
+  // Маскируем magic
+  const magic = new Uint8Array(4);
+  for (let i = 0; i < 4; i++) magic[i] = STEALTH_MAGIC_CLIENT[i] ^ key[i] ^ STEALTH_VER;
+
+  // Длина padding (2 байта LE, XOR'd)
+  const padLenBytes = new Uint8Array(2);
+  padLenBytes[0] = (padLen & 0xFF) ^ key[4];
+  padLenBytes[1] = ((padLen >> 8) & 0xFF) ^ key[5];
+
+  // Шифруем payload
+  const encPayload = _stealthXor(jsonBytes, key, counter);
+
+  // Собираем фрейм
+  const frame = new Uint8Array(4 + 2 + padLen + encPayload.length);
+  frame.set(magic, 0);
+  frame.set(padLenBytes, 4);
+  frame.set(padding, 6);
+  frame.set(encPayload, 6 + padLen);
+  return frame.buffer;
+}
+
+// Распаковать Stealth-фрейм → объект
+function _stealthDecode(buf, key, counter) {
+  const data = new Uint8Array(buf);
+  if (data.length < 6) return null;
+
+  // Проверяем magic
+  for (let i = 0; i < 4; i++) {
+    if (data[i] !== (STEALTH_MAGIC_CLIENT[i] ^ key[i] ^ STEALTH_VER)) return null;
+  }
+
+  // Читаем длину padding
+  const padLen = ((data[4] ^ key[4]) | ((data[5] ^ key[5]) << 8));
+  if (data.length < 6 + padLen) return null;
+
+  // Расшифровываем payload
+  const encPayload = data.slice(6 + padLen);
+  const jsonBytes = _stealthXor(encPayload, key, counter);
+
+  try {
+    return JSON.parse(new TextDecoder().decode(jsonBytes));
+  } catch {
+    return null;
+  }
+}
+
+// Инициализация Stealth-сессии: получаем ключ от сервера
+async function _stealthInit() {
+  if (_stealthReady) return true;
+  if (_stealthInitPromise) return _stealthInitPromise;
+
+  _stealthInitPromise = (async () => {
+    try {
+      const resp = await fetch(STEALTH_HTTP_URL + '/stealth-init', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ v: 2 }),
+        // Имитируем обычный браузерный запрос
+        credentials: 'omit',
+        cache: 'no-store'
+      });
+      if (!resp.ok) throw new Error('stealth-init failed: ' + resp.status);
+      const json = await resp.json();
+      _stealthSid = json.sid;
+      // Декодируем ключ из base64
+      const keyB64 = json.key;
+      const keyBin = atob(keyB64);
+      _stealthKey = new Uint8Array(keyBin.length);
+      for (let i = 0; i < keyBin.length; i++) _stealthKey[i] = keyBin.charCodeAt(i);
+      _stealthTxCounter = 0;
+      _stealthRxCounter = 0;
+      _stealthReady = true;
+      console.log('[Stealth] Session initialized, sid=' + _stealthSid);
+      return true;
+    } catch (e) {
+      console.warn('[Stealth] Init failed:', e.message);
+      _stealthInitPromise = null;
+      return false;
+    }
+  })();
+
+  return _stealthInitPromise;
+}
+
+// ── HTTP FALLBACK POLLING ──
+// Когда WS заблокирован — шлём сообщения через POST /stealth-poll
+// и получаем ответы в теле ответа (бинарный Stealth-фрейм с массивом)
+async function _stealthHttpSend(obj) {
+  if (!_stealthReady) {
+    const ok = await _stealthInit();
+    if (!ok) throw new Error('Stealth not ready');
+  }
+
+  const frame = _stealthEncode(obj, _stealthKey, _stealthTxCounter);
+  _stealthTxCounter += JSON.stringify(obj).length;
+
+  const resp = await fetch(STEALTH_HTTP_URL + '/stealth-poll', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/octet-stream',
+      'X-Session-Id': _stealthSid,
+      'X-Seq': String(_httpPollSeq++)
+    },
+    body: frame,
+    credentials: 'omit',
+    cache: 'no-store'
+  });
+
+  if (!resp.ok) throw new Error('stealth-poll failed: ' + resp.status);
+
+  // Декодируем ответ (бинарный Stealth-фрейм с batch)
+  const respBuf = await resp.arrayBuffer();
+  const decoded = _stealthDecode(respBuf, _stealthKey, _stealthRxCounter);
+  _stealthRxCounter += respBuf.byteLength;
+
+  if (decoded && decoded.batch && Array.isArray(decoded.batch)) {
+    for (const msg of decoded.batch) {
+      try { await onWS(msg); } catch (e) { console.warn('[Stealth-HTTP] onWS error:', e); }
+    }
+  }
+}
+
+// Запуск HTTP-поллинга (когда WS недоступен)
+function _startHttpPolling() {
+  if (_httpPollActive) return;
+  _httpPollActive = true;
+  wsUp = true; // считаем "онлайн" для UI
+  updateSendBtn();
+  console.log('[Stealth] Switching to HTTP fallback polling');
+
+  // Регистрируемся через HTTP
+  _stealthHttpSend({ type: 'register', peerId: MY_ID }).catch(e => {
+    console.warn('[Stealth-HTTP] register failed:', e);
+  });
+
+  // Поллинг: ping каждые 5 секунд чтобы получать входящие сообщения
+  _httpPollTimer = setInterval(async () => {
+    if (!_httpPollActive) return;
+    try {
+      await _stealthHttpSend({ type: 'ping' });
+    } catch (e) {
+      console.warn('[Stealth-HTTP] poll error:', e);
+      // Пробуем восстановить WS
+      _stopHttpPolling();
+      ensureWS();
+    }
+  }, 5000);
+}
+
+function _stopHttpPolling() {
+  _httpPollActive = false;
+  if (_httpPollTimer) { clearInterval(_httpPollTimer); _httpPollTimer = null; }
+}
+
+// ── WebSocket с Stealth-активацией ──
+function ensureWS() {
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+  if (ws) try { ws.close(); } catch (e) {}
+
+  // Инициализируем Stealth-сессию параллельно с WS-подключением
+  _stealthInit().catch(() => {});
+
+  ws = new WebSocket(SIGNAL_URL);
+  ws.binaryType = 'arraybuffer'; // принимаем бинарные фреймы
+
+  ws.onopen = async () => {
+    wsUp = true;
+    wsRetry = 0;
+    _stopHttpPolling(); // WS работает — отключаем HTTP fallback
+
+    // Ждём готовности Stealth-ключа (обычно уже готов)
+    const stealthOk = await _stealthInit();
+
+    if (stealthOk) {
+      // Отправляем stealth-hello — активируем бинарный режим на сервере
+      const helloFrame = _stealthEncode({ type: 'stealth-hello', sid: _stealthSid }, _stealthKey, _stealthTxCounter);
+      _stealthTxCounter += JSON.stringify({ type: 'stealth-hello', sid: _stealthSid }).length;
+      ws.send(helloFrame);
+    }
+
+    // Регистрация
+    wsSend({ type: 'register', peerId: MY_ID });
+    updateSendBtn();
+    if (activePid) wsSend({ type: 'query-presence', target: activePid });
+
+    if (pingInterval) clearInterval(pingInterval);
+    pingInterval = setInterval(() => {
+      if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'ping' });
+    }, 30000);
+  };
+
+  ws.onmessage = async (e) => {
+    let d;
+    const raw = e.data;
+
+    if (raw instanceof ArrayBuffer) {
+      // Бинарный фрейм — декодируем как Stealth
+      if (_stealthReady && _stealthKey) {
+        d = _stealthDecode(raw, _stealthKey, _stealthRxCounter);
+        if (d) {
+          _stealthRxCounter += raw.byteLength;
+        } else {
+          // Не Stealth-фрейм — пробуем как plain JSON в бинарном буфере
+          try { d = JSON.parse(new TextDecoder().decode(raw)); } catch { return; }
+        }
+      } else {
+        try { d = JSON.parse(new TextDecoder().decode(raw)); } catch { return; }
+      }
+    } else {
+      // Текстовый фрейм — обычный JSON
+      try { d = JSON.parse(raw); } catch { return; }
+    }
+
+    if (!d) return;
+    await onWS(d);
+  };
+
+  ws.onclose = () => {
+    wsUp = false;
+    updateSendBtn();
+    if (activePid && currentScreen === 'scr-chat') { _stopConnDots(); _startConnDots('Переподключение'); }
+    if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
+
+    // Если WS закрылся — пробуем HTTP fallback после нескольких неудачных попыток
+    const delay = WS_DELAYS[Math.min(wsRetry++, WS_DELAYS.length - 1)];
+    if (wsRetry >= 3 && _stealthReady) {
+      // После 3 неудачных попыток WS — переключаемся на HTTP fallback
+      console.log('[Stealth] WS failed 3 times, trying HTTP fallback');
+      setTimeout(() => {
+        if (!wsUp) _startHttpPolling();
+      }, delay);
+    } else {
+      setTimeout(ensureWS, delay);
+    }
+  };
+
+  ws.onerror = () => { wsUp = false; updateSendBtn(); };
+}
+
+// ── wsSend: отправка с Stealth-кодированием ──
+function wsSend(obj) {
+  // HTTP fallback режим
+  if (_httpPollActive) {
+    _stealthHttpSend(obj).catch(e => console.warn('[Stealth-HTTP] send error:', e));
+    return;
+  }
+
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+  // Stealth-режим: бинарный фрейм
+  if (_stealthReady && _stealthKey) {
+    try {
+      const frame = _stealthEncode(obj, _stealthKey, _stealthTxCounter);
+      _stealthTxCounter += JSON.stringify(obj).length;
+      ws.send(frame);
+      return;
+    } catch (e) {
+      console.warn('[Stealth] encode error, fallback to JSON:', e);
+    }
+  }
+
+  // Fallback: обычный JSON (если Stealth ещё не инициализирован)
+  ws.send(JSON.stringify(obj));
+}
 
 // ── ОПТИМИЗАЦИЯ 1: Генерация миниатюры (thumb) 20x20 для мгновенного превью ──
 // Клиент генерирует маленькую картинку и вставляет её в store-file-header.
