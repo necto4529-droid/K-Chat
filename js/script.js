@@ -967,62 +967,38 @@ async function _stealthDecryptAESGCM(encryptedPayload, key, iv, authTag) {
 // Упаковать объект в Stealth-фрейм → ArrayBuffer
 async function _stealthEncode(obj, key) {
   const jsonBytes = new TextEncoder().encode(JSON.stringify(obj));
-
-  // Шифруем payload AES-GCM
   const { iv, encrypted, authTag } = await _stealthEncryptAESGCM(jsonBytes, key);
-
-  // Собираем фрейм: WASM_MAGIC_BYTES + IV + Auth Tag + Encrypted Payload
-  const WASM_MAGIC_BYTES = new Uint8Array([0x00, 0x61, 0x73, 0x6D]); // \0asm
-  const rawFrame = new Uint8Array(WASM_MAGIC_BYTES.length + iv.length + authTag.length + encrypted.length);
-  rawFrame.set(WASM_MAGIC_BYTES, 0);
-  rawFrame.set(iv, WASM_MAGIC_BYTES.length);
-  rawFrame.set(authTag, WASM_MAGIC_BYTES.length + iv.length);
-  rawFrame.set(encrypted, WASM_MAGIC_BYTES.length + iv.length + authTag.length);
-
-  // Dynamic Traffic Shaping (Bimodal Distribution)
-  let targetSize;
-  if (Math.random() < STEALTH_BIMODAL_LARGE_PROB) {
-    targetSize = STEALTH_BIMODAL_LARGE.min + Math.floor(Math.random() * (STEALTH_BIMODAL_LARGE.max - STEALTH_BIMODAL_LARGE.min));
-  } else {
-    targetSize = STEALTH_BIMODAL_SMALL.min + Math.floor(Math.random() * (STEALTH_BIMODAL_SMALL.max - STEALTH_BIMODAL_SMALL.min));
-  }
-
+  const rawFrame = new Uint8Array(4 + iv.length + authTag.length + encrypted.length);
+  rawFrame.set([0x00, 0x61, 0x73, 0x6D], 0);
+  rawFrame.set(iv, 4);
+  rawFrame.set(authTag, 4 + iv.length);
+  rawFrame.set(encrypted, 4 + iv.length + authTag.length);
+  let targetSize = Math.random() < 0.3 ? 1200 : 300;
   if (rawFrame.length < targetSize) {
-    const additionalPadLen = targetSize - rawFrame.length;
-    const additionalPadding = _stealthRandBytes(additionalPadLen);
     const finalFrame = new Uint8Array(targetSize);
     finalFrame.set(rawFrame, 0);
-    finalFrame.set(additionalPadding, rawFrame.length);
+    crypto.getRandomValues(finalFrame.subarray(rawFrame.length));
     return finalFrame.buffer;
   }
   return rawFrame.buffer;
 }
 
-// Распаковать Stealth-фрейм → объект
 async function _stealthDecode(buf, key) {
   const data = new Uint8Array(buf);
-  const WASM_MAGIC_BYTES = new Uint8Array([0x00, 0x61, 0x73, 0x6D]); // \0asm
-  const AES_GCM_IV_LENGTH = 12;
-  const AES_GCM_TAG_LENGTH = 16;
-
-  // Проверяем WASM_MAGIC_BYTES
-  if (data.length < WASM_MAGIC_BYTES.length + AES_GCM_IV_LENGTH + AES_GCM_TAG_LENGTH) return null;
-  if (!data.slice(0, WASM_MAGIC_BYTES.length).every((val, i) => val === WASM_MAGIC_BYTES[i])) return null;
-
-  const iv = data.slice(WASM_MAGIC_BYTES.length, WASM_MAGIC_BYTES.length + AES_GCM_IV_LENGTH);
-  const authTag = data.slice(WASM_MAGIC_BYTES.length + AES_GCM_IV_LENGTH, WASM_MAGIC_BYTES.length + AES_GCM_IV_LENGTH + AES_GCM_TAG_LENGTH);
-  const encryptedPayload = data.slice(WASM_MAGIC_BYTES.length + AES_GCM_IV_LENGTH + AES_GCM_TAG_LENGTH);
-
+  if (data.length < 4 + 12 + 16) return null;
+  if (data[0] !== 0 || data[1] !== 0x61 || data[2] !== 0x73 || data[3] !== 0x6D) return null;
+  const iv = data.slice(4, 16);
+  const authTag = data.slice(16, 32);
+  const encrypted = data.slice(32);
   try {
-    const jsonBytes = await _stealthDecryptAESGCM(encryptedPayload, key, iv, authTag);
-    return JSON.parse(new TextDecoder().decode(jsonBytes));
-  } catch (e) {
-    console.warn("[Stealth] Decryption error:", e.message);
-    return null;
-  }
+    const jsonBytes = await _stealthDecryptAESGCM(encrypted, key, iv, authTag);
+    let end = jsonBytes.length - 1;
+    while (end >= 0 && jsonBytes[end] === 0) end--;
+    return JSON.parse(new TextDecoder().decode(jsonBytes.slice(0, end + 1)));
+  } catch (e) { return null; }
 }
 
-// Инициализация Stealth-сессии: получаем ключ от сервера
+
 async function _stealthInit() {
   if (_stealthReady) return true;
   if (_stealthInitPromise) return _stealthInitPromise;
@@ -1224,13 +1200,13 @@ function ensureWS() {
     }
 
     // Регистрация
-    wsSend({ type: 'register', peerId: MY_ID });
+    await await wsSend({ type: 'register', peerId: MY_ID });
     updateSendBtn();
-    if (activePid) wsSend({ type: 'query-presence', target: activePid });
+    if (activePid) await await wsSend({ type: 'query-presence', target: activePid });
 
     if (pingInterval) clearInterval(pingInterval);
-    pingInterval = setInterval(() => {
-      if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'ping' });
+    pingInterval = setInterval(async () => {
+      if (ws && ws.readyState === WebSocket.OPEN) await wsSend({ type: 'ping' });
     }, 30000);
   };
 
@@ -1282,7 +1258,7 @@ function ensureWS() {
 }
 
 // ── wsSend: отправка с Stealth-кодированием ──
-function wsSend(obj) {
+async function wsSend(obj) {
   // HTTP fallback режим
   if (_httpPollActive) {
     _stealthHttpSend(obj).catch(e => console.warn('[Stealth-HTTP] send error:', e));
@@ -1316,7 +1292,7 @@ function wsSend(obj) {
   // Stealth-режим: бинарный фрейм
   if (_stealthReady && _stealthKey) {
     try {
-      const frame = _stealthEncode(obj, _stealthKey, _stealthTxCounter);
+      const frame = await _stealthEncode(obj, _stealthKey, _stealthTxCounter);
       _stealthTxCounter += JSON.stringify(obj).length;
       ws.send(frame);
       return;
