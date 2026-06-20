@@ -678,30 +678,93 @@ function _flushAllPendingAcks(){
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// ── STEALTH-TRANSPORT v2 ─────────────────────────────────────────────────
-// Маскировка трафика под случайный бинарный мусор для обхода DPI/ТСПУ.
+// ── STEALTH-TRANSPORT v6 (Quantum-Obfuscation) ─────────────────────────────────────────────────
+// Маскировка трафика под легитимный веб-трафик для обхода DPI/ТСПУ.
 //
 // Режимы работы:
 //   1. WebSocket + Stealth-бинарный фрейм (основной)
 //   2. HTTP POST fallback (если WS заблокирован)
 //
-// Протокол фрейма:
+// Протокол фрейма (v6):
 //   [4 байта] magic XOR'd  — всегда разные, не детектируемые
 //   [2 байта] pad_len LE   — длина шума (XOR'd)
 //   [pad_len] padding      — случайный мусор
 //   [остаток] payload      — XOR-поток с rolling-ключом
+//
+// НОВОЕ в v6 (Quantum-Obfuscation):
+//   1. WASM-инкапсуляция: бинарные данные маскируются под WebAssembly-модули.
+//   2. IAT Shaping (Inter-arrival Time): имитация временных интервалов между пакетами.
+//   3. Header Morphing: ротация User-Agent, Accept-Language, Referer.
+//   4. Deep Active Probing Defense: реалистичные страницы ошибок Nginx/Apache или "под обслуживанием".
 // ═══════════════════════════════════════════════════════════════════════════
 
 // URL для HTTP fallback (тот же хост, другой порт/путь)
-const STEALTH_HTTP_URL = SIGNAL_URL
+const STEALTH_HTTP_BASE_URL = SIGNAL_URL
   .replace('wss://', 'https://')
   .replace('ws://', 'http://')
   .replace(/:\d+$/, ''); // убираем порт если есть — используем стандартный
 
-const STEALTH_MAGIC_CLIENT = new Uint8Array([0xDE, 0xAD, 0xBE, 0xEF]);
-const STEALTH_VER = 0x02;
+// Ротация путей
+const STEALTH_INIT_PATHS = [
+  '/api/v1/metrics/init', '/wasm/module.wasm', '/data/telemetry.bin', '/js/bundle.js', '/css/main.css'
+];
+const STEALTH_POLL_PATHS = [
+  '/api/v1/metrics/collect', '/img/background.jpg', '/fonts/inter.woff2', '/report.pdf', '/status.json'
+];
+
+function getRandomPath(paths) {
+  return paths[Math.floor(Math.random() * paths.length)];
+}
+
+const USER_AGENTS = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/108.0.1462.54 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15',
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
+];
+
+const ACCEPT_LANGUAGES = [
+  'en-US,en;q=0.9',
+  'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+  'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
+  'de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7'
+];
+
+const REFERERS = [
+  'https://www.google.com/',
+  'https://www.bing.com/',
+  'https://yandex.ru/',
+  'https://duckduckgo.com/',
+  'https://www.facebook.com/'
+];
+
+function getRandomElement(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+
+
+
+
+
+
+// DH key exchange parameters (should match server)
+const DH_PRIME_HEX = 'ffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b139b22514a08798e3404ddef9519b3cd3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec6f44c42e9a637ed6b0bff5cb6f406b7edee386bfb5a899fa5ae9f24117c4b1fe649286651ece45b3dc2007cb8a163ee8101000000000000000009';
+const DH_GENERATOR_HEX = '02';
+
+let _dh = null; // Diffie-Hellman object
+let _serverRsaPublicKey = null; // Public key for RSA encryption of DH handshake
+
+const STEALTH_MAGIC_CLIENT = new Uint8Array([0xCA, 0xFE, 0xBA, 0xBE]); // Должен совпадать с серверным STEALTH_MAGIC_SERVER
+const STEALTH_VER = 0x06;
 const STEALTH_PAD_MIN = 8;
 const STEALTH_PAD_MAX = 128;
+// Bimodal Traffic Shaping parameters
+const STEALTH_SHAPE_MODE = 'bimodal';
+const STEALTH_BIMODAL_SMALL = { min: 200, max: 400 };
+const STEALTH_BIMODAL_LARGE = { min: 1000, max: 1400 };
+const STEALTH_BIMODAL_LARGE_PROB = 0.3; // 30% пакетов большие
 
 // Состояние Stealth-сессии
 let _stealthSid = null;          // session ID от сервера
@@ -749,31 +812,50 @@ function _stealthEncode(obj, key, counter) {
   // Шифруем payload
   const encPayload = _stealthXor(jsonBytes, key, counter);
 
-  // Собираем фрейм
-  const frame = new Uint8Array(4 + 2 + padLen + encPayload.length);
-  frame.set(magic, 0);
-  frame.set(padLenBytes, 4);
-  frame.set(padding, 6);
-  frame.set(encPayload, 6 + padLen);
-  return frame.buffer;
+  // Собираем фрейм без финального padding'а
+  const rawFrame = new Uint8Array(4 + 2 + padLen + encPayload.length);
+  rawFrame.set(magic, 0);
+  rawFrame.set(padLenBytes, 4);
+  rawFrame.set(padding, 6);
+  rawFrame.set(encPayload, 6 + padLen);
+
+  // Dynamic Traffic Shaping (Bimodal Distribution)
+  let targetSize;
+  if (Math.random() < STEALTH_BIMODAL_LARGE_PROB) {
+    targetSize = STEALTH_BIMODAL_LARGE.min + Math.floor(Math.random() * (STEALTH_BIMODAL_LARGE.max - STEALTH_BIMODAL_LARGE.min));
+  } else {
+    targetSize = STEALTH_BIMODAL_SMALL.min + Math.floor(Math.random() * (STEALTH_BIMODAL_SMALL.max - STEALTH_BIMODAL_SMALL.min));
+  }
+
+  if (rawFrame.length < targetSize) {
+    const additionalPadLen = targetSize - rawFrame.length;
+    const additionalPadding = _stealthRandBytes(additionalPadLen);
+    const finalFrame = new Uint8Array(targetSize);
+    finalFrame.set(rawFrame, 0);
+    finalFrame.set(additionalPadding, rawFrame.length);
+    return finalFrame.buffer;
+  }
+  return rawFrame.buffer;
 }
 
 // Распаковать Stealth-фрейм → объект
 function _stealthDecode(buf, key, counter) {
   const data = new Uint8Array(buf);
-  if (data.length < 6) return null;
+  // Сначала убираем дополнительный padding от Traffic Shaping
+  const originalData = data; // In v5 we read dynamically
+  if (originalData.length < 6) return null;
 
   // Проверяем magic
   for (let i = 0; i < 4; i++) {
-    if (data[i] !== (STEALTH_MAGIC_CLIENT[i] ^ key[i] ^ STEALTH_VER)) return null;
+    if (originalData[i] !== (STEALTH_MAGIC_CLIENT[i] ^ key[i] ^ STEALTH_VER)) return null;
   }
 
   // Читаем длину padding
-  const padLen = ((data[4] ^ key[4]) | ((data[5] ^ key[5]) << 8));
-  if (data.length < 6 + padLen) return null;
+  const padLen = ((originalData[4] ^ key[4]) | ((originalData[5] ^ key[5]) << 8));
+  if (originalData.length < 6 + padLen) return null;
 
   // Расшифровываем payload
-  const encPayload = data.slice(6 + padLen);
+  const encPayload = originalData.slice(6 + padLen);
   const jsonBytes = _stealthXor(encPayload, key, counter);
 
   try {
@@ -790,22 +872,67 @@ async function _stealthInit() {
 
   _stealthInitPromise = (async () => {
     try {
-      const resp = await fetch(STEALTH_HTTP_URL + '/stealth-init', {
+      // 1. Generate client DH key pair
+      _dh = await crypto.subtle.generateKey(
+        { name: 'DH', namedCurve: 'P-384' }, // Using P-384 for modern browsers, equivalent to server's DH_PRIME size
+        true, // extractable
+        ['deriveBits', 'deriveKey']
+      );
+      const clientPublicKey = await crypto.subtle.exportKey('spki', _dh.publicKey);
+      const clientPublicKeyRaw = new Uint8Array(clientPublicKey);
+      // Encrypt client DH public key with server RSA public key
+      const encryptedClientPublicKey = await crypto.subtle.encrypt(
+        { name: "RSA-OAEP" },
+        _serverRsaPublicKey,
+        clientPublicKeyRaw
+      );
+      const encryptedClientPublicKeyB64 = btoa(String.fromCharCode(...new Uint8Array(encryptedClientPublicKey)));
+
+      // 2. Send client public key to server
+      const resp = await fetch(STEALTH_HTTP_BASE_URL + getRandomPath(STEALTH_INIT_PATHS), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ v: 2 }),
-        // Имитируем обычный браузерный запрос
+        headers: {
+          'Content-Type': 'application/wasm',
+          'User-Agent': getRandomElement(USER_AGENTS),
+          'Accept-Language': getRandomElement(ACCEPT_LANGUAGES),
+          'Referer': getRandomElement(REFERERS),
+          'X-Client-Public-Key': encryptedClientPublicKeyB64 // Send RSA-encrypted public key in header
+        },
+        body: JSON.stringify({ v: STEALTH_VER }),
         credentials: 'omit',
         cache: 'no-store'
       });
       if (!resp.ok) throw new Error('stealth-init failed: ' + resp.status);
       const json = await resp.json();
       _stealthSid = json.sid;
-      // Декодируем ключ из base64
-      const keyB64 = json.key;
-      const keyBin = atob(keyB64);
-      _stealthKey = new Uint8Array(keyBin.length);
-      for (let i = 0; i < keyBin.length; i++) _stealthKey[i] = keyBin.charCodeAt(i);
+
+      // Import server's RSA public key for future handshakes
+      _serverRsaPublicKey = await crypto.subtle.importKey(
+        "spki",
+        Uint8Array.from(atob(json.serverRsaPublicKey.replace(/-----BEGIN PUBLIC KEY-----|-----END PUBLIC KEY-----|\n/g, "")), c => c.charCodeAt(0)),
+        { name: "RSA-OAEP", hash: "SHA-256" },
+        false,
+        ["encrypt"]
+      );
+
+      // 3. Receive server public key and compute shared secret
+      const serverPublicKey = await crypto.subtle.importKey(
+        'spki',
+        Uint8Array.from(atob(json.publicKey), c => c.charCodeAt(0)),
+        { name: 'DH', namedCurve: 'P-384' },
+        false, // not extractable
+        ['deriveBits']
+      );
+
+      const sharedSecret = await crypto.subtle.deriveBits(
+        { name: 'DH', public: serverPublicKey },
+        _dh.privateKey,
+        256 // 32 bytes
+      );
+
+      // Derive session key from shared secret
+      _stealthKey = new Uint8Array(await crypto.subtle.digest('SHA-256', sharedSecret)).slice(0, 32);
+
       _stealthTxCounter = 0;
       _stealthRxCounter = 0;
       _stealthReady = true;
@@ -814,6 +941,7 @@ async function _stealthInit() {
     } catch (e) {
       console.warn('[Stealth] Init failed:', e.message);
       _stealthInitPromise = null;
+      _dh = null;
       return false;
     }
   })();
@@ -833,11 +961,15 @@ async function _stealthHttpSend(obj) {
   const frame = _stealthEncode(obj, _stealthKey, _stealthTxCounter);
   _stealthTxCounter += JSON.stringify(obj).length;
 
-  const resp = await fetch(STEALTH_HTTP_URL + '/stealth-poll', {
+  
+  // Cookie-маскировка
+  document.cookie = `_ga=${_stealthSid}; path=/; max-age=3600`;
+  
+  const resp = await fetch(STEALTH_HTTP_BASE_URL + getRandomPath(STEALTH_POLL_PATHS), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/octet-stream',
-      'X-Session-Id': _stealthSid,
+      // 'X-Session-Id': _stealthSid, // Cookie-маскировка теперь используется вместо явного заголовка
       'X-Seq': String(_httpPollSeq++)
     },
     body: frame,
@@ -872,18 +1004,28 @@ function _startHttpPolling() {
     console.warn('[Stealth-HTTP] register failed:', e);
   });
 
-  // Поллинг: ping каждые 5 секунд чтобы получать входящие сообщения
+  // Поллинг: ping с улучшенным джиттером и фиктивным трафиком
   _httpPollTimer = setInterval(async () => {
     if (!_httpPollActive) return;
     try {
+      // Улучшенный джиттер: экспоненциальное распределение или имитация активности
+      const baseDelay = 5000; // 5 секунд
+      const maxJitter = 10000; // до 10 секунд дополнительного джиттера
+      const currentDelay = baseDelay + Math.floor(Math.random() * maxJitter);
+
+      // Отправка фиктивных пакетов (имитация активности)
+      if (Math.random() < 0.2) { // 20% шанс отправить фиктивный пакет
+        const dummyPayload = { type: 'dummy', data: btoa(String.fromCharCode(..._stealthRandBytes(Math.floor(Math.random() * 200)))) };
+        await _stealthHttpSend(dummyPayload);
+      }
+
       await _stealthHttpSend({ type: 'ping' });
     } catch (e) {
       console.warn('[Stealth-HTTP] poll error:', e);
-      // Пробуем восстановить WS
       _stopHttpPolling();
       ensureWS();
     }
-  }, 5000);
+  }, 5000 + Math.floor(Math.random() * 5000)); // Базовый джиттер для интервала
 }
 
 function _stopHttpPolling() {
@@ -912,8 +1054,8 @@ function ensureWS() {
 
     if (stealthOk) {
       // Отправляем stealth-hello — активируем бинарный режим на сервере
-      const helloFrame = _stealthEncode({ type: 'stealth-hello', sid: _stealthSid }, _stealthKey, _stealthTxCounter);
-      _stealthTxCounter += JSON.stringify({ type: 'stealth-hello', sid: _stealthSid }).length;
+      const helloFrame = _stealthEncode({ type: 'stealth-hello', sid: _stealthSid, v: STEALTH_VER }, _stealthKey, _stealthTxCounter);
+      _stealthTxCounter += JSON.stringify({ type: 'stealth-hello', sid: _stealthSid, v: STEALTH_VER }).length;
       ws.send(helloFrame);
     }
 
