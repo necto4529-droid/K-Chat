@@ -1,84 +1,159 @@
-const CACHE_NAME = 'kchat-v2';
+/* ================================================================
+   K-Chat Service Worker  —  v3
+   Стратегия: Cache-First для App Shell + Stale-While-Revalidate
+   Гарантирует запуск приложения без интернета после первого визита
+   ================================================================ */
 
-// Ресурсы для предварительного кеширования (App Shell)
+const CACHE_NAME = 'kchat-v3';
+
+// Ресурсы App Shell — кешируются при установке SW
 const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/css/style.css',
-  '/js/script.js',
-  '/stickers.js',
-  '/lucide-icons.js',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
-  // Внешние зависимости (CDN) тоже можно кешировать
+  './',
+  './index.html',
+  './manifest.json',
+  './css/style.css',
+  './js/script.js',
+  './stickers.js',
+  './lucide-icons.js',
+  './icons/icon-192x192.png',
+  './icons/icon-512x512.png'
+];
+
+// CDN-ресурсы кешируем отдельно (не блокируем установку при недоступности CDN)
+const CDN_ASSETS = [
   'https://cdn.jsdelivr.net/npm/argon2-browser@1.18.0/dist/argon2-bundled.min.js',
   'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Syne:wght@400;600;700;800&display=swap'
 ];
 
-// Установка: кешируем статику
+// ── УСТАНОВКА: кешируем App Shell ─────────────────────────────────
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
-        console.log('[SW] Caching static assets');
-        return cache.addAll(STATIC_ASSETS);
+        console.log('[SW] Кешируем App Shell…');
+        // Кешируем основные файлы — обязательно
+        return cache.addAll(STATIC_ASSETS)
+          .then(() => {
+            // Кешируем CDN-ресурсы по возможности (не критично)
+            return Promise.allSettled(
+              CDN_ASSETS.map(url =>
+                fetch(url, { mode: 'cors' })
+                  .then(res => {
+                    if (res.ok) return cache.put(url, res);
+                  })
+                  .catch(() => {}) // CDN недоступен — не страшно
+              )
+            );
+          });
       })
-      .then(() => self.skipWaiting())
+      .then(() => {
+        console.log('[SW] App Shell закеширован');
+        return self.skipWaiting(); // Активируемся немедленно
+      })
+      .catch(err => console.error('[SW] Ошибка кеширования:', err))
   );
 });
 
-// Активация: чистим старые кеши
+// ── АКТИВАЦИЯ: удаляем старые кеши ───────────────────────────────
 self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys().then(keys => {
-      return Promise.all(
-        keys.filter(key => key !== CACHE_NAME)
-            .map(key => caches.delete(key))
-      );
-    }).then(() => self.clients.claim())
+    caches.keys()
+      .then(keys => Promise.all(
+        keys
+          .filter(key => key !== CACHE_NAME)
+          .map(key => {
+            console.log('[SW] Удаляем старый кеш:', key);
+            return caches.delete(key);
+          })
+      ))
+      .then(() => {
+        console.log('[SW] Активирован, захватываем клиентов');
+        return self.clients.claim(); // Управляем страницами без перезагрузки
+      })
   );
 });
 
-// Перехват запросов
+// ── ПЕРЕХВАТ ЗАПРОСОВ ─────────────────────────────────────────────
 self.addEventListener('fetch', event => {
-  const url = new URL(event.request.url);
+  const req = event.request;
+  const url = new URL(req.url);
 
-  // Не кешируем API запросы (WebSocket и Stealth-метрики)
-  if (url.pathname.includes('/api/') || url.pathname.includes('/socket.io')) {
+  // Пропускаем не-GET запросы (POST, WebSocket upgrade и т.д.)
+  if (req.method !== 'GET') return;
+
+  // Пропускаем WebSocket и API-запросы к серверу
+  if (
+    url.pathname.includes('/api/') ||
+    url.pathname.includes('/socket.io') ||
+    url.protocol === 'ws:' ||
+    url.protocol === 'wss:'
+  ) {
     return;
   }
 
-  // Стратегия: Cache First, then Network (для статики)
-  // Это гарантирует, что приложение откроется мгновенно даже без сети
-  event.respondWith(
-    caches.match(event.request)
-      .then(cachedResponse => {
-        if (cachedResponse) {
-          // Возвращаем из кеша, но параллельно обновляем кеш из сети (Stale-While-Revalidate)
-          fetch(event.request).then(networkResponse => {
-            if (networkResponse && networkResponse.status === 200) {
-              caches.open(CACHE_NAME).then(cache => cache.put(event.request, networkResponse));
-            }
-          }).catch(() => {}); // Игнорируем ошибки сети при фоновом обновлении
-          
-          return cachedResponse;
-        }
+  // Пропускаем chrome-extension и другие нестандартные схемы
+  if (!url.protocol.startsWith('http')) return;
 
-        // Если нет в кеше — идем в сеть
-        return fetch(event.request).then(networkResponse => {
-          // Кешируем новые ресурсы на лету (например, картинки или новые иконки)
-          if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
-            const responseToCache = networkResponse.clone();
-            caches.open(CACHE_NAME).then(cache => cache.put(event.request, responseToCache));
-          }
-          return networkResponse;
-        }).catch(() => {
-          // Если сеть упала и ресурса нет в кеше — для HTML возвращаем корень (офлайн-режим)
-          if (event.request.mode === 'navigate') {
-            return caches.match('/');
-          }
-        });
-      })
-  );
+  event.respondWith(handleFetch(req));
 });
+
+async function handleFetch(req) {
+  const cache = await caches.open(CACHE_NAME);
+  const cached = await cache.match(req);
+
+  if (cached) {
+    // ── Cache-First: отдаём из кеша немедленно ──────────────────
+    // Параллельно обновляем кеш в фоне (Stale-While-Revalidate)
+    updateCacheInBackground(cache, req);
+    return cached;
+  }
+
+  // ── Network-First: ресурс не закеширован ────────────────────────
+  try {
+    const networkRes = await fetch(req);
+
+    if (networkRes && networkRes.status === 200) {
+      // Кешируем только «безопасные» ответы (не opaque cross-origin без CORS)
+      const resType = networkRes.type; // 'basic' | 'cors' | 'opaque'
+      if (resType === 'basic' || resType === 'cors') {
+        cache.put(req, networkRes.clone());
+      }
+    }
+
+    return networkRes;
+  } catch (_networkError) {
+    // ── Офлайн-фолбэк ───────────────────────────────────────────
+    console.warn('[SW] Сеть недоступна, ищем фолбэк для:', req.url);
+
+    // Для навигационных запросов (открытие страницы) — возвращаем index.html
+    if (req.mode === 'navigate') {
+      const fallback =
+        (await cache.match('./index.html')) ||
+        (await cache.match('./')) ||
+        (await cache.match('/index.html')) ||
+        (await cache.match('/'));
+
+      if (fallback) {
+        console.log('[SW] Возвращаем закешированный index.html (офлайн)');
+        return fallback;
+      }
+    }
+
+    // Для остальных ресурсов — возвращаем пустой ответ, чтобы не крашить SW
+    return new Response('', {
+      status: 503,
+      statusText: 'Service Unavailable (offline)'
+    });
+  }
+}
+
+// Фоновое обновление кеша без блокировки ответа
+function updateCacheInBackground(cache, req) {
+  fetch(req)
+    .then(res => {
+      if (res && res.status === 200 && (res.type === 'basic' || res.type === 'cors')) {
+        cache.put(req, res);
+      }
+    })
+    .catch(() => {}); // Молча игнорируем — мы уже отдали ответ из кеша
+}
