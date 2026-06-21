@@ -23,7 +23,11 @@
 <!-- HOME -->
 <div class="screen active" id="scr-home">
   <div class="home-header">
-    <span class="home-title">K-Chat</span>
+    <div class="home-title-wrap">
+      <span class="home-title" id="homeHeaderTitle">K-Chat</span>
+      <div class="home-conn-dot" id="homeConnDot"></div>
+      <span class="net-type-badge" id="netTypeBadge">4G</span>
+    </div>
     <div class="home-header-actions">
       <div class="home-hdr-btn" id="homeMyId" onclick="copyMyId()" title="Скопировать мой ID"><svg class="lucide-icon lucide lucide-clipboard" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></div>
       <div class="home-hdr-btn" onclick="showContacts()" title="Контакты"><svg class="lucide-icon lucide lucide-user-round" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg></div>
