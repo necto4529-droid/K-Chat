@@ -10,12 +10,7 @@ const A2_MEM=65536,A2_TIME=3,A2_PAR=1;
 const QUICK_EMOJIS=['❤️','👍','😂','🔥','👏','😮','😢','➕'];
 const EXTENDED_EMOJIS=['❤️‍🔥','😁','👎','🥴','👌','😭','😱','💋','🤝','🥰','🤔','🤯','😡','🎉','🤩','🤮','💩','🙏','🕊️','🤡','🥱','😍','🐳','🌚','🌭','💯','⚡','🍌','🏆','💔','😑','🍓','🍾','🖕','😈','😴','🤓','👻','👨‍💻','👀','🎃','🙈','😇','✍️','🤗','🫡','💅','🤪','🗿','🆒','💘','🦄','😘','💊','😎','👾','🤨','🙉','🥺','☠️','💦','🫂','💪','🤧'];
 const WF_BARS=30,PREV_WF_BARS=25,MAX_VOICE_SEC=300,MAX_REACTIONS_PER_MSG=3;
-const MAX_FILE_SIZE=500*1024*1024;
-// АДАПТИВНЫЙ РАЗМЕР ЧАНКА: Для EDGE/GPRS (slow-2g) уменьшаем до 16КБ, для 4G оставляем 256КБ
-// ЭКСТРЕМАЛЬНАЯ ОПТИМИЗАЦИЯ ДЛЯ EDGE (slow-2g)
-// Уменьшаем чанк до 8КБ, чтобы пакеты не терялись при высоком jitter
-const CHUNK_SIZE = (_netQuality.isSlow() ? 8 : 64) * 1024;
-const STORE_BATCH = _netQuality.isSlow() ? 1 : 4;
+const MAX_FILE_SIZE=500*1024*1024,CHUNK_SIZE=256*1024,STORE_BATCH=3;
 
 const ENC=new TextEncoder(),DEC=new TextDecoder();
 const $=id=>document.getElementById(id);
@@ -665,11 +660,7 @@ const _netQuality = {
       const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
       if (conn) {
         const ect = conn.effectiveType || '4g';
-        this.type = ect;
-        // Если RTT > 1500ms или скорость < 50kbps — это EDGE/GPRS
-        if (conn.rtt > 1500 || (conn.downlink && conn.downlink < 0.1)) {
-            this.type = 'slow-2g';
-        }
+        this.type = ect; // 'slow-2g' | '2g' | '3g' | '4g'
       }
     } catch(e) {}
   },
@@ -3513,35 +3504,7 @@ function formatText(text){if(!text)return'';let html=esc(text);html=html.replace
 
 async function forwardToFavorites(msgId){const msgs=await loadMsgs(activePid);const m=msgs.find(m=>m.id===msgId);if(!m)return;const newMsg={id:uid(),text:m.text||'',type:'sent',time:new Date().toISOString(),reactions:{},edited:false,delivered:true,forwarded:true};if(m.media){newMsg.media=m.media;newMsg.caption=m.caption;}if(m.voice){newMsg.voice=m.voice;newMsg.voiceDuration=m.voiceDuration;newMsg.voiceListened=true;}if(m.file){newMsg.file=m.file;}await upsertMsg(MY_ID,newMsg);const lastPreview=m.file?`${m.file.name}`:m.voice?'Голосовое':m.media?'Фото':(m.text||'').slice(0,28);await updateChat(MY_ID,{lastMsg:lastPreview,lastMsgTime:Date.now()});if(activePid===MY_ID)appendOrReloadMsg(MY_ID,newMsg);toast('Переслано в Избранное');}
 
-function compressImage(file,maxWidth=1024,maxHeight=1024,quality=0.7){
-  // Адаптивное сжатие для EDGE/GPRS
-  if(_netQuality.isSlow()){
-    maxWidth = 640;
-    maxHeight = 640;
-    quality = 0.3;
-  }
-  return new Promise((resolve,reject)=>{
-    const reader=new FileReader();
-    reader.onload=e=>{
-      const img=new Image();
-      img.onload=()=>{
-        let w=img.width,h=img.height;
-        if(w>maxWidth||h>maxHeight){
-          const r=Math.min(maxWidth/w,maxHeight/h);
-          w=Math.round(w*r);h=Math.round(h*r);
-        }
-        const c=document.createElement('canvas');
-        c.width=w;c.height=h;
-        c.getContext('2d').drawImage(img,0,0,w,h);
-        resolve({dataURL:c.toDataURL('image/jpeg',quality),type:'image/jpeg',name:file.name});
-      };
-      img.onerror=reject;
-      img.src=e.target.result;
-    };
-    reader.onerror=reject;
-    reader.readAsDataURL(file);
-  });
-}
+function compressImage(file,maxWidth=1024,maxHeight=1024,quality=0.7){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=e=>{const img=new Image();img.onload=()=>{let w=img.width,h=img.height;if(w>maxWidth||h>maxHeight){const r=Math.min(maxWidth/w,maxHeight/h);w=Math.round(w*r);h=Math.round(h*r);}const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);resolve({dataURL:c.toDataURL('image/jpeg',quality),type:'image/jpeg',name:file.name});};img.onerror=reject;img.src=e.target.result;};reader.onerror=reject;reader.readAsDataURL(file);});}
 
 let pendingFiles=[];
 function updateFilePreview(){const container=$('mediaPreview');if(!pendingFiles.length){$('mediaPreviewContainer').style.display='none';return;}$('mediaPreviewContainer').style.display='flex';const file=pendingFiles[0];if(file.isMedia&&file.type.startsWith('image/')&&file.data)container.innerHTML=`<img class="media-preview-img" src="${file.data}"><span class="media-preview-info"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <rect width="18" height="18" x="3" y="3" rx="2" ry="2" /> <circle cx="9" cy="9" r="2" /> <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" /> </svg> ${pendingFiles.length>1?pendingFiles.length+' фото':file.name}</span>`;else if(file.isVideo||file.type.startsWith('video/'))container.innerHTML=`<span style="class="media-preview-file-icon"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5" /> <rect x="2" y="6" width="14" height="12" rx="2" /> </svg></span><span class="media-preview-info">${pendingFiles.length>1?pendingFiles.length+' видео':file.name} (${formatSize(file.size)})</span>`;else{const icon=getFileIcon(file.type);container.innerHTML=`<span style="font-size:36px">${icon}</span><span class="media-preview-info">${file.name} (${formatSize(file.size)})</span>`;}}
