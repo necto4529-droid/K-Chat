@@ -70,10 +70,13 @@
     .home-title.connecting{color:var(--warn);font-size:17px;opacity:0.9;letter-spacing:-.3px}
     /* Индикатор соединения с сервером — добавляется классом connected/connecting к .home-conn-dot */
     .home-conn-dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex-shrink:0;transition:background .35s ease,box-shadow .35s ease;margin-top:2px}
-    /* Бейдж типа сети (4G, WiFi и т.д.) */
+    /* Бейдж типа сети (G, E, 2G, 3G, H, H+, LTE, 4G, WiFi) */
     .net-type-badge{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;padding:2px 5px;border-radius:6px;background:rgba(255,255,255,0.08);color:var(--muted);border:1px solid rgba(255,255,255,0.05);transition:all .3s ease;text-transform:uppercase;margin-top:2px}
+    .net-type-badge.ultra-slow{color:#ff4444;background:rgba(255,68,68,0.15);border-color:rgba(255,68,68,0.3);box-shadow:0 0 4px rgba(255,68,68,0.2)}
     .net-type-badge.slow{color:var(--warn);background:rgba(255,166,43,0.12);border-color:rgba(255,166,43,0.2)}
-    .net-type-badge.fast{color:var(--g);background:rgba(0,255,136,0.1);border-color:rgba(0,255,136,0.15)}
+    .net-type-badge.medium{color:#ffa500;background:rgba(255,165,0,0.12);border-color:rgba(255,165,0,0.2)}
+    .net-type-badge.medium-fast{color:#90ee90;background:rgba(144,238,144,0.12);border-color:rgba(144,238,144,0.2)}
+    .net-type-badge.fast{color:var(--g);background:rgba(0,255,136,0.1);border-color:rgba(0,255,136,0.15);box-shadow:0 0 4px rgba(0,255,136,0.15)}
     .home-conn-dot.connected{background:var(--g);box-shadow:0 0 6px var(--g-glow);animation:connPulse 2.4s ease-in-out infinite}
     .home-conn-dot.connecting{background:var(--warn);box-shadow:0 0 5px rgba(255,193,7,.5);animation:connBlink 1s ease-in-out infinite}
     @keyframes connPulse{0%,100%{box-shadow:0 0 4px var(--g-glow)}50%{box-shadow:0 0 9px var(--g-glow)}}
