@@ -671,40 +671,134 @@ let lastHiddenTime=0,ignoreNextVisibilityReturn=false;
 const WS_DELAYS=[2000,3000,5000,8000,15000,30000];
 
 // ── ОПТИМИЗАЦИЯ 1: Network Quality Monitor ───────────────────────────────
-// Читает navigator.connection и определяет тип сети: slow-2g / 2g / 3g / 4g
-// Автоматически обновляется при смене сети. Также анализирует RTT.
+// Продвинутый мониторинг сети: Moving Average + расширенная классификация
+// Поддерживает: G, E, 2G, 3G, H, H+, LTE, 4G, WiFi
+// Работает в Median.co, браузерах и на iOS
 const _netQuality = {
   type: '4g',
   rtt: 0,
+  measuredRtt: 0,
+  lastPingTime: 0,
+  pingInProgress: false,
+  rttHistory: [],
+  maxHistorySize: 5,
+  
+  async performPing() {
+    if (this.pingInProgress || Date.now() - this.lastPingTime < 5000) return;
+    this.pingInProgress = true;
+    try {
+      const startTime = performance.now();
+      const response = await fetch('/ping', { method: 'GET', cache: 'no-cache' });
+      if (response.ok) {
+        const newRtt = Math.round(performance.now() - startTime);
+        this.rttHistory.push(newRtt);
+        if (this.rttHistory.length > this.maxHistorySize) {
+          this.rttHistory.shift();
+        }
+        this.measuredRtt = Math.round(this.rttHistory.reduce((a, b) => a + b, 0) / this.rttHistory.length);
+        this.lastPingTime = Date.now();
+        this.updateFromMeasurement();
+      }
+    } catch(e) {
+      this.rttHistory.push(3000);
+      if (this.rttHistory.length > this.maxHistorySize) {
+        this.rttHistory.shift();
+      }
+      this.measuredRtt = 3000;
+      this.updateFromMeasurement();
+    } finally {
+      this.pingInProgress = false;
+    }
+  },
+  
+  updateFromMeasurement() {
+    if (this.measuredRtt > 2000) {
+      this.type = 'slow-2g';
+    } else if (this.measuredRtt > 1500) {
+      this.type = 'edge';
+    } else if (this.measuredRtt > 1000) {
+      this.type = '2g';
+    } else if (this.measuredRtt > 600) {
+      this.type = '3g';
+    } else if (this.measuredRtt > 400) {
+      this.type = 'hspa';
+    } else if (this.measuredRtt > 200) {
+      this.type = 'hspa+';
+    } else if (this.measuredRtt > 100) {
+      this.type = 'lte';
+    } else {
+      this.type = '4g';
+    }
+    this.rtt = this.measuredRtt;
+    this.renderBadge();
+  },
+  
   update() {
     try {
       const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-      if (conn) {
-        const ect = conn.effectiveType || '4g';
-        this.type = ect; // 'slow-2g' | '2g' | '3g' | '4g'
-        this.rtt = conn.rtt || 0; // RTT в миллисекундах
+      if (conn && conn.effectiveType) {
+        const ect = conn.effectiveType;
+        if (ect === 'slow-2g') this.type = 'slow-2g';
+        else if (ect === '2g') this.type = '2g';
+        else if (ect === '3g') this.type = '3g';
+        else this.type = '4g';
+        this.rtt = conn.rtt || 0;
       }
     } catch(e) {}
+    this.performPing();
     this.renderBadge();
   },
+  
   renderBadge() {
     const b = $('netTypeBadge');
     if (!b) return;
-    let label = this.type.toUpperCase();
-    const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-    if (label === '4G' && (conn?.type === 'wifi')) label = 'WIFI';
-    if (this.rtt > 1500 || label === '2G' || label === 'SLOW-2G') {
-      b.textContent = label === 'SLOW-2G' ? 'EDGE' : label;
-      b.className = 'net-type-badge slow';
-    } else if (label === '3G' || this.rtt > 800) {
-      b.textContent = label;
-      b.className = 'net-type-badge';
-    } else {
-      b.textContent = label;
-      b.className = 'net-type-badge fast';
+    
+    let label = '';
+    let className = 'net-type-badge';
+    
+    switch(this.type) {
+      case 'slow-2g':
+        label = 'G';
+        className = 'net-type-badge ultra-slow';
+        break;
+      case 'edge':
+        label = 'E';
+        className = 'net-type-badge ultra-slow';
+        break;
+      case '2g':
+        label = '2G';
+        className = 'net-type-badge slow';
+        break;
+      case '3g':
+        label = '3G';
+        className = 'net-type-badge medium';
+        break;
+      case 'hspa':
+        label = 'H';
+        className = 'net-type-badge medium';
+        break;
+      case 'hspa+':
+        label = 'H+';
+        className = 'net-type-badge medium-fast';
+        break;
+      case 'lte':
+        label = 'LTE';
+        className = 'net-type-badge fast';
+        break;
+      case '4g':
+        const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+        label = (conn?.type === 'wifi') ? 'WIFI' : '4G';
+        className = 'net-type-badge fast';
+        break;
+      default:
+        label = '4G';
+        className = 'net-type-badge fast';
     }
+    
+    b.textContent = label;
+    b.className = className;
   },
-  // Сеть очень медленная: EDGE/GPRS/2G или RTT > 1.5с
+    // Сеть очень медленная: EDGE/GPRS/2G или RTT > 1.5с
   isSlow() { return this.type === 'slow-2g' || this.type === '2g' || this.rtt > 1500; },
   // Сеть медленная (включая 3G)
   isSlowOrMedium() { return this.type === 'slow-2g' || this.type === '2g' || this.type === '3g' || this.rtt > 800; },
