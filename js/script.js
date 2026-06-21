@@ -10,7 +10,12 @@ const A2_MEM=65536,A2_TIME=3,A2_PAR=1;
 const QUICK_EMOJIS=['❤️','👍','😂','🔥','👏','😮','😢','➕'];
 const EXTENDED_EMOJIS=['❤️‍🔥','😁','👎','🥴','👌','😭','😱','💋','🤝','🥰','🤔','🤯','😡','🎉','🤩','🤮','💩','🙏','🕊️','🤡','🥱','😍','🐳','🌚','🌭','💯','⚡','🍌','🏆','💔','😑','🍓','🍾','🖕','😈','😴','🤓','👻','👨‍💻','👀','🎃','🙈','😇','✍️','🤗','🫡','💅','🤪','🗿','🆒','💘','🦄','😘','💊','😎','👾','🤨','🙉','🥺','☠️','💦','🫂','💪','🤧'];
 const WF_BARS=30,PREV_WF_BARS=25,MAX_VOICE_SEC=300,MAX_REACTIONS_PER_MSG=3;
-const MAX_FILE_SIZE=500*1024*1024,CHUNK_SIZE=256*1024,STORE_BATCH=3;
+const MAX_FILE_SIZE=500*1024*1024;
+// АДАПТИВНЫЙ РАЗМЕР ЧАНКА: Для EDGE/GPRS (slow-2g) уменьшаем до 16КБ, для 4G оставляем 256КБ
+// ЭКСТРЕМАЛЬНАЯ ОПТИМИЗАЦИЯ ДЛЯ EDGE (slow-2g)
+// Уменьшаем чанк до 8КБ, чтобы пакеты не терялись при высоком jitter
+const CHUNK_SIZE = (_netQuality.isSlow() ? 8 : 64) * 1024;
+const STORE_BATCH = _netQuality.isSlow() ? 1 : 4;
 
 const ENC=new TextEncoder(),DEC=new TextDecoder();
 const $=id=>document.getElementById(id);
@@ -233,6 +238,38 @@ async function saveToFiles(dataUrlOrBlobId,mimeType,fileName,isBlob){
 // ── ID ──
 function mkId(){let id=localStorage.getItem('bc_my_id');if(!id){const h=()=>Math.random().toString(36).slice(2,6);id=`bc-${h()}-${h()}`;localStorage.setItem('bc_my_id',id);}return id.toLowerCase();}
 const MY_ID=mkId();
+// ── ОЧЕРЕДЬ ОТПРАВКИ (OUTBOX) ──
+let outbox = JSON.parse(localStorage.getItem('kchat_outbox') || '[]');
+function saveOutbox() { localStorage.setItem('kchat_outbox', JSON.stringify(outbox)); }
+
+async function processOutbox() {
+    if (!wsUp || outbox.length === 0) return;
+    const item = outbox[0];
+    try {
+        if (item.type === 'msg') {
+            await sendSingleMsg(item.text, null, item.msgId);
+        } else if (item.type === 'file') {
+            const buf = await loadBlob(item.fileId);
+            if(buf){
+              const fileInfo = {
+                blob: new Blob([buf], {type: item.fileInfo.type}),
+                name: item.fileInfo.name,
+                type: item.fileInfo.type,
+                size: item.fileInfo.size
+              };
+              await sendFileToServer(fileInfo, item.text, item.msgId);
+            }
+        }
+        outbox.shift();
+        saveOutbox();
+        // Успешно отправлено — убираем иконку ожидания
+        _markMsgDelivered(item.target, item.msgId);
+        setTimeout(processOutbox, 300);
+    } catch (e) {
+        console.error('Outbox processing error', e);
+        setTimeout(processOutbox, 5000);
+    }
+}
 $('homeMyId').title=MY_ID+' — нажми чтобы скопировать';
 window.copyMyId=()=>copyToClipboard(MY_ID).then(()=>toast('ID скопирован ✓'));
 async function copyToClipboard(text){try{if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(text);return;}}catch(e){}const ta=document.createElement('textarea');ta.value=text;ta.style.cssText='position:fixed;top:0;left:0;width:1px;height:1px;opacity:0';document.body.appendChild(ta);ta.focus();ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);}
@@ -628,7 +665,11 @@ const _netQuality = {
       const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
       if (conn) {
         const ect = conn.effectiveType || '4g';
-        this.type = ect; // 'slow-2g' | '2g' | '3g' | '4g'
+        this.type = ect;
+        // Если RTT > 1500ms или скорость < 50kbps — это EDGE/GPRS
+        if (conn.rtt > 1500 || (conn.downlink && conn.downlink < 0.1)) {
+            this.type = 'slow-2g';
+        }
       }
     } catch(e) {}
   },
@@ -722,10 +763,21 @@ function _markMsgSent(peerId, msgId) {
   const row = document.querySelector(`.msg-row[data-msgid="${msgId}"]`);
   if (!row) return;
   const tk = row.querySelector('.msg-ticks');
-  if (tk && tk.classList.contains('pending')) {
-    tk.className = 'msg-ticks single';
-    tk.innerHTML = '<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
-    tk.title = '';
+  if (tk) {
+    tk.className = 'msg-ticks sent';
+    tk.innerHTML = '<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+    tk.title = 'Отправлено на сервер';
+  }
+}
+function _markMsgDelivered(peerId, msgId) {
+  if (!peerId || !msgId) return;
+  const row = document.querySelector(`.msg-row[data-msgid="${msgId}"]`);
+  if (!row) return;
+  const tk = row.querySelector('.msg-ticks');
+  if (tk) {
+    tk.className = 'msg-ticks delivered';
+    tk.innerHTML = '<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/><polyline points="20 12 9 23 4 18"/></svg>';
+    tk.title = 'Доставлено';
   }
 }
 // ── PENDING ACKS — задержанные acks до открытия чата ──
@@ -788,28 +840,87 @@ function _flushAllPendingAcks(){
   for(const pid of [..._pendingAcks.keys()]) _flushPendingAcks(pid);
 }
 
+let _wsLock = false;
+let _lastPong = Date.now();
 function ensureWS(){
+  if(_wsLock) return;
   if(ws&&(ws.readyState===WebSocket.OPEN||ws.readyState===WebSocket.CONNECTING))return;
-  if(ws)try{ws.close();}catch(e){}
+  
+  _wsLock = true;
+  if(ws){
+    ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null;
+    try{ws.close();}catch(e){}
+  }
+
+  console.log('[WS] Connecting to', SIGNAL_URL);
   ws=new WebSocket(SIGNAL_URL);
+  
+  // Тайм-аут на установку соединения (если за 10с не подключился — пробуем снова)
+  const connTimeout = setTimeout(() => {
+    if(ws && ws.readyState !== WebSocket.OPEN){
+        console.warn('[WS] Connection timeout');
+        _wsLock = false;
+        ensureWS();
+    }
+  }, 10000);
+
   ws.onopen=()=>{
+    clearTimeout(connTimeout);
+    _wsLock = false;
     wsUp=true;wsRetry=0;
-    ws.send(JSON.stringify({type:'register',peerId:MY_ID}));
+    // ОПТИМИЗАЦИЯ: Используем 'auth' вместо 'register' для единообразия с сервером
+    ws.send(JSON.stringify({type:'auth',id:MY_ID}));
     updateSendBtn();
     if(activePid)wsSend({type:'query-presence',target:activePid});
+    processOutbox();
     if(pingInterval)clearInterval(pingInterval);
-    pingInterval=setInterval(()=>{if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'ping'}));},30000);
+    pingInterval=setInterval(()=>{
+        if(ws&&ws.readyState===WebSocket.OPEN) {
+            ws.send(JSON.stringify({type:'ping'}));
+            // Если понг не приходил слишком долго (более 40с), значит соединение "протухло"
+            if(Date.now() - _lastPong > 40000) {
+                console.warn('[WS] Zombie connection detected');
+                ws.close();
+            }
+        }
+    }, 25000);
   };
-  ws.onmessage=async e=>{let d;try{d=JSON.parse(e.data);}catch{return;}await onWS(d);};
-  ws.onclose=()=>{
-    wsUp=false;updateSendBtn();
-    if(activePid&&currentScreen==='scr-chat'){_stopConnDots();_startConnDots('Переподключение');}
+
+  ws.onmessage=async e=>{
+    let d;
+    try{d=JSON.parse(e.data);}catch{return;}
+    if(d.type === 'pong') {
+        // Понг пришел — значит связь жива
+        _lastPong = Date.now();
+        return;
+    }
+    await onWS(d);
+  };
+
+  ws.onclose=(e)=>{
+    clearTimeout(connTimeout);
+    _wsLock = false;
+    wsUp=false;
+    updateSendBtn();
+    console.log('[WS] Closed:', e.code, e.reason);
+    
+    if(activePid&&currentScreen==='scr-chat'){
+        _stopConnDots();
+        _startConnDots('Переподключение');
+    }
     if(pingInterval){clearInterval(pingInterval);pingInterval=null;}
-    // ОПТИМИЗАЦИЯ 2: Adaptive reconnect delay с учётом типа сети и jitter
-    _netQuality.update();
-    setTimeout(ensureWS, wsReconnectDelay(wsRetry++));
+    
+    // Экспоненциальная задержка с джиттером (чтобы не все сразу ломились на сервер)
+    const delay = Math.min(30000, (Math.pow(2, wsRetry) * 1000) + (Math.random() * 1000));
+    wsRetry++;
+    setTimeout(ensureWS, delay);
   };
-  ws.onerror=()=>{wsUp=false;updateSendBtn();};
+
+  ws.onerror=(err)=>{
+    _wsLock = false;
+    wsUp=false;
+    console.error('[WS] Error:', err);
+  };
 }
 
 // ОПТИМИЗАЦИЯ 8: window.online/offline события
@@ -848,8 +959,14 @@ function wsSend(obj){
     }
   }
   if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(obj));
-    _addToSentLog(obj);
+    try {
+        ws.send(JSON.stringify(obj));
+        _addToSentLog(obj);
+    } catch(e) {
+        if (_WS_BUFFER_TYPES.has(obj.type) && window._wsSendBuffer.length < _WS_BUFFER_MAX) {
+            window._wsSendBuffer.push({ obj, ts: Date.now() });
+        }
+    }
   } else if (_WS_BUFFER_TYPES.has(obj.type) && window._wsSendBuffer.length < _WS_BUFFER_MAX) {
     window._wsSendBuffer.push({ obj, ts: Date.now() });
   }
@@ -1699,7 +1816,16 @@ async function onWS(msg){
     case 'file-data-header':await handleFileDataHeader(msg);break;
     case 'file-data-chunk':await handleFileDataChunk(msg);break;
     case 'store-file-header-ack':{const waiter=storeAckWaiters.get(msg.fileId);if(waiter)waiter.resolve();break;}
-    case 'store-chunks-ack':break;
+    case 'store-chunks-ack':
+      if(storeAckWaiters.has(msg.fileId)) storeAckWaiters.get(msg.fileId).resolve();
+      if(msg.receivedCount !== undefined){
+        const lastIdx = msg.receivedCount - 1;
+        if(storeAckWaiters.has('chunk_'+msg.fileId+'_'+lastIdx)) storeAckWaiters.get('chunk_'+msg.fileId+'_'+lastIdx).resolve();
+      }
+      break;
+    case 'file-status':
+      if(storeAckWaiters.has('status_'+msg.fileId)) storeAckWaiters.get('status_'+msg.fileId).resolve(msg);
+      break;
     case 'file-upload-complete':{
       // Сервер получил все чанки — финализируем UI
       const {fileId:fucId}=msg;
@@ -2060,10 +2186,17 @@ function _startConnDots(base){
   _connStatusBase=base;
   _connStatusDots=1;
   const el=$('peerStatus');
+  const homeHeader=$('homeHeaderTitle');
   function render(){
-    if(!el)return;
-    el.textContent=_connStatusBase+'.'.repeat(_connStatusDots);
-    el.className='chat-peer-status connecting';
+    const text = _connStatusBase+'.'.repeat(_connStatusDots);
+    if(el){
+      el.textContent=text;
+      el.className='chat-peer-status connecting';
+    }
+    if(homeHeader){
+      homeHeader.textContent=text;
+      homeHeader.classList.add('connecting');
+    }
     _connStatusDots=_connStatusDots>=3?1:_connStatusDots+1;
   }
   render();
@@ -2074,6 +2207,11 @@ function _stopConnDots(){
   if(_connStatusInterval){clearInterval(_connStatusInterval);_connStatusInterval=null;}
   _connStatusBase='';
   _connStatusDots=1;
+  const homeHeader=$('homeHeaderTitle');
+  if(homeHeader){
+    homeHeader.textContent='K-Chat';
+    homeHeader.classList.remove('connecting');
+  }
 }
 
 // setBar теперь — no-op (statusBar убран), оставляем для совместимости
@@ -2157,7 +2295,14 @@ function fmtLastSeen(ts){
   return `был(а) ${dayNum} ${mon} ${d.getFullYear()} г. в ${timeStr}`;
 }
 
-function updateSendBtn(){if(!activePid){$('sendBtn').disabled=true;return;}if(isContactBlocked(activePid)||lsGet(`bc_blocked_by_${activePid}`,false)){$('sendBtn').disabled=true;updateBar();return;}$('sendBtn').disabled=!wsUp;updateBar();}
+function updateSendBtn(){
+  if(!activePid){$('sendBtn').disabled=true;return;}
+  if(isContactBlocked(activePid)||lsGet(`bc_blocked_by_${activePid}`,false)){$('sendBtn').disabled=true;updateBar();return;}
+  // Улучшение для 2G/3G: Кнопка отправки ВСЕГДА активна, если есть текст.
+  // Если интернета нет (!wsUp), сообщение уйдет в Outbox автоматически.
+  $('sendBtn').disabled=false;
+  updateBar();
+}
 
 // ── CHATS ──
 async function getOrCreateChat(pid,peerName,avatar){let chats=await loadChats();let c=chats.find(c=>c.peerId===pid);if(!c){c={peerId:pid,peerName:peerName||(pid===MY_ID?'⭐ Избранное':pid),avatar:avatar||(pid===MY_ID?'⭐':'👤'),lastMsg:null,lastMsgTime:null,unread:0};chats.push(c);}else{if(peerName)c.peerName=peerName;if(avatar)c.avatar=avatar;}await saveChats(chats);return c;}
@@ -3368,7 +3513,35 @@ function formatText(text){if(!text)return'';let html=esc(text);html=html.replace
 
 async function forwardToFavorites(msgId){const msgs=await loadMsgs(activePid);const m=msgs.find(m=>m.id===msgId);if(!m)return;const newMsg={id:uid(),text:m.text||'',type:'sent',time:new Date().toISOString(),reactions:{},edited:false,delivered:true,forwarded:true};if(m.media){newMsg.media=m.media;newMsg.caption=m.caption;}if(m.voice){newMsg.voice=m.voice;newMsg.voiceDuration=m.voiceDuration;newMsg.voiceListened=true;}if(m.file){newMsg.file=m.file;}await upsertMsg(MY_ID,newMsg);const lastPreview=m.file?`${m.file.name}`:m.voice?'Голосовое':m.media?'Фото':(m.text||'').slice(0,28);await updateChat(MY_ID,{lastMsg:lastPreview,lastMsgTime:Date.now()});if(activePid===MY_ID)appendOrReloadMsg(MY_ID,newMsg);toast('Переслано в Избранное');}
 
-function compressImage(file,maxWidth=1024,maxHeight=1024,quality=0.7){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=e=>{const img=new Image();img.onload=()=>{let w=img.width,h=img.height;if(w>maxWidth||h>maxHeight){const r=Math.min(maxWidth/w,maxHeight/h);w=Math.round(w*r);h=Math.round(h*r);}const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);resolve({dataURL:c.toDataURL('image/jpeg',quality),type:'image/jpeg',name:file.name});};img.onerror=reject;img.src=e.target.result;};reader.onerror=reject;reader.readAsDataURL(file);});}
+function compressImage(file,maxWidth=1024,maxHeight=1024,quality=0.7){
+  // Адаптивное сжатие для EDGE/GPRS
+  if(_netQuality.isSlow()){
+    maxWidth = 640;
+    maxHeight = 640;
+    quality = 0.3;
+  }
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=e=>{
+      const img=new Image();
+      img.onload=()=>{
+        let w=img.width,h=img.height;
+        if(w>maxWidth||h>maxHeight){
+          const r=Math.min(maxWidth/w,maxHeight/h);
+          w=Math.round(w*r);h=Math.round(h*r);
+        }
+        const c=document.createElement('canvas');
+        c.width=w;c.height=h;
+        c.getContext('2d').drawImage(img,0,0,w,h);
+        resolve({dataURL:c.toDataURL('image/jpeg',quality),type:'image/jpeg',name:file.name});
+      };
+      img.onerror=reject;
+      img.src=e.target.result;
+    };
+    reader.onerror=reject;
+    reader.readAsDataURL(file);
+  });
+}
 
 let pendingFiles=[];
 function updateFilePreview(){const container=$('mediaPreview');if(!pendingFiles.length){$('mediaPreviewContainer').style.display='none';return;}$('mediaPreviewContainer').style.display='flex';const file=pendingFiles[0];if(file.isMedia&&file.type.startsWith('image/')&&file.data)container.innerHTML=`<img class="media-preview-img" src="${file.data}"><span class="media-preview-info"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <rect width="18" height="18" x="3" y="3" rx="2" ry="2" /> <circle cx="9" cy="9" r="2" /> <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" /> </svg> ${pendingFiles.length>1?pendingFiles.length+' фото':file.name}</span>`;else if(file.isVideo||file.type.startsWith('video/'))container.innerHTML=`<span style="class="media-preview-file-icon"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5" /> <rect x="2" y="6" width="14" height="12" rx="2" /> </svg></span><span class="media-preview-info">${pendingFiles.length>1?pendingFiles.length+' видео':file.name} (${formatSize(file.size)})</span>`;else{const icon=getFileIcon(file.type);container.innerHTML=`<span style="font-size:36px">${icon}</span><span class="media-preview-info">${file.name} (${formatSize(file.size)})</span>`;}}
@@ -3553,9 +3726,9 @@ window.handleVideoSelect=async e=>{if(processingFiles)return;const files=Array.f
 window.handleFileSelect=async e=>{if(processingFiles)return;const files=Array.from(e.target.files);if(!files.length)return;$('fileInput').value='';processingFiles=true;setInputsDisabled(true);showProcessingToast('Обработка файлов…');try{for(const f of files){if(f.size>MAX_FILE_SIZE){toast('Файл слишком большой','err');continue;}pendingFiles.push({name:f.name,type:f.type,data:null,size:f.size,blob:f,isMedia:false});}}finally{processingFiles=false;setInputsDisabled(false);hideProgressToast();if(pendingFiles.length)updateFilePreview();}};
 
 // ── SEND ──
-async function sendSingleMsg(text,fileInfo=null){
+async function sendSingleMsg(text,fileInfo=null,existingId=null){
   if(activePid===MY_ID){
-    const msgId=uid(),ts=Date.now();
+    const msgId=existingId||uid(),ts=Date.now();
     const m={id:msgId,text,type:'sent',time:new Date(ts).toISOString(),reactions:{},edited:false,replyTo:replyTo||null,delivered:true,forwarded:false};
     if(fileInfo&&fileInfo.isMedia){m.media={type:fileInfo.type,data:fileInfo.data};m.caption=text;}
     else if(fileInfo){
@@ -3564,7 +3737,6 @@ async function sendSingleMsg(text,fileInfo=null){
         const ab=await readFileAsArrayBuffer(fileInfo.blob);
         data=`data:${fileInfo.type};base64,${arrayBufferToBase64(ab)}`;
       }
-      // Сохраняем в blobs для больших файлов (Избранное — только локально)
       if(data&&data.length>100000){
         try{
           const buf=base64ToArrayBuffer(data.replace(/^data:[^,]+,/,''));
@@ -3577,38 +3749,41 @@ async function sendSingleMsg(text,fileInfo=null){
     }
     await upsertMsg(MY_ID,m);const lp=fileInfo&&!fileInfo.isMedia?`${fileInfo.name}`:fileInfo&&fileInfo.isMedia?'Фото':text.slice(0,28);await updateChat(MY_ID,{lastMsg:lp,lastMsgTime:ts});appendOrReloadMsg(MY_ID,m);return;
   }
-  // ОПТИМИЗАЦИЯ 4: sendSingleMsg — офлайн-режим
-  // При !wsUp сообщение сохраняется локально с флагом _pending: true,
-  // добавляется в Outbox, показывается в чате с иконкой «часы».
+
+  const msgId=existingId||uid(),ts=Date.now();
+  const targetPid = activePid;
+
+  // Если это не переотправка существующего сообщения
+  if(!existingId){
+    const m={id:msgId,text,type:'sent',time:new Date(ts).toISOString(),reactions:{},edited:false,replyTo:replyTo||null,delivered:false,forwarded:false,_pending:!wsUp};
+    if(fileInfo&&fileInfo.isMedia){m.media=fileInfo.media||{type:fileInfo.type,data:fileInfo.data};m.caption=text;}
+    else if(fileInfo){m.file={name:fileInfo.name,type:fileInfo.type,size:fileInfo.size,blobId:msgId+'_file'};}
+    
+    await upsertMsg(targetPid,m);
+    await updateChat(targetPid,{lastMsg:fileInfo&&fileInfo.isMedia?'Фото':text.slice(0,28),lastMsgTime:ts});
+    appendOrReloadMsg(targetPid,m);
+  }
+
   if(!wsUp){
-    const key = await getKey(activePid).catch(()=>null);
-    if(!key){
-      toast('Нет связи с сервером','err');
-      throw new Error('offline');
+    // Сохраняем в Outbox для автоматической отправки
+    if(!outbox.some(o=>o.msgId===msgId)){
+        outbox.push({type:fileInfo?'file':'msg', text, msgId, target: targetPid, fileInfo: fileInfo?{name:fileInfo.name, type:fileInfo.type, size:fileInfo.size}:null, ts});
+        saveOutbox();
     }
-    const msgId=uid(),ts=Date.now();
-    const m={id:msgId,text,type:'sent',time:new Date(ts).toISOString(),reactions:{},edited:false,replyTo:replyTo||null,delivered:false,forwarded:false,_pending:true};
-    await upsertMsg(activePid,m);
-    await updateChat(activePid,{lastMsg:text.slice(0,28),lastMsgTime:ts});
-    appendOrReloadMsg(activePid,m);
-    _outboxPush({msgId,peerId:activePid,text,ts,replyTo:replyTo||null});
-    // Показываем иконку «часы» — ожидает отправки
-    setTimeout(()=>_markMsgPending(activePid,msgId),100);
+    _markMsgPending(targetPid, msgId);
     return msgId;
   }
-  const key=await ensureKey(activePid);
+
+  const key=await ensureKey(targetPid);
   if(!fileInfo||fileInfo.isMedia){
-    const msgId=uid(),ts=Date.now();
     const envType=fileInfo&&fileInfo.isMedia?'media':'msg';
     const env={type:envType,id:msgId,text,ts,replyTo:replyTo||null,forwarded:false};
-    if(fileInfo&&fileInfo.isMedia){env.media={type:fileInfo.type,data:fileInfo.data};env.caption=text;}
+    if(fileInfo&&fileInfo.isMedia){env.media=fileInfo.media||{type:fileInfo.type,data:fileInfo.data};env.caption=text;}
     const enc=await encData(ENC.encode(JSON.stringify(env)),key);
-    wsSend({type:'send-msg',target:activePid,msgId,payload:payloadToB64(enc)});
-    const m={id:msgId,text,type:'sent',time:new Date(ts).toISOString(),reactions:{},edited:false,replyTo:replyTo||null,delivered:false,forwarded:false};
-    if(fileInfo&&fileInfo.isMedia){m.media=env.media;m.caption=text;}
-    await upsertMsg(activePid,m);await updateChat(activePid,{lastMsg:fileInfo&&fileInfo.isMedia?'Фото':text.slice(0,28),lastMsgTime:ts});appendOrReloadMsg(activePid,m);return msgId;
+    wsSend({type:'send-msg',target:targetPid,msgId,payload:payloadToB64(enc)});
+    return msgId;
   }
-  return sendFileToServer(fileInfo,text);
+  return sendFileToServer(fileInfo,text,msgId);
 }
 
 async function sendMsg(){
@@ -6336,46 +6511,57 @@ async function sendVideoNoteMessageBuffer(fileBuffer, durSec, mimeType, blob) {
     }
   } catch(e) {}
 
-  wsSend({
-    type: 'store-file-header',
-    fileId,
-    recipientId: activePid,
-    name: VN_FILE_PREFIX + msgId,
-    size: fileBuffer.byteLength,
-    mimeType: mimeType || 'video/webm',
-    totalChunks,
-    caption: vnMeta,
-    thumb: vnThumb,
-    ts
+  wsSend({type:'get-file-status',fileId});
+  const status = await new Promise(resolve=>{
+    const timer=setTimeout(()=>resolve({exists:false}),5000);
+    storeAckWaiters.set('status_'+fileId,{resolve:(res)=>{clearTimeout(timer);resolve(res);}});
   });
+  storeAckWaiters.delete('status_'+fileId);
 
-  // Ждём ACK от сервера (max 4с)
-  await new Promise(resolve => {
-    const timer = setTimeout(resolve, 4000);
-    storeAckWaiters.set(fileId, { resolve: () => { clearTimeout(timer); resolve(); }, timer });
-  });
-  storeAckWaiters.delete(fileId);
+  let receivedChunks = new Set();
+  if(status.exists){
+    receivedChunks = new Set(status.receivedChunks);
+  } else {
+    wsSend({
+      type: 'store-file-header',
+      fileId,
+      recipientId: activePid,
+      name: VN_FILE_PREFIX + msgId,
+      size: fileBuffer.byteLength,
+      mimeType: mimeType || 'video/webm',
+      totalChunks,
+      caption: vnMeta,
+      thumb: vnThumb,
+      ts
+    });
+    await new Promise(resolve => {
+      const timer = setTimeout(resolve, 4000);
+      storeAckWaiters.set(fileId, { resolve: () => { clearTimeout(timer); resolve(); }, timer });
+    });
+    storeAckWaiters.delete(fileId);
+  }
 
-  // Чанки батчами — шифруем каждый чанк ключом получателя (как обычные файлы)
   let vnKey = null;
   try { vnKey = await getKey(activePid); } catch(e) {}
-  const BATCH = STORE_BATCH;
-  for (let i = 0; i < totalChunks; i += BATCH) {
-    const batch = [];
-    for (let j = i; j < Math.min(i + BATCH, totalChunks); j++) {
-      const start = j * CHUNK_SIZE;
-      const slice = fileBuffer.slice(start, Math.min(start + CHUNK_SIZE, fileBuffer.byteLength));
-      let chunkData;
-      if (vnKey) {
-        const encBuf = await encData(slice, vnKey);
-        chunkData = arrayBufferToBase64(encBuf);
-      } else {
-        chunkData = arrayBufferToBase64(slice);
-      }
-      batch.push({ index: j, data: chunkData });
+
+  for (let i = 0; i < totalChunks; i++) {
+    if(receivedChunks.has(i)) continue;
+    const start = i * CHUNK_SIZE;
+    const slice = fileBuffer.slice(start, Math.min(start + CHUNK_SIZE, fileBuffer.byteLength));
+    let chunkData;
+    if (vnKey) {
+      const encBuf = await encData(slice, vnKey);
+      chunkData = arrayBufferToBase64(encBuf);
+    } else {
+      chunkData = arrayBufferToBase64(slice);
     }
-    wsSend({ type: 'store-chunks', fileId, chunks: batch });
-    await new Promise(r => setTimeout(r, 30));
+    wsSend({ type: 'store-chunks', fileId, chunks: [{ index: i, data: chunkData }] });
+    
+    await new Promise(resolve=>{
+      const timer=setTimeout(resolve,30000);
+      storeAckWaiters.set('chunk_'+fileId+'_'+i,{resolve:()=>{clearTimeout(timer);resolve();}});
+    });
+    storeAckWaiters.delete('chunk_'+fileId+'_'+i);
   }
 }
 
