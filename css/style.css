@@ -64,15 +64,20 @@
     #scr-home{justify-content:flex-start;overflow:hidden}
     .home-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;padding-top:calc(14px + var(--safe-t));background:rgba(7,7,15,.88);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);flex-shrink:0;z-index:20;position:relative}
     .home-header::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:1px;background:linear-gradient(90deg,transparent,var(--g-30) 20%,var(--g-30) 80%,transparent)}
-    .home-title-wrap{display:flex;align-items:center;gap:9px}
-    .home-title{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;color:var(--g);letter-spacing:-.5px;transition:color .3s,opacity .3s}
-    .home-title.connecting{color:var(--warn);font-size:18px;opacity:0.8}
+    .home-title-wrap{display:flex;align-items:center;gap:8px}
+    .home-title{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;color:var(--g);letter-spacing:-.5px;transition:color .35s ease,font-size .25s ease,opacity .3s ease}
+    /* Заголовок при переподключении — жёлтый, чуть меньше (как в Telegram) */
+    .home-title.connecting{color:var(--warn);font-size:17px;opacity:0.9;letter-spacing:-.3px}
     /* Индикатор соединения с сервером — добавляется классом connected/connecting к .home-conn-dot */
-    .home-conn-dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex-shrink:0;transition:background .3s,box-shadow .3s;margin-top:2px}
+    .home-conn-dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex-shrink:0;transition:background .35s ease,box-shadow .35s ease;margin-top:2px}
+    /* Бейдж типа сети (4G, WiFi и т.д.) */
+    .net-type-badge{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;padding:2px 5px;border-radius:6px;background:rgba(255,255,255,0.08);color:var(--muted);border:1px solid rgba(255,255,255,0.05);transition:all .3s ease;text-transform:uppercase;margin-top:2px}
+    .net-type-badge.slow{color:var(--warn);background:rgba(255,166,43,0.12);border-color:rgba(255,166,43,0.2)}
+    .net-type-badge.fast{color:var(--g);background:rgba(0,255,136,0.1);border-color:rgba(0,255,136,0.15)}
     .home-conn-dot.connected{background:var(--g);box-shadow:0 0 6px var(--g-glow);animation:connPulse 2.4s ease-in-out infinite}
-    .home-conn-dot.connecting{background:var(--warn);animation:connBlink 1s ease-in-out infinite}
+    .home-conn-dot.connecting{background:var(--warn);box-shadow:0 0 5px rgba(255,193,7,.5);animation:connBlink 1s ease-in-out infinite}
     @keyframes connPulse{0%,100%{box-shadow:0 0 4px var(--g-glow)}50%{box-shadow:0 0 9px var(--g-glow)}}
-    @keyframes connBlink{0%,100%{opacity:1}50%{opacity:.35}}
+    @keyframes connBlink{0%,100%{opacity:1;box-shadow:0 0 5px rgba(255,193,7,.5)}50%{opacity:.3;box-shadow:none}}
     .home-header-actions{display:flex;align-items:center;gap:8px}
     .home-hdr-btn{width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:18px;transition:background .2s,border-color .2s,transform .15s cubic-bezier(.34,1.56,.64,1)}
     .home-hdr-btn:active{transform:scale(.88)}
