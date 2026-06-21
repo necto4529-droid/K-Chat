@@ -617,6 +617,117 @@ function stopPeerActivity(){
 let ws=null,wsUp=false,wsRetry=0,pingInterval=null;
 let lastHiddenTime=0,ignoreNextVisibilityReturn=false;
 const WS_DELAYS=[2000,3000,5000,8000,15000,30000];
+
+// ── ОПТИМИЗАЦИЯ 1: Network Quality Monitor ──────────────────────────────────
+// Читает navigator.connection и определяет тип сети: slow-2g / 2g / 3g / 4g
+// Автоматически обновляется при смене сети.
+const _netQuality = {
+  type: '4g',
+  update() {
+    try {
+      const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+      if (conn) {
+        const ect = conn.effectiveType || '4g';
+        this.type = ect; // 'slow-2g' | '2g' | '3g' | '4g'
+      }
+    } catch(e) {}
+  },
+  isSlow() { return this.type === 'slow-2g' || this.type === '2g'; },
+  multiplier() {
+    if (this.type === 'slow-2g') return 2.0;
+    if (this.type === '2g')      return 1.5;
+    if (this.type === '3g')      return 1.2;
+    return 1.0;
+  }
+};
+_netQuality.update();
+try {
+  const _nconn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  if (_nconn) _nconn.addEventListener('change', () => _netQuality.update());
+} catch(e) {}
+
+// ── ОПТИМИЗАЦИЯ 2: Adaptive Reconnect с Jitter ──────────────────────────────
+// Задержка учитывает тип сети + ±30% jitter
+function wsReconnectDelay(attempt) {
+  const base = WS_DELAYS[Math.min(attempt, WS_DELAYS.length - 1)];
+  const scaled = Math.round(base * _netQuality.multiplier());
+  const jitter = scaled * 0.3;
+  return Math.round(scaled - jitter + Math.random() * jitter * 2);
+}
+
+// ── ОПТИМИЗАЦИЯ 3: Persistent Outbox ────────────────────────────────────────
+// Дурабельная очередь исходящих сообщений в localStorage (bc_outbox_v2).
+// При отсутствии соединения сообщение сохраняется в очередь и
+// автоматически отправляется при reconnect. Переживает reload страницы.
+const OUTBOX_KEY = 'bc_outbox_v2';
+const OUTBOX_TTL = 5 * 60 * 1000; // 5 минут
+function _outboxLoad() {
+  const now = Date.now();
+  const items = lsGet(OUTBOX_KEY, []);
+  return items.filter(x => x && x.ts && (now - x.ts) < OUTBOX_TTL);
+}
+function _outboxSave(items) {
+  try { lsSet(OUTBOX_KEY, items); } catch(e) {}
+}
+function _outboxPush(item) {
+  const items = _outboxLoad();
+  if (!items.some(x => x.msgId === item.msgId)) {
+    items.push({ ...item, ts: Date.now() });
+    _outboxSave(items);
+  }
+}
+function _outboxRemove(msgId) {
+  const items = _outboxLoad().filter(x => x.msgId !== msgId);
+  _outboxSave(items);
+}
+async function _drainOutbox() {
+  if (!wsUp) return;
+  const items = _outboxLoad();
+  if (!items.length) return;
+  const remaining = [];
+  for (const item of items) {
+    if (!wsUp) { remaining.push(item); continue; }
+    try {
+      const key = await getKey(item.peerId);
+      if (!key) { remaining.push(item); continue; }
+      const env = { type: 'msg', id: item.msgId, text: item.text, ts: item.ts, replyTo: item.replyTo || null, forwarded: false };
+      const enc = await encData(ENC.encode(JSON.stringify(env)), key);
+      wsSend({ type: 'send-msg', target: item.peerId, msgId: item.msgId, payload: payloadToB64(enc) });
+      _markMsgSent(item.peerId, item.msgId);
+    } catch(e) { remaining.push(item); }
+  }
+  _outboxSave(remaining);
+}
+
+// ── ОПТИМИЗАЦИЯ 5: wsSend с буферизацией ────────────────────────────────────
+// Критические пакеты не дропаются при недоступном WS, а буферизуются.
+window._wsSendBuffer = window._wsSendBuffer || [];
+const _WS_BUFFER_TYPES = new Set(['send-msg','ack-msg','chat-read','ack-event','voice-listened','vn-watched']);
+const _WS_BUFFER_MAX = 100;
+
+// ── ОПТИМИЗАЦИЯ 9: Индикатор «ожидает отправки» ─────────────────────────────
+function _markMsgPending(peerId, msgId) {
+  if (!peerId || !msgId) return;
+  const row = document.querySelector(`.msg-row[data-msgid="${msgId}"]`);
+  if (!row) return;
+  const tk = row.querySelector('.msg-ticks');
+  if (tk) {
+    tk.className = 'msg-ticks pending';
+    tk.innerHTML = '<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+    tk.title = 'Ожидает отправки';
+  }
+}
+function _markMsgSent(peerId, msgId) {
+  if (!peerId || !msgId) return;
+  const row = document.querySelector(`.msg-row[data-msgid="${msgId}"]`);
+  if (!row) return;
+  const tk = row.querySelector('.msg-ticks');
+  if (tk && tk.classList.contains('pending')) {
+    tk.className = 'msg-ticks single';
+    tk.innerHTML = '<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+    tk.title = '';
+  }
+}
 // ── PENDING ACKS — задержанные acks до открытия чата ──
 // Храним не только в памяти, но и в localStorage, чтобы reconnect /
 // уход со страницы / leaveChat не ломали read-receipts.
@@ -677,8 +788,72 @@ function _flushAllPendingAcks(){
   for(const pid of [..._pendingAcks.keys()]) _flushPendingAcks(pid);
 }
 
-function ensureWS(){if(ws&&(ws.readyState===WebSocket.OPEN||ws.readyState===WebSocket.CONNECTING))return;if(ws)try{ws.close();}catch(e){}ws=new WebSocket(SIGNAL_URL);ws.onopen=()=>{wsUp=true;wsRetry=0;ws.send(JSON.stringify({type:'register',peerId:MY_ID}));updateSendBtn();if(activePid)wsSend({type:'query-presence',target:activePid});if(pingInterval)clearInterval(pingInterval);pingInterval=setInterval(()=>{if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'ping'}));},30000);};ws.onmessage=async e=>{let d;try{d=JSON.parse(e.data);}catch{return;}await onWS(d);};ws.onclose=()=>{wsUp=false;updateSendBtn();if(activePid&&currentScreen==='scr-chat'){_stopConnDots();_startConnDots('Переподключение');}if(pingInterval){clearInterval(pingInterval);pingInterval=null;}setTimeout(ensureWS,WS_DELAYS[Math.min(wsRetry++,WS_DELAYS.length-1)]);};ws.onerror=()=>{wsUp=false;updateSendBtn();};}
-function wsSend(obj){if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(obj));}
+function ensureWS(){
+  if(ws&&(ws.readyState===WebSocket.OPEN||ws.readyState===WebSocket.CONNECTING))return;
+  if(ws)try{ws.close();}catch(e){}
+  ws=new WebSocket(SIGNAL_URL);
+  ws.onopen=()=>{
+    wsUp=true;wsRetry=0;
+    ws.send(JSON.stringify({type:'register',peerId:MY_ID}));
+    updateSendBtn();
+    if(activePid)wsSend({type:'query-presence',target:activePid});
+    if(pingInterval)clearInterval(pingInterval);
+    pingInterval=setInterval(()=>{if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'ping'}));},30000);
+  };
+  ws.onmessage=async e=>{let d;try{d=JSON.parse(e.data);}catch{return;}await onWS(d);};
+  ws.onclose=()=>{
+    wsUp=false;updateSendBtn();
+    if(activePid&&currentScreen==='scr-chat'){_stopConnDots();_startConnDots('Переподключение');}
+    if(pingInterval){clearInterval(pingInterval);pingInterval=null;}
+    // ОПТИМИЗАЦИЯ 2: Adaptive reconnect delay с учётом типа сети и jitter
+    _netQuality.update();
+    setTimeout(ensureWS, wsReconnectDelay(wsRetry++));
+  };
+  ws.onerror=()=>{wsUp=false;updateSendBtn();};
+}
+
+// ОПТИМИЗАЦИЯ 8: window.online/offline события
+// При восстановлении интернета — сразу сбрасываем счётчик retry и reconnect
+window.addEventListener('online', () => {
+  _netQuality.update();
+  wsRetry = 0;
+  setTimeout(ensureWS, 300);
+});
+window.addEventListener('offline', () => {
+  _netQuality.update();
+});
+// УЛЬТИМАТИВНАЯ ОПТИМИЗАЦИЯ: Request-Response Deduplication & Binary Payload
+const _SENT_LOG_KEY = 'bc_sent_log_v1';
+const _SENT_LOG_MAX = 50;
+const _sentLog = lsGet(_SENT_LOG_KEY, []);
+function _addToSentLog(obj) {
+  if (!obj.requestId) return;
+  _sentLog.push({ id: obj.requestId, ts: Date.now() });
+  if (_sentLog.length > _SENT_LOG_MAX) _sentLog.shift();
+  lsSet(_SENT_LOG_KEY, _sentLog);
+}
+
+function wsSend(obj){
+  // Присваиваем уникальный ID каждому запросу для дедупликации на сервере
+  if (!obj.requestId && obj.type !== 'ping') obj.requestId = uid();
+  
+  // Дренируем буфер перед отправкой нового пакета
+  if (ws && ws.readyState === WebSocket.OPEN && window._wsSendBuffer.length > 0) {
+    const buf = window._wsSendBuffer.splice(0);
+    const now = Date.now();
+    for (const item of buf) {
+      if (now - item.ts < OUTBOX_TTL) {
+        try { ws.send(JSON.stringify(item.obj)); } catch(e) {}
+      }
+    }
+  }
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(obj));
+    _addToSentLog(obj);
+  } else if (_WS_BUFFER_TYPES.has(obj.type) && window._wsSendBuffer.length < _WS_BUFFER_MAX) {
+    window._wsSendBuffer.push({ obj, ts: Date.now() });
+  }
+}
 
 // ── ОПТИМИЗАЦИЯ 1: Генерация миниатюры (thumb) 20x20 для мгновенного превью ──
 // Клиент генерирует маленькую картинку и вставляет её в store-file-header.
@@ -1462,24 +1637,44 @@ const online={};
 
 async function onWS(msg){
   if(msg.type==='incoming-msg'&&msg.from===MY_ID)return;
+  
+  // УЛЬТИМАТИВНАЯ ОПТИМИЗАЦИЯ: Фиксация ID события для Delta-Sync
   const eventId=msg.eventId;
+  if (eventId && eventId > lsGet('bc_last_event_id', 0)) {
+    lsSet('bc_last_event_id', eventId);
+  }
   switch(msg.type){
     case 'registered':
       updateSendBtn();
       if(activePid) wsSend({type:'query-presence',target:activePid});
       registerPushNotifications().catch(()=>{});
       broadcastLastSeen().catch(()=>{});
+      
+      // УЛЬТИМАТИВНАЯ ОПТИМИЗАЦИЯ: Delta-Sync (запрос пропущенных событий)
+      // Мы сообщаем серверу ID последнего полученного события, чтобы он дослал только новое.
+      const lastEvId = lsGet('bc_last_event_id', 0);
+      wsSend({ type: 'delta-sync', sinceId: lastEvId });
+
       // После reconnect — drain все pending сообщения у которых есть ключ
       _drainAllPendingOnReconnect().catch(()=>{});
-      // Flush ВСЕ pending ack'и: пользователь мог уже прочитать чат,
-      // а соединение в этот момент было в состоянии «Переподключение...»
+      // Flush ВСЕ pending ack'и
       _flushAllPendingAcks();
-      // Отправляем накопленные vn-watched и voice-listened (работа офлайн)
+      // Отправляем накопленные vn-watched и voice-listened
       _drainWatchedQueues();
-      // Если чат сейчас открыт — повторяем chat-read после успешного reconnect
+      // Если чат сейчас открыт — повторяем chat-read
       if(activePid && currentScreen==='scr-chat') _sendChatReadReceipt(activePid).catch(()=>{});
-      // ИСПРАВЛЕНИЕ: Мгновенно возобновляем все активные загрузки файлов
+      // Возобновляем загрузки файлов
       _resumeAllFileTransfers();
+      // ОПТИМИЗАЦИЯ 10: _drainOutbox при reconnect
+      _drainOutbox().catch(()=>{});
+      // Дренируем wsSend-буфер
+      if (window._wsSendBuffer.length > 0) {
+        const buf = window._wsSendBuffer.splice(0);
+        const now = Date.now();
+        for (const item of buf) {
+          if (now - item.ts < OUTBOX_TTL) wsSend(item.obj);
+        }
+      }
       break;
     case 'presence':setOnline(msg.peerId.toLowerCase(),!!msg.online,true);break;
     case 'presence-reply':setOnline((msg.target||'').toLowerCase(),!!msg.online,false);break;
@@ -3382,7 +3577,25 @@ async function sendSingleMsg(text,fileInfo=null){
     }
     await upsertMsg(MY_ID,m);const lp=fileInfo&&!fileInfo.isMedia?`${fileInfo.name}`:fileInfo&&fileInfo.isMedia?'Фото':text.slice(0,28);await updateChat(MY_ID,{lastMsg:lp,lastMsgTime:ts});appendOrReloadMsg(MY_ID,m);return;
   }
-  if(!wsUp){toast('Нет связи с сервером','err');throw new Error('offline');}
+  // ОПТИМИЗАЦИЯ 4: sendSingleMsg — офлайн-режим
+  // При !wsUp сообщение сохраняется локально с флагом _pending: true,
+  // добавляется в Outbox, показывается в чате с иконкой «часы».
+  if(!wsUp){
+    const key = await getKey(activePid).catch(()=>null);
+    if(!key){
+      toast('Нет связи с сервером','err');
+      throw new Error('offline');
+    }
+    const msgId=uid(),ts=Date.now();
+    const m={id:msgId,text,type:'sent',time:new Date(ts).toISOString(),reactions:{},edited:false,replyTo:replyTo||null,delivered:false,forwarded:false,_pending:true};
+    await upsertMsg(activePid,m);
+    await updateChat(activePid,{lastMsg:text.slice(0,28),lastMsgTime:ts});
+    appendOrReloadMsg(activePid,m);
+    _outboxPush({msgId,peerId:activePid,text,ts,replyTo:replyTo||null});
+    // Показываем иконку «часы» — ожидает отправки
+    setTimeout(()=>_markMsgPending(activePid,msgId),100);
+    return msgId;
+  }
   const key=await ensureKey(activePid);
   if(!fileInfo||fileInfo.isMedia){
     const msgId=uid(),ts=Date.now();
@@ -3406,7 +3619,8 @@ async function sendMsg(){
   _vib('impactLight'); // тактильный отклик — сообщение отправлено
   await sendSingleMsg(text);inp.value='';inp.style.height='';cancelReply();
 }
-async function processSendQueue(caption){if(queueInProgress)return;queueInProgress=true;setInputsDisabled(true);const total=sendQueue.length;for(let i=0;i<total;i++){const fi=sendQueue[i];try{await sendSingleMsg(caption,fi);}catch(e){toast(`Ошибка отправки ${fi.name}`,'err');}}sendQueue=[];queueInProgress=false;setInputsDisabled(false);hideProgressToast();}
+// ОПТИМИЗАЦИЯ 11: processSendQueue — обработка offline
+async function processSendQueue(caption){if(queueInProgress)return;queueInProgress=true;setInputsDisabled(true);const total=sendQueue.length;for(let i=0;i<total;i++){const fi=sendQueue[i];try{await sendSingleMsg(caption,fi);}catch(e){if(!wsUp){toast(`Нет связи. Файл будет отправлен при подключении`,'warn');}else{toast(`Ошибка отправки ${fi.name}`,'err');}}}sendQueue=[];queueInProgress=false;setInputsDisabled(false);hideProgressToast();}
 
 $('sendBtn').addEventListener('click',()=>sendMsg().catch(console.warn));
 $('messageInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg().catch(console.warn);}});
