@@ -1213,6 +1213,16 @@
     .settings-accent-sw-check{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
     .settings-accent-lbl{font-family:'JetBrains Mono',monospace;font-size:8.5px;color:rgba(255,255,255,.3);text-align:center}
     .settings-accent-opt.active .settings-accent-lbl{color:rgba(255,255,255,.6)}
+    /* Тип сети — сетка */
+    .settings-net-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;padding:14px}
+    .settings-net-opt{display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer}
+    .settings-net-tile{width:36px;height:36px;border-radius:10px;position:relative;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:rgba(255,255,255,.45);transition:transform .15s,box-shadow .15s,background .15s,color .15s}
+    .settings-net-tile:hover{transform:scale(1.08);background:rgba(255,255,255,.13)}
+    .settings-net-tile.active{background:var(--g-85);border-color:var(--g);color:#fff;box-shadow:0 0 0 2px var(--bg),0 0 0 4px rgba(255,255,255,.7);transform:scale(1.05)}
+    .settings-net-tile-text{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;pointer-events:none;user-select:none}
+    .settings-net-tile.active .settings-net-tile-text{opacity:0}
+    .settings-net-tile-check{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+    .settings-net-opt.active .settings-accent-lbl{color:rgba(255,255,255,.6)}
     /* Toggle строка */
     .settings-tog-row{display:flex;align-items:center;gap:12px;padding:12px 14px;cursor:pointer;transition:background .15s;user-select:none}
     .settings-tog-row:hover{background:rgba(255,255,255,.04)}
