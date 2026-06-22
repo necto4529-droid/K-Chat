@@ -671,9 +671,8 @@ let lastHiddenTime=0,ignoreNextVisibilityReturn=false;
 const WS_DELAYS=[2000,3000,5000,8000,15000,30000];
 
 // ── ОПТИМИЗАЦИЯ 1: Network Quality Monitor ───────────────────────────────
-// Продвинутый мониторинг сети: Moving Average + расширенная классификация
-// Поддерживает: G, E, 2G, 3G, H, H+, LTE, 4G, WiFi
-// Работает в Median.co, браузерах и на iOS
+// Мониторинг сети на основе реального Ping-замера (RTT).
+// Игнорирует системный navigator.connection для точности данных.
 const _netQuality = {
   type: '4g',
   rtt: 0,
@@ -734,17 +733,6 @@ const _netQuality = {
   },
   
   update() {
-    try {
-      const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-      if (conn && conn.effectiveType) {
-        const ect = conn.effectiveType;
-        if (ect === 'slow-2g') this.type = 'slow-2g';
-        else if (ect === '2g') this.type = '2g';
-        else if (ect === '3g') this.type = '3g';
-        else this.type = '4g';
-        this.rtt = conn.rtt || 0;
-      }
-    } catch(e) {}
     this.performPing();
     this.renderBadge();
   },
@@ -786,8 +774,7 @@ const _netQuality = {
         className = 'net-type-badge fast';
         break;
       case '4g':
-        const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-        label = (conn?.type === 'wifi') ? 'WIFI' : '4G';
+        label = '4G';
         className = 'net-type-badge fast';
         break;
       default:
@@ -810,10 +797,8 @@ const _netQuality = {
   }
 };
 _netQuality.update();
-try {
-  const _nconn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-  if (_nconn) _nconn.addEventListener('change', () => { _netQuality.update(); console.log('[Net] Quality changed:', _netQuality.type, 'RTT:', _netQuality.rtt+'ms'); });
-} catch(e) {}
+// Периодическое обновление качества сети через пинг
+setInterval(() => _netQuality.update(), 10000);
 
 // ── ОПТИМИЗАЦИЯ 2: Adaptive Reconnect с Jitter ──────────────────────────────
 // Задержка учитывает тип сети + ±30% jitter
