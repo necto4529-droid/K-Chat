@@ -1,6 +1,12 @@
+    // ИСПРАВЛЕНИЕ: Инициализация OneSignal через OneSignalDeferred
     window.OneSignalDeferred = window.OneSignalDeferred || [];
     OneSignalDeferred.push(async function(OneSignal) {
-      await OneSignal.init({ appId: "c5b0ecd0-3e67-47a0-823d-771a7c4de3be" });
+      // Инициализируем только если OneSignal загружен и еще не инициализирован
+      if (OneSignal && typeof OneSignal.init === 'function') {
+        try {
+          await OneSignal.init({ appId: "c5b0ecd0-3e67-47a0-823d-771a7c4de3be" });
+        } catch(e) { console.error('[OneSignal] Init error:', e); }
+      }
     });
 (function(){
 'use strict';
@@ -16,17 +22,15 @@ const MAX_FILE_SIZE=500*1024*1024;
 // При 3G — 64 КБ / 2 чанка. При 4G — 256 КБ / 3 чанка.
 function getAdaptiveChunkSize(){
   const t=_netQuality&&_netQuality.type||'4g';
-  const rtt=_netQuality&&_netQuality.rtt||0;
-  if(t==='slow-2g'||t==='2g'||rtt>1500)return 8*1024;   // EDGE/GPRS: 8 КБ
-  if(t==='3g')return 64*1024;                             // 3G: 64 КБ
-  return 256*1024;                                        // 4G/WiFi: 256 КБ
+  if(t==='edge'||t==='2g')return 8*1024;   // EDGE/2G: 8 КБ
+  if(t==='3g')return 64*1024;              // 3G: 64 КБ
+  return 256*1024;                         // H/4G/WiFi: 256 КБ
 }
 function getAdaptiveStoreBatch(){
   const t=_netQuality&&_netQuality.type||'4g';
-  const rtt=_netQuality&&_netQuality.rtt||0;
-  if(t==='slow-2g'||t==='2g'||rtt>1500)return 1;         // EDGE/GPRS: 1 чанк
-  if(t==='3g')return 2;                                   // 3G: 2 чанка
-  return 3;                                               // 4G/WiFi: 3 чанка
+  if(t==='edge'||t==='2g')return 1;        // EDGE/2G: 1 чанк
+  if(t==='3g')return 2;                    // 3G: 2 чанка
+  return 3;                                // H/4G/WiFi: 3 чанка
 }
 // Для обратной совместимости — статические значения (используются как дефолт)
 const CHUNK_SIZE=256*1024;
@@ -670,135 +674,56 @@ let ws=null,wsUp=false,wsRetry=0,pingInterval=null;
 let lastHiddenTime=0,ignoreNextVisibilityReturn=false;
 const WS_DELAYS=[2000,3000,5000,8000,15000,30000];
 
-// ── ОПТИМИЗАЦИЯ 1: Network Quality Monitor ───────────────────────────────
-// Мониторинг сети на основе реального Ping-замера (RTT).
-// Игнорирует системный navigator.connection для точности данных.
+// ── Network Quality (ручной выбор пользователем) ─────────────────────────────
+// Тип сети выбирается вручную в настройках. По умолчанию — 4G.
+// Возможные значения: 'wifi', '4g', 'hspa', '3g', '2g', 'edge'
+const NET_TYPE_LABELS = {
+  'wifi':  { label: 'WiFi', cls: 'fast' },
+  '4g':    { label: '4G',   cls: 'fast' },
+  'hspa':  { label: 'H',    cls: 'medium' },
+  '3g':    { label: '3G',   cls: 'medium' },
+  '2g':    { label: '2G',   cls: 'slow' },
+  'edge':  { label: 'E',    cls: 'ultra-slow' },
+};
+
 const _netQuality = {
-  type: '4g',
+  type: lsGet('bc_net_type', '4g'),
   rtt: 0,
-  measuredRtt: 0,
-  lastPingTime: 0,
-  pingInProgress: false,
-  rttHistory: [],
-  maxHistorySize: 5,
-  
-  async performPing() {
-    if (this.pingInProgress || Date.now() - this.lastPingTime < 5000) return;
-    this.pingInProgress = true;
-    try {
-      const startTime = performance.now();
-      const response = await fetch('/ping', { method: 'GET', cache: 'no-cache' });
-      if (response.ok) {
-        const newRtt = Math.round(performance.now() - startTime);
-        this.rttHistory.push(newRtt);
-        if (this.rttHistory.length > this.maxHistorySize) {
-          this.rttHistory.shift();
-        }
-        this.measuredRtt = Math.round(this.rttHistory.reduce((a, b) => a + b, 0) / this.rttHistory.length);
-        this.lastPingTime = Date.now();
-        this.updateFromMeasurement();
-      }
-    } catch(e) {
-      this.rttHistory.push(3000);
-      if (this.rttHistory.length > this.maxHistorySize) {
-        this.rttHistory.shift();
-      }
-      this.measuredRtt = 3000;
-      this.updateFromMeasurement();
-    } finally {
-      this.pingInProgress = false;
-    }
-  },
-  
-  updateFromMeasurement() {
-    if (this.measuredRtt > 2000) {
-      this.type = 'slow-2g';
-    } else if (this.measuredRtt > 1500) {
-      this.type = 'edge';
-    } else if (this.measuredRtt > 1000) {
-      this.type = '2g';
-    } else if (this.measuredRtt > 600) {
-      this.type = '3g';
-    } else if (this.measuredRtt > 400) {
-      this.type = 'hspa';
-    } else if (this.measuredRtt > 200) {
-      this.type = 'hspa+';
-    } else if (this.measuredRtt > 100) {
-      this.type = 'lte';
-    } else {
-      this.type = '4g';
-    }
-    this.rtt = this.measuredRtt;
+
+  setType(t) {
+    this.type = t;
+    lsSet('bc_net_type', t);
     this.renderBadge();
   },
-  
-  update() {
-    this.performPing();
-    this.renderBadge();
-  },
-  
+
   renderBadge() {
     const b = $('netTypeBadge');
     if (!b) return;
-    
-    let label = '';
-    let className = 'net-type-badge';
-    
-    switch(this.type) {
-      case 'slow-2g':
-        label = 'G';
-        className = 'net-type-badge ultra-slow';
-        break;
-      case 'edge':
-        label = 'E';
-        className = 'net-type-badge ultra-slow';
-        break;
-      case '2g':
-        label = '2G';
-        className = 'net-type-badge slow';
-        break;
-      case '3g':
-        label = '3G';
-        className = 'net-type-badge medium';
-        break;
-      case 'hspa':
-        label = 'H';
-        className = 'net-type-badge medium';
-        break;
-      case 'hspa+':
-        label = 'H+';
-        className = 'net-type-badge medium-fast';
-        break;
-      case 'lte':
-        label = 'LTE';
-        className = 'net-type-badge fast';
-        break;
-      case '4g':
-        label = '4G';
-        className = 'net-type-badge fast';
-        break;
-      default:
-        label = '4G';
-        className = 'net-type-badge fast';
-    }
-    
-    b.textContent = label;
-    b.className = className;
+    const info = NET_TYPE_LABELS[this.type] || NET_TYPE_LABELS['4g'];
+    b.textContent = info.label;
+    b.className = 'net-type-badge ' + info.cls;
   },
-    // Сеть очень медленная: EDGE/GPRS/2G или RTT > 1.5с
-  isSlow() { return this.type === 'slow-2g' || this.type === '2g' || this.rtt > 1500; },
-  // Сеть медленная (включая 3G)
-  isSlowOrMedium() { return this.type === 'slow-2g' || this.type === '2g' || this.type === '3g' || this.rtt > 800; },
-  multiplier() {
-    if (this.type === 'slow-2g' || this.rtt > 1500) return 2.5;
-    if (this.type === '2g')      return 2.0;
-    if (this.type === '3g')      return 1.5;
-    return 1.0;
-  }
+
+  // Группировка для упрощения логики в старых местах
+  isSlow() { return this.type === 'edge' || this.type === '2g'; },
+  isSlowOrMedium() { return this.type === 'edge' || this.type === '2g' || this.type === '3g' || this.type === 'hspa'; },
+
+  // Детальные параметры для каждого типа сети
+  getParams() {
+    switch(this.type) {
+      case 'wifi': return { chunk: 512*1024, batch: 5, delay: 0,   imgW: 1280, imgQ: 0.8, voiceBr: 256000, videoBr: 1200000, vnW: 720, vnH: 720, vnFps: 30, vnTs: 200, mult: 0.8 };
+      case '4g':   return { chunk: 256*1024, batch: 3, delay: 10,  imgW: 1024, imgQ: 0.7, voiceBr: 192000, videoBr: 800000,  vnW: 640, vnH: 640, vnFps: 30, vnTs: 300, mult: 1.0 };
+      case 'hspa': return { chunk: 128*1024, batch: 2, delay: 30,  imgW: 800,  imgQ: 0.6, voiceBr: 64000,  videoBr: 500000,  vnW: 480, vnH: 480, vnFps: 24, vnTs: 500, mult: 1.3 };
+      case '3g':   return { chunk: 64*1024,  batch: 2, delay: 60,  imgW: 720,  imgQ: 0.5, voiceBr: 32000,  videoBr: 350000,  vnW: 480, vnH: 480, vnFps: 20, vnTs: 600, mult: 1.6 };
+      case '2g':   return { chunk: 16*1024,  batch: 1, delay: 120, imgW: 640,  imgQ: 0.4, voiceBr: 16000,  videoBr: 150000,  vnW: 320, vnH: 320, vnFps: 15, vnTs: 1000, mult: 2.2 };
+      case 'edge': return { chunk: 8*1024,   batch: 1, delay: 200, imgW: 480,  imgQ: 0.3, voiceBr: 12000,  videoBr: 100000,  vnW: 240, vnH: 240, vnFps: 10, vnTs: 1500, mult: 3.0 };
+      default:     return this.getParams.call({type:'4g'});
+    }
+  },
+
+  multiplier() { return this.getParams().mult; }
 };
-_netQuality.update();
-// Периодическое обновление качества сети через пинг
-setInterval(() => _netQuality.update(), 10000);
+_netQuality.renderBadge();
 
 // ── ОПТИМИЗАЦИЯ 2: Adaptive Reconnect с Jitter ──────────────────────────────
 // Задержка учитывает тип сети + ±30% jitter
@@ -1050,12 +975,12 @@ function ensureWS(){
 // ОПТИМИЗАЦИЯ 8: window.online/offline события
 // При восстановлении интернета — сразу сбрасываем счётчик retry и reconnect
 window.addEventListener('online', () => {
-  _netQuality.update();
+  _netQuality.renderBadge();
   wsRetry = 0;
   setTimeout(ensureWS, 300);
 });
 window.addEventListener('offline', () => {
-  _netQuality.update();
+  _netQuality.renderBadge();
 });
 // УЛЬТИМАТИВНАЯ ОПТИМИЗАЦИЯ: Request-Response Deduplication & Binary Payload
 const _SENT_LOG_KEY = 'bc_sent_log_v1';
@@ -1265,29 +1190,46 @@ async function sendFileToServer(fileInfo,caption){
   // Сохраняем в localStorage — пережить перезагрузку страницы
   try{const _sftp=lsGet('_fileSentToPeer',{});_sftp[fileId]=activePid;lsSet('_fileSentToPeer',_sftp);}catch(e){}
 
-  await new Promise(resolve=>{const timer=setTimeout(resolve,30000);storeAckWaiters.set(fileId,{resolve:()=>{clearTimeout(timer);resolve();},timer});});
-  storeAckWaiters.delete(fileId);
+  // ИСПРАВЛЕНИЕ: Докачка при отправке (Upload Resuming)
+  // Ждём ответа от сервера с информацией о том, какие чанки уже получены
+  const status = await new Promise(resolve => {
+    const timer = setTimeout(() => resolve({ receivedChunks: [] }), 5000);
+    storeAckWaiters.set('header_ack_' + fileId, {
+      resolve: (data) => { clearTimeout(timer); resolve(data); }
+    });
+    wsSend({ type: 'get-file-status', fileId });
+  });
+  storeAckWaiters.delete('header_ack_' + fileId);
+
+  const receivedChunks = new Set(status.receivedChunks || []);
 
   // Шифруем и отправляем чанки батчами — не блокируем UI
-  // АДАПТИВНЫЕ ЧАНКИ: используем размер и батч по типу сети
-  // При EDGE/GPRS: 8КБ чанки, 1 за раз — не забиваем узкий канал
   for(let b=0;b<totalChunks;b+=_storeBatch){
     const batch=[];
     const end=Math.min(b+_storeBatch,totalChunks);
+    let allReceived = true;
     for(let i=b;i<end;i++){
-      const start=i*_chunkSize;
-      const slice=fileBuffer.slice(start,Math.min(start+_chunkSize,fileBuffer.byteLength));
-      const encBuf=await encData(slice,key);
-      batch.push({index:i,data:arrayBufferToBase64(encBuf)});
+      if (!receivedChunks.has(i)) {
+        allReceived = false;
+        const start=i*_chunkSize;
+        const slice=fileBuffer.slice(start,Math.min(start+_chunkSize,fileBuffer.byteLength));
+        const encBuf=await encData(slice,key);
+        batch.push({index:i,data:arrayBufferToBase64(encBuf)});
+      }
     }
-    wsSend({type:'store-chunks',fileId,chunks:batch});
-    const pct=Math.round((end/totalChunks)*100);
-    updateUploadProgress(fileId,pct);
+    if (batch.length > 0) {
+      wsSend({type:'store-chunks',fileId,chunks:batch});
+    }
+    
+    // Обновляем прогресс с учетом докачки
+    const currentProgress = Math.max(receivedChunks.size, end);
+    const pct = Math.round((currentProgress / totalChunks) * 100);
+    updateUploadProgress(fileId, pct);
+    
     // Yield UI thread между батчами чтобы интерфейс не замерзал
-    // При EDGE/GPRS даём больше времени между чанками
     if(end<totalChunks){
-      const _delay=_netQuality.isSlow()?80:_netQuality.isSlowOrMedium()?20:0;
-      await new Promise(r=>setTimeout(r,_delay));
+      const _delay = _netQuality.getParams().delay;
+      if(_delay > 0) await new Promise(r=>setTimeout(r, _delay));
     }
   }
 
@@ -2636,6 +2578,14 @@ function openSettingsModal(){
           </div>
         </div>
 
+        <!-- Тип сети -->
+        <div class="settings-sec">
+          <div class="settings-sec-label">Тип сети</div>
+          <div class="settings-card">
+            <div class="settings-net-grid" id="settingsNetGrid"></div>
+          </div>
+        </div>
+
         <!-- Конфиденциальность -->
         <div class="settings-sec">
           <div class="settings-sec-label">Конфиденциальность</div>
@@ -2783,6 +2733,74 @@ function openSettingsModal(){
         toast('Тема: '+t.label);
       };
       grid.appendChild(opt);
+    });
+  }
+
+  // Рендерим сетку типа сети
+  const netGrid = document.getElementById('settingsNetGrid');
+  if(netGrid){
+    const NET_TYPES = [
+      { id: 'wifi', label: 'WiFi' },
+      { id: '4g',   label: '4G'   },
+      { id: 'hspa', label: 'H'    },
+      { id: '3g',   label: '3G'   },
+      { id: '2g',   label: '2G'   },
+      { id: 'edge', label: 'E'    },
+    ];
+    const currentNet = lsGet('bc_net_type', '4g');
+    netGrid.innerHTML = '';
+    NET_TYPES.forEach(nt => {
+      const isActive = nt.id === currentNet;
+      const opt = document.createElement('div');
+      opt.className = 'settings-net-opt' + (isActive ? ' active' : '');
+      opt.dataset.netId = nt.id;
+      const tile = document.createElement('div');
+      tile.className = 'settings-net-tile' + (isActive ? ' active' : '');
+      // Текст внутри плитки (всегда виден)
+      const tileText = document.createElement('span');
+      tileText.className = 'settings-net-tile-text';
+      tileText.textContent = nt.label;
+      tile.appendChild(tileText);
+      if(isActive){
+        const chk = document.createElement('div');
+        chk.className = 'settings-net-tile-check';
+        chk.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 7L5.5 10L11.5 4" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        tile.appendChild(chk);
+      }
+      const lbl = document.createElement('span');
+      lbl.className = 'settings-accent-lbl' + (isActive ? ' active' : '');
+      lbl.textContent = nt.label;
+      opt.appendChild(tile);
+      opt.appendChild(lbl);
+      opt.onclick = () => {
+        _netQuality.setType(nt.id);
+        _vib('tick');
+        // Перерисовываем сетку
+        const ng2 = document.getElementById('settingsNetGrid');
+        if(ng2){
+          ng2.querySelectorAll('.settings-net-opt').forEach((el, i) => {
+            const tid = NET_TYPES[i]?.id;
+            const isCur = tid === nt.id;
+            el.classList.toggle('active', isCur);
+            const t2 = el.querySelector('.settings-net-tile');
+            t2.classList.toggle('active', isCur);
+            let chk2 = t2.querySelector('.settings-net-tile-check');
+            if(isCur && !chk2){
+              chk2 = document.createElement('div');
+              chk2.className = 'settings-net-tile-check';
+              chk2.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 7L5.5 10L11.5 4" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+              t2.appendChild(chk2);
+            } else if(!isCur && chk2){
+              chk2.remove();
+            }
+            const lbl2 = el.querySelector('.settings-accent-lbl');
+            if(lbl2) lbl2.className = 'settings-accent-lbl' + (isCur ? ' active' : '');
+          });
+        }
+        const info = NET_TYPE_LABELS[nt.id];
+        toast('Тип сети: ' + (info ? info.label : nt.label));
+      };
+      netGrid.appendChild(opt);
     });
   }
 
@@ -3654,20 +3672,12 @@ function formatText(text){if(!text)return'';let html=esc(text);html=html.replace
 
 async function forwardToFavorites(msgId){const msgs=await loadMsgs(activePid);const m=msgs.find(m=>m.id===msgId);if(!m)return;const newMsg={id:uid(),text:m.text||'',type:'sent',time:new Date().toISOString(),reactions:{},edited:false,delivered:true,forwarded:true};if(m.media){newMsg.media=m.media;newMsg.caption=m.caption;}if(m.voice){newMsg.voice=m.voice;newMsg.voiceDuration=m.voiceDuration;newMsg.voiceListened=true;}if(m.file){newMsg.file=m.file;}await upsertMsg(MY_ID,newMsg);const lastPreview=m.file?`${m.file.name}`:m.voice?'Голосовое':m.media?'Фото':(m.text||'').slice(0,28);await updateChat(MY_ID,{lastMsg:lastPreview,lastMsgTime:Date.now()});if(activePid===MY_ID)appendOrReloadMsg(MY_ID,newMsg);toast('Переслано в Избранное');}
 
-// АДАПТИВНОЕ СЖАТИЕ ФОТО: при EDGE/GPRS — 640px/0.3, при 3G — 800px/0.5, при 4G — 1024px/0.7
+// АДАПТИВНОЕ СЖАТИЕ ФОТО
 function compressImage(file,maxWidth,maxHeight,quality){
   // Адаптивные параметры сжатия по типу сети
   if(maxWidth===undefined||maxHeight===undefined||quality===undefined){
-    if(_netQuality.isSlow()){
-      // EDGE/GPRS: максимальное сжатие — 640px, quality 0.3 (фото весит 20-40 КБ)
-      maxWidth=640;maxHeight=640;quality=0.3;
-    }else if(_netQuality.isSlowOrMedium()){
-      // 3G: умеренное сжатие — 800px, quality 0.5
-      maxWidth=800;maxHeight=800;quality=0.5;
-    }else{
-      // 4G/WiFi: стандартное сжатие — 1024px, quality 0.7
-      maxWidth=1024;maxHeight=1024;quality=0.7;
-    }
+    const p = _netQuality.getParams();
+    maxWidth = p.imgW; maxHeight = p.imgW; quality = p.imgQ;
   }
   return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=e=>{const img=new Image();img.onload=()=>{let w=img.width,h=img.height;if(w>maxWidth||h>maxHeight){const r=Math.min(maxWidth/w,maxHeight/h);w=Math.round(w*r);h=Math.round(h*r);}const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);resolve({dataURL:c.toDataURL('image/jpeg',quality),type:'image/jpeg',name:file.name});};img.onerror=reject;img.src=e.target.result;};reader.onerror=reject;reader.readAsDataURL(file);});}
 
@@ -5905,22 +5915,15 @@ window.toggleRecording=async function(){
       // Analyser уже подключен внутри _applyAudioFiltersToStream
     }catch(e){analyser=null;}
     
-    // АДАПТИВНЫЙ БИТРЕЙТ ЗАПИСИ:
-    // EDGE/GPRS: 16 kbps (16000 bps) — голос весит ~2 КБ/с
-    // 3G:        32 kbps (32000 bps) — голос весит ~4 КБ/с
-    // 4G/WiFi:   192 kbps — студийное качество
-    let bitrate;
-    if(_netQuality.isSlow())bitrate=16000;
-    else if(_netQuality.isSlowOrMedium())bitrate=32000;
-    else bitrate=192000;
+    const p = _netQuality.getParams();
+    const bitrate = p.voiceBr;
     let mime='audio/webm;codecs=opus';
     if(!MediaRecorder.isTypeSupported(mime)){mime='audio/webm';}
     if(!MediaRecorder.isTypeSupported(mime)){mime='audio/ogg;codecs=opus';}
     if(!MediaRecorder.isTypeSupported(mime)){mime='';}
     mediaRecorder=new MediaRecorder(micStream,mime?{mimeType:mime,audioBitsPerSecond:bitrate}:{audioBitsPerSecond:bitrate});
     audioChunks=[];mediaRecorder.ondataavailable=e=>{if(e.data?.size>0)audioChunks.push(e.data);};
-    // timeslice: при EDGE/GPRS 500ms (меньше данных за раз), при 4G 200ms
-    const _recTimeslice=_netQuality.isSlow()?500:200;
+    const _recTimeslice = p.vnTs;
     mediaRecorder.start(_recTimeslice);
     isRecording=true;recStartTime=Date.now();initRecWaveform();
     $('voiceRecordOverlay').classList.add('active');$('micBtn').classList.add('recording');$('micBtn').innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" /> </svg>';
@@ -6033,17 +6036,14 @@ window.resumeRecording=async function(){
       source.connect(highPass); highPass.connect(compressor); compressor.connect(gainNode); gainNode.connect(analyser);
       const dest=audioCtx.createMediaStreamDestination(); gainNode.connect(dest); micStream=dest.stream;
     }catch(e){analyser=null;}
-    // АДАПТИВНЫЙ БИТРЕЙТ (аналогично toggleRecording)
-    let bitrate2;
-    if(_netQuality.isSlow())bitrate2=16000;
-    else if(_netQuality.isSlowOrMedium())bitrate2=32000;
-    else bitrate2=192000;
+    const p = _netQuality.getParams();
+    const bitrate2 = p.voiceBr;
     let mime='audio/webm;codecs=opus';
     if(!MediaRecorder.isTypeSupported(mime)){mime='audio/webm';}
     if(!MediaRecorder.isTypeSupported(mime)){mime='audio/ogg;codecs=opus';}
     if(!MediaRecorder.isTypeSupported(mime)){mime='';}
     mediaRecorder=new MediaRecorder(micStream,mime?{mimeType:mime,audioBitsPerSecond:bitrate2}:{audioBitsPerSecond:bitrate2});
-    const _recTimeslice2=_netQuality.isSlow()?500:200;
+    const _recTimeslice2 = p.vnTs;
     audioChunks=oldChunks;mediaRecorder.ondataavailable=e=>{if(e.data?.size>0)audioChunks.push(e.data);};mediaRecorder.start(_recTimeslice2);
     isRecording=true;recStartTime=Date.now()-previewDur*1000;initRecWaveform();
     $('voiceRecordOverlay').classList.add('active');$('micBtn').classList.add('recording');$('micBtn').innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" /> </svg>';
@@ -6244,14 +6244,9 @@ function _vnPickMime(){
 
 // Создаём MediaRecorder с адаптивным битрейтом по типу сети
 function _vnCreateRecorder(){
-  // АДАПТИВНЫЙ БИТРЕЙТ ВИДЕО-КРУЖКА:
-  // EDGE/GPRS: 120 kbps видео + 16 kbps аудио — кружок весит ~17 КБ/с
-  // 3G:        400 kbps видео + 32 kbps аудио
-  // 4G/WiFi:   800 kbps видео + 128 kbps аудио
-  let _vnVideoBr, _vnAudioBr;
-  if(_netQuality.isSlow()){_vnVideoBr=120_000;_vnAudioBr=16_000;}
-  else if(_netQuality.isSlowOrMedium()){_vnVideoBr=400_000;_vnAudioBr=32_000;}
-  else{_vnVideoBr=800_000;_vnAudioBr=128_000;}
+  const p = _netQuality.getParams();
+  const _vnVideoBr = p.videoBr;
+  const _vnAudioBr = Math.min(p.voiceBr, 128000);
   const opts={};
   if(_vnMime)opts.mimeType=_vnMime;
   opts.videoBitsPerSecond=_vnVideoBr;
@@ -6259,8 +6254,7 @@ function _vnCreateRecorder(){
   opts.bitrateMode = 'constant'; // Стабилизируем битрейт
   const rec=new MediaRecorder(_vnStream,opts);
   rec.ondataavailable=e=>{if(e.data&&e.data.size>0)_vnChunks.push(e.data);};
-  // timeslice: при EDGE/GPRS 1000ms (редкие чанки), при 4G 500ms
-  const _vnTimeslice=_netQuality.isSlow()?1000:500;
+  const _vnTimeslice = p.vnTs;
   rec.start(_vnTimeslice);
   return rec;
 }
@@ -6288,14 +6282,10 @@ async function startVideoNote(){
   const ov=$('vnRecordOverlay');
   ov.classList.add('active');
 
-  // АДАПТИВНЫЕ ПАРАМЕТРЫ КАМЕРЫ ПО ТИПУ СЕТИ:
-  // EDGE/GPRS: 320x320, 15fps — минимальная нагрузка на канал
-  // 3G:        480x480, 20fps
-  // 4G/WiFi:   640x640, 30fps
-  let _vnW, _vnH, _vnFps;
-  if(_netQuality.isSlow()){_vnW=320;_vnH=320;_vnFps=15;}
-  else if(_netQuality.isSlowOrMedium()){_vnW=480;_vnH=480;_vnFps=20;}
-  else{_vnW=640;_vnH=640;_vnFps=30;}
+  const p = _netQuality.getParams();
+  const _vnW = p.vnW;
+  const _vnH = p.vnH;
+  const _vnFps = p.vnFps;
   try{
     _vnStream=await navigator.mediaDevices.getUserMedia({
       video:{
@@ -6718,9 +6708,9 @@ async function sendVideoNoteMessageBuffer(fileBuffer, durSec, mimeType, blob) {
       storeAckWaiters.set('chunk_'+fileId+'_'+i,{resolve:()=>{clearTimeout(timer);resolve();}});
     });
     storeAckWaiters.delete('chunk_'+fileId+'_'+i);
-    // При EDGE/GPRS даём паузу между чанками чтобы не забивать канал
-    if(_netQuality.isSlow()&&i<totalChunks-1)await new Promise(r=>setTimeout(r,80));
-    else if(_netQuality.isSlowOrMedium()&&i<totalChunks-1)await new Promise(r=>setTimeout(r,20));
+    // Пауза между чанками на основе типа сети
+    const _delay = _netQuality.getParams().delay;
+    if(_delay > 0 && i < totalChunks - 1) await new Promise(r=>setTimeout(r, _delay));
   }
 }
 
