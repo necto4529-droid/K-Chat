@@ -268,11 +268,8 @@ async function processOutbox() {
         if (item.type === 'msg') {
             await sendSingleMsg(item.text, null, item.msgId);
         } else if (item.type === 'file') {
-            // БАГ-ФИКС: блоб файла хранится по msgId+'_file' (как сохранили выше)
-            const blobKey = item.fileId || (item.msgId + '_file');
-            let buf = await loadBlob(blobKey);
-            // Фоллбек: пробуем по msgId без суффикса
-            if(!buf && item.msgId) buf = await loadBlob(item.msgId);
+            // ФИКС: загружаем blob по fileId = msgId (так сохраняли при офлайн-отправке)
+            const buf = await loadBlob(item.fileId || item.msgId);
             if(buf){
               const fileInfo = {
                 blob: new Blob([buf], {type: item.fileInfo.type}),
@@ -280,55 +277,17 @@ async function processOutbox() {
                 type: item.fileInfo.type,
                 size: item.fileInfo.size
               };
-              // Передаём existingId — sendFileToServer не создаст дубликат сообщения
-              await sendFileToServer(fileInfo, item.text, item.msgId);
+              // skipCreate=true: сообщение уже есть в IDB/DOM — не дублируем
+              await sendFileToServer(fileInfo, item.text, item.msgId, true);
             } else {
-              console.warn('[Outbox] File blob not found for', item.msgId, '- skipping');
-            }
-        } else if (item.type === 'media') {
-            // БАГ-ФИКС: восстанавливаем blob из IDB если есть, иначе отправляем через data (data:URL)
-            if(item.fileInfo){
-              const mediaBlobKey = item.fileInfo.mediaBlobId || (item.msgId + '_media');
-              let mediaBuf = await loadBlob(mediaBlobKey);
-              if(mediaBuf){
-                const mediaBlob = new Blob([mediaBuf], {type: item.fileInfo.type});
-                const mediaDataUrl = await new Promise(res=>{
-                  const fr = new FileReader();
-                  fr.onload = ()=>res(fr.result);
-                  fr.readAsDataURL(mediaBlob);
-                });
-                const mediaFileInfo = {
-                  name: item.fileInfo.name,
-                  type: item.fileInfo.type,
-                  size: item.fileInfo.size,
-                  data: mediaDataUrl,
-                  blob: mediaBlob,
-                  isMedia: true,
-                  media: {type: item.fileInfo.type, data: mediaDataUrl}
-                };
-                await sendSingleMsg(item.text, mediaFileInfo, item.msgId);
-              } else if(item.fileInfo.data){
-                // Фоллбэк: есть data:URL в outbox
-                const mediaFileInfo = {
-                  name: item.fileInfo.name,
-                  type: item.fileInfo.type,
-                  size: item.fileInfo.size,
-                  data: item.fileInfo.data,
-                  isMedia: true,
-                  media: {type: item.fileInfo.type, data: item.fileInfo.data}
-                };
-                await sendSingleMsg(item.text, mediaFileInfo, item.msgId);
-              } else {
-                console.warn('[Outbox] Media blob not found for', item.msgId, '- skipping');
-              }
-            } else {
-              await sendSingleMsg(item.text, null, item.msgId);
+              console.warn('[Outbox] Blob not found for file', item.msgId, '- skipping');
             }
         }
         outbox.shift();
         saveOutbox();
-        // Успешно отправлено — для файлов finalizeUploadUI сам обновит UI
-        if(item.type === 'msg' || item.type === 'media') _markMsgDelivered(item.target, item.msgId);
+        // ФИКС: не вызываем _markMsgDelivered — это ложная доставка!
+        // Отправлено на сервер — показываем одну галочку (отправлено)
+        _markMsgSent(item.target, item.msgId);
         setTimeout(processOutbox, 300);
     } catch (e) {
         console.error('Outbox processing error', e);
@@ -844,13 +803,22 @@ function _markMsgPending(peerId, msgId) {
 }
 function _markMsgSent(peerId, msgId) {
   if (!peerId || !msgId) return;
+  // ФИКС: снимаем _pending в IDB при отправке (часики → единая галочка)
+  withChatLock(peerId, async()=>{
+    const msgs = await loadMsgs(peerId);
+    const m = msgs.find(x=>x.id===msgId);
+    if(m && m._pending){
+      m._pending = false;
+      await saveMsgs(peerId, msgs);
+    }
+  }).catch(()=>{});
   const row = document.querySelector(`.msg-row[data-msgid="${msgId}"]`);
   if (!row) return;
   const tk = row.querySelector('.msg-ticks');
   if (tk) {
-    tk.className = 'msg-ticks sent';
-    tk.innerHTML = '<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
-    tk.title = 'Отправлено на сервер';
+    tk.className = 'msg-ticks single';
+    tk.innerHTML = '<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M20 6 9 17l-5-5" /> </svg>';
+    tk.title = 'Отправлено';
   }
 }
 function _markMsgDelivered(peerId, msgId) {
@@ -1136,26 +1104,17 @@ async function generateThumb(fileInfo){
 const uploadUIs=new Map();
 function registerUploadUI(fileId,spinnerEl,fillEl,pctEl){uploadUIs.set(fileId,{spinnerEl,fillEl,pctEl});}
 function updateUploadProgress(fileId,pct){
-  const ui=uploadUIs.get(fileId);if(!ui)return;
-  // БАГ-ФИКС: читаем stroke-dasharray из SVG-атрибута (мы устанавливаем его через setAttribute).
-  // CSS может переопределить значение и привести к несоответствию.
-  let dashArray = parseFloat(ui.fillEl.getAttribute('stroke-dasharray'));
-  if(isNaN(dashArray) || dashArray <= 0){
-    // Фоллбэк: пробуем через computedStyle
-    const cssDash = parseFloat(window.getComputedStyle(ui.fillEl).strokeDasharray);
-    dashArray = (!isNaN(cssDash) && cssDash > 0) ? cssDash : 131.9;
-  }
-  const offset = Math.max(0, dashArray - dashArray * pct / 100);
-  // Устанавливаем через setAttribute чтобы переопределить CSS
-  ui.fillEl.setAttribute('stroke-dashoffset', offset);
-  ui.fillEl.style.strokeDashoffset = offset;
-  if(ui.pctEl)ui.pctEl.textContent=pct+'%';
+  const ui=uploadUIs.get(fileId);
+  if(!ui||!ui.fillEl)return;
+  const dashRaw=ui.fillEl.style.strokeDasharray||ui.fillEl.getAttribute('stroke-dasharray')||(window.getComputedStyle?window.getComputedStyle(ui.fillEl).strokeDasharray:'');
+  const dashTotal=Math.max(0,parseFloat(String(dashRaw||'').split(/[ ,]/)[0]))||132;
+  const safePct=Math.max(0,Math.min(100,Number(pct)||0));
+  ui.fillEl.style.strokeDashoffset=Math.max(0,dashTotal-dashTotal*safePct/100);
+  if(ui.pctEl)ui.pctEl.textContent=Math.round(safePct)+'%';
 }
 async function finalizeUploadUI(fileId,pid){
   const ui=uploadUIs.get(fileId);
   if(ui){
-    // БАГ-ФИКС: устанавливаем через setAttribute чтобы переопределить CSS
-    ui.fillEl.setAttribute('stroke-dashoffset','0');
     ui.fillEl.style.strokeDashoffset=0;
     const iconEl=ui.spinnerEl.querySelector('.upload-spinner-icon,.file-upload-spinner-icon');
     if(iconEl){iconEl.innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M20 6 9 17l-5-5\" /> </svg>';iconEl.style.color='var(--g)';}
@@ -1212,18 +1171,20 @@ function _stopStickerActivity(){
 async function _sendActivityStop(pid){await _sendActivitySignal(pid,null);}
 
 // ИСПРАВЛЕНИЕ 2: читаем blob → data: URL ДО сохранения в IndexedDB
-async function sendFileToServer(fileInfo,caption,existingId){
-  const key=await ensureKey(activePid);
-  // БАГ-ФИКС: если передан existingId — используем его, не создаём дубликат
-  const isResend = !!existingId;
-  const fileId = existingId || uid();
+// msgIdFromCaller: если передан — используем его как fileId (не создаём новое сообщение в IDB/DOM)
+// skipCreate: если true — сообщение уже создано в IDB/DOM вызывающей функцией
+async function sendFileToServer(fileInfo,caption,msgIdFromCaller,skipCreate){
+  const targetPid=activePid;
+  const key=await ensureKey(targetPid);
+  // ФИКС ДУБЛИРОВАНИЯ: если msgId уже есть — используем его, иначе генерируем новый
+  const fileId=msgIdFromCaller||uid();
   const ts=Date.now();
 
   // Сохраняем содержимое файла в blobs-хранилище IDB (без data:URL в основных записях)
   // fileBuffer читается ниже для чанков — сохраняем его в blobs заранее
 
-  // Создаём placeholder только если это новое сообщение (не переотправка)
-  if (!isResend) {
+  // ФИКС ДУБЛИРОВАНИЯ: создаём сообщение в IDB/DOM только если skipCreate !== true
+  if(!skipCreate){
     const m={
       id:fileId,text:caption||'',type:'sent',
       time:new Date(ts).toISOString(),reactions:{},edited:false,
@@ -1231,27 +1192,28 @@ async function sendFileToServer(fileInfo,caption,existingId){
       uploading:true,
       file:{name:fileInfo.name,type:fileInfo.type,size:fileInfo.size,blobId:fileId}
     };
-    await upsertMsg(activePid,m);
-    await updateChat(activePid,{lastMsg:`${fileInfo.name}`,lastMsgTime:ts});
-    appendOrReloadMsg(activePid,m);
+    await upsertMsg(targetPid,m);
+    await updateChat(targetPid,{lastMsg:`${fileInfo.name}`,lastMsgTime:ts});
+    appendOrReloadMsg(targetPid,m);
   } else {
-    // Переотправка: обновляем флаг uploading в существующем сообщении
-    await withChatLock(activePid,async()=>{
-      const msgs=await loadMsgs(activePid);
+    // Сообщение уже в IDB — обновляем uploading=true, blobId и сразу перерисовываем DOM
+    let _existingMsg=null;
+    await withChatLock(targetPid,async()=>{
+      const msgs=await loadMsgs(targetPid);
       const idx=msgs.findIndex(x=>x.id===fileId);
-      if(idx!==-1){msgs[idx].uploading=true;msgs[idx].delivered=false;msgs[idx]._pending=false;await saveMsgs(activePid,msgs);}
+      if(idx!==-1){
+        msgs[idx].uploading=true;
+        if(msgs[idx].file)msgs[idx].file.blobId=fileId;
+        _existingMsg={...msgs[idx]};
+        await saveMsgs(targetPid,msgs);
+      }
     });
-    // Перерисовываем строку чтобы показать спиннер
-    if(activePid===activePid){
-      const msgs=await loadMsgs(activePid);
-      const m=msgs.find(x=>x.id===fileId);
-      if(m)appendOrReloadMsg(activePid,m);
-    }
+    if(_existingMsg)appendOrReloadMsg(targetPid,_existingMsg);
   }
 
   // Сигнал "отправляет файл" + heartbeat каждые 3с
-  _sendActivitySignal(activePid,'sending_file');
-  const _fileActivityHb=setInterval(()=>{if(activePid)_sendActivitySignal(activePid,'sending_file');},3000);
+  _sendActivitySignal(targetPid,'sending_file');
+  const _fileActivityHb=setInterval(()=>{if(targetPid)_sendActivitySignal(targetPid,'sending_file');},3000);
 
   const fileBuffer=await readFileAsArrayBuffer(fileInfo.blob);
   // АДАПТИВНЫЕ ЧАНКИ: выбираем размер чанка и батч по типу сети
@@ -1265,22 +1227,23 @@ async function sendFileToServer(fileInfo,caption,existingId){
   // Получатель увидит превью мгновенно, ещё до первого чанка
   const thumb = await generateThumb(fileInfo).catch(()=>'');
 
-  wsSend({type:'store-file-header',fileId,recipientId:activePid,name:fileInfo.name,size:fileInfo.size,mimeType:fileInfo.type,totalChunks,caption:caption||'',thumb:thumb||'',ts});
+  wsSend({type:'store-file-header',fileId,recipientId:targetPid,name:fileInfo.name,size:fileInfo.size,mimeType:fileInfo.type,totalChunks,caption:caption||'',thumb:thumb||'',ts});
   // Запоминаем кому отправлен файл — нужно для file-delivered → ✔✔
-  _fileSentToPeer.set(fileId, activePid);
+  _fileSentToPeer.set(fileId, targetPid);
   // Сохраняем в localStorage — пережить перезагрузку страницы
-  try{const _sftp=lsGet('_fileSentToPeer',{});_sftp[fileId]=activePid;lsSet('_fileSentToPeer',_sftp);}catch(e){}
+  try{const _sftp=lsGet('_fileSentToPeer',{});_sftp[fileId]=targetPid;lsSet('_fileSentToPeer',_sftp);}catch(e){}
 
   // ИСПРАВЛЕНИЕ: Докачка при отправке (Upload Resuming)
   // Ждём ответа от сервера с информацией о том, какие чанки уже получены
+  // ФИКС: используем ключ 'status_'+fileId (тот же что резолвит case 'file-status' в onWS)
   const status = await new Promise(resolve => {
     const timer = setTimeout(() => resolve({ receivedChunks: [] }), 5000);
-    storeAckWaiters.set('header_ack_' + fileId, {
+    storeAckWaiters.set('status_' + fileId, {
       resolve: (data) => { clearTimeout(timer); resolve(data); }
     });
     wsSend({ type: 'get-file-status', fileId });
   });
-  storeAckWaiters.delete('header_ack_' + fileId);
+  storeAckWaiters.delete('status_' + fileId);
 
   const receivedChunks = new Set(status.receivedChunks || []);
 
@@ -1302,9 +1265,10 @@ async function sendFileToServer(fileInfo,caption,existingId){
       wsSend({type:'store-chunks',fileId,chunks:batch});
     }
     
-    // Обновляем прогресс с учетом докачки
-    const currentProgress = Math.max(receivedChunks.size, end);
-    const pct = Math.round((currentProgress / totalChunks) * 100);
+    // ФИКС ПРОГРЕССА: обновляем кольцо СРАЗУ после отправки каждого батча
+    // Считаем реально отправленные чанки (включая уже полученные сервером)
+    const sentSoFar = Math.max(receivedChunks.size + batch.length, end);
+    const pct = Math.round(Math.min(sentSoFar, totalChunks) / totalChunks * 100);
     updateUploadProgress(fileId, pct);
     
     // Yield UI thread между батчами чтобы интерфейс не замерзал
@@ -1314,18 +1278,28 @@ async function sendFileToServer(fileInfo,caption,existingId){
     }
   }
 
-  // Снимаем флаг uploading
-  await withChatLock(activePid,async()=>{
-    const msgs=await loadMsgs(activePid);
-    const idx=msgs.findIndex(x=>x.id===fileId);
-    if(idx!==-1){msgs[idx].uploading=false;await saveMsgs(activePid,msgs);}
-  });
+  // ФИКС ПРОГРЕССА: НЕ снимаем uploading до получения file-upload-complete от сервера!
+  // Если снять раньше — при перерендере (reload/переход в чат) спиннер исчезнет
+  // uploading=false будет снят в case 'file-upload-complete' после finalizeUploadUI
 
-  // НЕМЕДЛЕННО финализируем UI у отправителя — не ждём file-upload-complete от сервера
-  await finalizeUploadUI(fileId,activePid);
+  // ФОЛЛБЭК: если за 20 сек file-upload-complete не пришёл — финализируем всё равно
+  if(!window._uploadFinalizeTimers) window._uploadFinalizeTimers={};
+  window._uploadFinalizeTimers[fileId]=setTimeout(async()=>{
+    delete window._uploadFinalizeTimers[fileId];
+    // Снимаем uploading при fallback
+    await withChatLock(targetPid,async()=>{
+      const msgs=await loadMsgs(targetPid);
+      const idx=msgs.findIndex(x=>x.id===fileId);
+      if(idx!==-1){msgs[idx].uploading=false;await saveMsgs(targetPid,msgs);}
+    });
+    await finalizeUploadUI(fileId,targetPid);
+    // Убираем upload-спиннер с видео-кружка (фоллбэк)
+    const _vnUpOvFb=document.querySelector(`.vn-dl-spinner[data-fileid="${fileId}"]`)?.closest('.vn-dl-wrap');
+    if(_vnUpOvFb)_vnUpOvFb.remove();
+  },20000);
   clearInterval(_fileActivityHb);
-  _sendActivityStop(activePid);
-  setTimeout(()=>_sendActivityStop(activePid),30000);
+  _sendActivityStop(targetPid);
+  setTimeout(()=>_sendActivityStop(targetPid),30000);
   return fileId;
 }
 
@@ -1403,8 +1377,7 @@ async function _downloadVideoNote(fileId, senderId, videoMime){
     fileTransfers.set(fileId,{state:'downloading',chunks:[],total:0,received:0,key,senderId,retries:0,maxRetries:6,_isVideoNote:true,_vnMime:videoMime});
     wsSend({type:'fetch-file',fileId});
     const ft=fileTransfers.get(fileId);
-    // БАГ-ФИКС: уменьшаем таймаут с 30с до 8с для быстрой реакции на зависание
-    ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId),8000);
+    ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId),30000);
   }catch(e){console.error('[vnote] download error',e);}
 }
 
@@ -1426,8 +1399,7 @@ async function downloadFileFromServer(fileId,senderId){
   wsSend({type:'fetch-file',fileId, fromIndex});
   
   if(ft._timeoutTimer) clearTimeout(ft._timeoutTimer);
-  // БАГ-ФИКС: уменьшаем таймаут с 30с до 8с
-  ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId),8000);
+  ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId),30000);
 }
 
 async function _retryDownload(fileId){
@@ -1440,7 +1412,7 @@ async function _retryDownload(fileId){
   if (q && q.queue.length > 0) {
     console.log(`[File] Decrypt queue is busy (${q.queue.length} left), delaying retry for ${fileId}`);
     if(ft._timeoutTimer) clearTimeout(ft._timeoutTimer);
-    ft._timeoutTimer = setTimeout(() => _retryDownload(fileId), 5000); // БАГ-ФИКС: ждём 5с (вместо 10с)
+    ft._timeoutTimer = setTimeout(() => _retryDownload(fileId), 10000); // Ждём ещё 10с
     return;
   }
 
@@ -1465,8 +1437,7 @@ async function _retryDownload(fileId){
     wsSend({type:'fetch-file',fileId,fromIndex});
   }
   if(ft._timeoutTimer) clearTimeout(ft._timeoutTimer);
-  // БАГ-ФИКС: уменьшаем таймаут с 30с до 8с
-  ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId), 8000);
+  ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId), 30000);
 }
 
 async function handleFileDataHeader(msg){
@@ -1492,8 +1463,7 @@ async function handleFileDataHeader(msg){
   console.log(`[File] Header for ${fileId}: ${totalChunks} chunks, ready on server: ${chunksReady}, resuming from ${fromIndex}`);
   
   if(ft._timeoutTimer){clearTimeout(ft._timeoutTimer);ft._timeoutTimer=null;}
-  // БАГ-ФИКС: уменьшаем таймаут с 30с до 8с
-  ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId),8000);
+  ft._timeoutTimer=setTimeout(()=>_retryDownload(fileId),30000);
 }
 
 // Очередь декрипта чанков — обрабатываем по одному чтобы не блокировать UI
@@ -1515,8 +1485,12 @@ async function _processDecryptQueue(fileId){
         const decBuf=await decData(encBuf,ft.key);
         ft.chunks[msg.index]=decBuf;
         ft.received=(ft.received||0)+1;
-        // БАГ-ФИКС: НЕ сбрасываем таймер при каждом чанке — это приводило к постоянному перезапуску 30с таймера.
-        // Таймер управляется в пост-обработке пачки ниже.
+        
+        // Сбрасываем тайм-аут ожидания
+        if(ft._timeoutTimer){clearTimeout(ft._timeoutTimer);ft._timeoutTimer=null;}
+        if(ft.received < ft.total){
+          ft._timeoutTimer=setTimeout(()=>_retryDownload(msg.fileId),30000);
+        }
       }catch(e){console.warn(`chunk decrypt error index=${msg.index}`,e);}
     }));
 
@@ -1533,15 +1507,11 @@ async function _processDecryptQueue(fileId){
         if(ft._timeoutTimer){clearTimeout(ft._timeoutTimer);ft._timeoutTimer=null;}
         await assembleFile(fileId);
       } else if (ft.received < ft.total) {
-        // БАГ-ФИКС: уменьшаем таймаут ретрайа до 8с (вместо 30с).
-        // Если чанки приходят активно, таймер будет перезапускаться снова при следующей пачке.
-        if(ft._timeoutTimer) clearTimeout(ft._timeoutTimer);
+        // Если мы скачали всё что было на сервере, но файл не закончен,
+        // запускаем retry через 30 секунд.
         if (ft.received >= ft._chunksReady) {
-          // Скачали всё что есть на сервере, ждём новых чанков через 8с
-          ft._timeoutTimer = setTimeout(() => _retryDownload(fileId), 8000);
-        } else {
-          // Ещё есть чанки на сервере, ждём следующего чанка через 8с
-          ft._timeoutTimer = setTimeout(() => _retryDownload(fileId), 8000);
+           if(ft._timeoutTimer) clearTimeout(ft._timeoutTimer);
+           ft._timeoutTimer = setTimeout(() => _retryDownload(fileId), 30000);
         }
       }
     }
@@ -1766,6 +1736,8 @@ async function markDelivered(msgId,peerId,isExplicitFileDelivered){
       if(isAttachment && !isExplicitFileDelivered) return;
 
       m.delivered = true;
+      // ФИКС: снимаем _pending при доставке (часики → ✔✔)
+      if(m._pending) m._pending = false;
       await saveMsgs(peerId, msgs);
     }
   });
@@ -1840,17 +1812,14 @@ function _resumeAllFileTransfers(){
   console.log(`[File] Resuming ${activeTransfers.length} file transfers after reconnect`);
   for(const [fileId, ft] of activeTransfers){
     if(ft.state === 'downloading'){
-      // БАГ-ФИКС: используем _lastReceivedIndex+1 вместо received
-      // _lastReceivedIndex — последний успешно расшифрованный чанк, received — количество полученных (может включать нерасшифрованные)
-      const fromIndex = ft._lastReceivedIndex !== undefined ? ft._lastReceivedIndex + 1 : (ft.received || 0);
+      const fromIndex = ft.received || 0;
       console.log(`[File] Resuming ${fileId}: from chunk ${fromIndex}/${ft.total}`);
       wsSend({type:'fetch-file', fileId, fromIndex});
       // Сбрасываем таймер, чтобы не было двойного retry
       if(ft._timeoutTimer){
         clearTimeout(ft._timeoutTimer);
       }
-      // БАГ-ФИКС: уменьшаем таймаут с 30с до 8с
-      ft._timeoutTimer = setTimeout(()=>_retryDownload(fileId), 8000);
+      ft._timeoutTimer = setTimeout(()=>_retryDownload(fileId), 30000);
     }
   }
 }
@@ -1910,20 +1879,7 @@ function sendVoiceListened(targetPid, voiceMsgId){
     try{lsSet(VOICE_LISTENED_QUEUE_KEY, filtered);}catch(e){}
   }
 }
-async function syncDeliveredStatuses(){if(!activePid)return;const msgs=await loadMsgs(activePid);for(const m of msgs){
-  // БАГ-ФИКС: обновляем часики для _pending сообщений
-  if(m.type==='sent'&&m._pending){
-    const row=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);
-    if(row){
-      const tk=row.querySelector('.msg-ticks');
-      if(tk&&!tk.classList.contains('pending')){
-        tk.className='msg-ticks pending';
-        tk.innerHTML='<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
-        tk.title='Ожидает отправки';
-      }
-    }
-  }
-  if(m.type==='sent'&&m.delivered){const row=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);if(row){const tk=row.querySelector('.msg-ticks');if(tk&&tk.innerHTML!=='<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M18 6 7 17l-5-5" /> <path d="m22 10-7.5 7.5L13 16" /> </svg>'){tk.innerHTML='<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M18 6 7 17l-5-5" /> <path d="m22 10-7.5 7.5L13 16" /> </svg>';tk.className='msg-ticks double';}}}if(m.type==='sent'&&m.voice&&m.voiceListened){const row=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);if(row){const dot=row.querySelector('.voice-unread-dot');if(dot)dot.classList.add('hidden');}}if(m.type==='sent'&&m.videoNote&&m.voiceListened){const row=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);if(row){const dot=row.querySelector('.vn-unread-dot');if(dot)dot.classList.add('hidden');const badge=row.querySelector('.vn-circle-unread-badge');if(badge)badge.classList.add('hidden');}}if(m.type==='recv'&&m.videoNote&&m.voiceListened){const row=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);if(row){const dot=row.querySelector('.vn-unread-dot');if(dot)dot.classList.add('hidden');const badge=row.querySelector('.vn-circle-unread-badge');if(badge)badge.classList.add('hidden');}}}}
+async function syncDeliveredStatuses(){if(!activePid)return;const msgs=await loadMsgs(activePid);for(const m of msgs){if(m.type==='sent'&&m.delivered){const row=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);if(row){const tk=row.querySelector('.msg-ticks');if(tk&&tk.innerHTML!=='<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M18 6 7 17l-5-5" /> <path d="m22 10-7.5 7.5L13 16" /> </svg>'){tk.innerHTML='<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M18 6 7 17l-5-5" /> <path d="m22 10-7.5 7.5L13 16" /> </svg>';tk.className='msg-ticks double';}}}if(m.type==='sent'&&m.voice&&m.voiceListened){const row=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);if(row){const dot=row.querySelector('.voice-unread-dot');if(dot)dot.classList.add('hidden');}}if(m.type==='sent'&&m.videoNote&&m.voiceListened){const row=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);if(row){const dot=row.querySelector('.vn-unread-dot');if(dot)dot.classList.add('hidden');const badge=row.querySelector('.vn-circle-unread-badge');if(badge)badge.classList.add('hidden');}}if(m.type==='recv'&&m.videoNote&&m.voiceListened){const row=document.querySelector(`.msg-row[data-msgid="${m.id}"]`);if(row){const dot=row.querySelector('.vn-unread-dot');if(dot)dot.classList.add('hidden');const badge=row.querySelector('.vn-circle-unread-badge');if(badge)badge.classList.add('hidden');}}}}
 
 const online={};
 
@@ -1990,7 +1946,14 @@ async function onWS(msg){
     }
     case 'file-data-header':await handleFileDataHeader(msg);break;
     case 'file-data-chunk':await handleFileDataChunk(msg);break;
-    case 'store-file-header-ack':{const waiter=storeAckWaiters.get(msg.fileId);if(waiter)waiter.resolve();break;}
+    case 'store-file-header-ack':{
+      // ФИКС: проверяем оба ключа — прямой fileId (для видео-кружков) и 'header_ack_'+fileId (для обычных файлов)
+      const waiter1=storeAckWaiters.get(msg.fileId);
+      if(waiter1)waiter1.resolve();
+      const waiter2=storeAckWaiters.get('header_ack_'+msg.fileId);
+      if(waiter2)waiter2.resolve({receivedChunks:[]});
+      break;
+    }
     case 'store-chunks-ack':
       if(storeAckWaiters.has(msg.fileId)) storeAckWaiters.get(msg.fileId).resolve();
       if(msg.receivedCount !== undefined){
@@ -2009,7 +1972,26 @@ async function onWS(msg){
         clearTimeout(window._uploadFinalizeTimers[fucId]);
         delete window._uploadFinalizeTimers[fucId];
       }
-      await finalizeUploadUI(fucId,activePid);
+      // ФИКС: для видео-кружков — сначала обновляем прогресс до 100%, потом финализируем
+      updateSpinnerProgress(fucId, 100);
+      updateUploadProgress(fucId, 100);
+      // Небольшая задержка чтобы пользователь увидел 100% перед заменой UI
+      await new Promise(r=>setTimeout(r,300));
+      // Снимаем uploading=false только после подтверждения сервером и ДО финального рендера строки
+      const _fucPid = _fileSentToPeer.get(fucId) || activePid;
+      await withChatLock(_fucPid,async()=>{
+        const msgs=await loadMsgs(_fucPid);
+        const idx=msgs.findIndex(x=>x.id===fucId);
+        if(idx!==-1){msgs[idx].uploading=false;await saveMsgs(_fucPid,msgs);}
+      });
+      await finalizeUploadUI(fucId,_fucPid);
+      // Убираем upload-спиннер с видео-кружка (vn-dl-wrap)
+      const _vnUpOv=document.querySelector(`.vn-dl-spinner[data-fileid="${fucId}"]`)?.closest('.vn-dl-wrap');
+      if(_vnUpOv){
+        _vnUpOv.style.transition='opacity .3s';
+        _vnUpOv.style.opacity='0';
+        setTimeout(()=>_vnUpOv.remove(),350);
+      }
       break;
     }
     case 'file-fetch-partial':{
@@ -3992,75 +3974,28 @@ async function sendSingleMsg(text,fileInfo=null,existingId=null){
   const msgId=existingId||uid(),ts=Date.now();
   const targetPid = activePid;
 
-  // БАГ-ФИКС: для файлов (не isMedia) плацехолдер создаёт sendFileToServer, не мы.
-  // Для обычных сообщений и isMedia — создаём плацехолдер здесь.
+  // Если это не переотправка существующего сообщения
   if(!existingId){
-    const isFileChunked = fileInfo && !fileInfo.isMedia;
-    if(!isFileChunked){
-      // Обычное сообщение или isMedia — создаём placeholder
-      const m={id:msgId,text,type:'sent',time:new Date(ts).toISOString(),reactions:{},edited:false,replyTo:replyTo||null,delivered:false,forwarded:false,_pending:!wsUp};
-      if(fileInfo&&fileInfo.isMedia){m.media=fileInfo.media||{type:fileInfo.type,data:fileInfo.data};m.caption=text;}
-      await upsertMsg(targetPid,m);
-      await updateChat(targetPid,{lastMsg:fileInfo&&fileInfo.isMedia?'Фото':text.slice(0,28),lastMsgTime:ts});
-      appendOrReloadMsg(targetPid,m);
+    const m={id:msgId,text,type:'sent',time:new Date(ts).toISOString(),reactions:{},edited:false,replyTo:replyTo||null,delivered:false,forwarded:false,_pending:!wsUp};
+    if(fileInfo&&fileInfo.isMedia){
+      m.media=fileInfo.media||{type:fileInfo.type,data:fileInfo.data};
+      m.caption=text;
+    } else if(fileInfo){
+      m.uploading=true;
+      m.file={name:fileInfo.name,type:fileInfo.type,size:fileInfo.size,blobId:msgId};
     }
-  } else {
-    // БАГ-ФИКС: переотправка с existingId — снимаем _pending флаг в существующем сообщении
-    const isFileChunked = fileInfo && !fileInfo.isMedia;
-    if(!isFileChunked && wsUp){
-      await withChatLock(targetPid, async()=>{
-        const msgs = await loadMsgs(targetPid);
-        const idx = msgs.findIndex(x=>x.id===msgId);
-        if(idx !== -1){
-          msgs[idx]._pending = false;
-          msgs[idx].delivered = false;
-          // Обновляем media если есть новые данные
-          if(fileInfo && fileInfo.isMedia && fileInfo.media){
-            msgs[idx].media = fileInfo.media;
-          }
-          await saveMsgs(targetPid, msgs);
-          appendOrReloadMsg(targetPid, msgs[idx]);
-        }
-      });
-    }
+    
+    await upsertMsg(targetPid,m);
+    await updateChat(targetPid,{lastMsg:fileInfo&&!fileInfo.isMedia?fileInfo.name:fileInfo&&fileInfo.isMedia?'Фото':text.slice(0,28),lastMsgTime:ts});
+    appendOrReloadMsg(targetPid,m);
   }
 
   if(!wsUp){
     // Сохраняем в Outbox для автоматической отправки
-    if(fileInfo && !fileInfo.isMedia){
-      // Файл — сохраняем в outbox и создаём placeholder через sendFileToServer
-      // Но сначала создаём placeholder вручную
-      if(!existingId){
-        const mFile={id:msgId,text:text||'',type:'sent',time:new Date(ts).toISOString(),reactions:{},edited:false,replyTo:replyTo||null,delivered:false,forwarded:false,_pending:true,uploading:false,file:{name:fileInfo.name,type:fileInfo.type,size:fileInfo.size,blobId:msgId+'_file'}};
-        await upsertMsg(targetPid,mFile);
-        await updateChat(targetPid,{lastMsg:fileInfo.name,lastMsgTime:ts});
-        appendOrReloadMsg(targetPid,mFile);
-        // Сохраняем блоб файла в IDB для последующей отправки
-        try{
-          const ab=await readFileAsArrayBuffer(fileInfo.blob);
-          await saveBlob(msgId+'_file',ab);
-        }catch(e){console.warn('[Outbox] Failed to save file blob:',e);}
-      }
-      if(!outbox.some(o=>o.msgId===msgId)){
-        outbox.push({type:'file', text, msgId, target: targetPid, fileInfo:{name:fileInfo.name, type:fileInfo.type, size:fileInfo.size}, fileId:msgId, ts});
-        saveOutbox();
-      }
-      _markMsgPending(targetPid, msgId);
-      return msgId;
-    }
-    // Обычное сообщение / isMedia
     if(!outbox.some(o=>o.msgId===msgId)){
-      // БАГ-ФИКС: для media сохраняем blob в IDB чтобы восстановить при reconnect
-      let mediaBlobId = null;
-      if(fileInfo && fileInfo.isMedia && fileInfo.blob){
-        try{
-          const ab = await readFileAsArrayBuffer(fileInfo.blob);
-          mediaBlobId = msgId + '_media';
-          await saveBlob(mediaBlobId, ab);
-        }catch(e){console.warn('[Outbox] Failed to save media blob:',e);}
-      }
-      outbox.push({type:fileInfo?'media':'msg', text, msgId, target: targetPid, fileInfo: fileInfo?{name:fileInfo.name, type:fileInfo.type, size:fileInfo.size, data:fileInfo.data, mediaBlobId}:null, ts});
-      saveOutbox();
+        // ФИКС: для файлов сохраняем fileId = msgId (чтобы loadBlob работал при повторной отправке)
+        outbox.push({type:fileInfo?'file':'msg', text, msgId, target: targetPid, fileId: fileInfo?msgId:null, fileInfo: fileInfo?{name:fileInfo.name, type:fileInfo.type, size:fileInfo.size}:null, ts});
+        saveOutbox();
     }
     _markMsgPending(targetPid, msgId);
     return msgId;
@@ -4075,8 +4010,7 @@ async function sendSingleMsg(text,fileInfo=null,existingId=null){
     wsSend({type:'send-msg',target:targetPid,msgId,payload:payloadToB64(enc)});
     return msgId;
   }
-  // Файл: sendFileToServer сам создаст placeholder и отправит чанки
-  return sendFileToServer(fileInfo,text,msgId);
+  return sendFileToServer(fileInfo,text,msgId,true);
 }
 
 async function sendMsg(){
@@ -4710,26 +4644,17 @@ function observeDateSeparator(_el){/* poll-based, не нужно */}
 function updateFloatingDate(){showFloatingDate();}
 
 // ── BUILD ROW ──
-function mkMeta(m,isSent){
-  const meta=document.createElement('span');meta.className='msg-meta';
-  const timeEl=document.createElement('span');timeEl.className='msg-time-inline';
-  timeEl.textContent=new Date(m.time).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});
-  meta.appendChild(timeEl);
-  if(isSent){
-    const tk=document.createElement('span');
-    // БАГ-ФИКС: если _pending — показываем часики (ожидает отправки)
-    if(m._pending){
-      tk.className='msg-ticks pending';
-      tk.innerHTML='<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
-      tk.title='Ожидает отправки';
-    } else {
-      tk.className='msg-ticks'+(m.delivered?' double':' single');
-      tk.innerHTML = m.delivered?'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M18 6 7 17l-5-5" /> <path d="m22 10-7.5 7.5L13 16" /> </svg>':'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M20 6 9 17l-5-5" /> </svg>';
-    }
-    meta.appendChild(tk);
+function mkMeta(m,isSent){const meta=document.createElement('span');meta.className='msg-meta';const timeEl=document.createElement('span');timeEl.className='msg-time-inline';timeEl.textContent=new Date(m.time).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});meta.appendChild(timeEl);if(isSent){const tk=document.createElement('span');
+  // ФИКС ЧАСИКОВ: если сообщение ожидает отправки (офлайн) — показываем часики
+  if(m._pending){
+    tk.className='msg-ticks pending';
+    tk.innerHTML='<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+    tk.title='Ожидает отправки';
+  } else {
+    tk.className='msg-ticks'+(m.delivered?' double':' single');
+    tk.innerHTML = m.delivered?'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M18 6 7 17l-5-5" /> <path d="m22 10-7.5 7.5L13 16" /> </svg>':'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M20 6 9 17l-5-5" /> </svg>';
   }
-  return meta;
-}
+  meta.appendChild(tk);}return meta;}
 
 function buildMediaUploadSpinner(fileId){
   const wrap=document.createElement('div');wrap.className='upload-overlay';
@@ -4737,9 +4662,6 @@ function buildMediaUploadSpinner(fileId){
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 52 52');svg.classList.add('upload-spinner-svg');svg.style.cssText='position:absolute;inset:0;width:52px;height:52px;';
   const track=document.createElementNS('http://www.w3.org/2000/svg','circle');track.setAttribute('cx','26');track.setAttribute('cy','26');track.setAttribute('r','21');track.classList.add('upload-spinner-track');
   const fill=document.createElementNS('http://www.w3.org/2000/svg','circle');fill.setAttribute('cx','26');fill.setAttribute('cy','26');fill.setAttribute('r','21');fill.classList.add('upload-spinner-fill');
-  // БАГ-ФИКС: r=21 → circumference ≈ 131.9, устанавливаем атрибуты прямо в SVG
-  fill.setAttribute('stroke-dasharray','131.9');
-  fill.setAttribute('stroke-dashoffset','131.9');
   svg.appendChild(track);svg.appendChild(fill);
   const icon=document.createElement('div');icon.className='upload-spinner-icon';icon.innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M12 3v12\" /> <path d=\"m17 8-5-5-5 5\" /> <path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\" /> </svg>';
   spinnerWrap.appendChild(svg);spinnerWrap.appendChild(icon);
@@ -4754,9 +4676,6 @@ function buildFileUploadSpinnerEl(fileId){
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 46 46');
   const track=document.createElementNS('http://www.w3.org/2000/svg','circle');track.setAttribute('cx','23');track.setAttribute('cy','23');track.setAttribute('r','21');track.classList.add('file-upload-spinner-track');
   const fill=document.createElementNS('http://www.w3.org/2000/svg','circle');fill.setAttribute('cx','23');fill.setAttribute('cy','23');fill.setAttribute('r','21');fill.classList.add('file-upload-spinner-fill');
-  // БАГ-ФИКС: r=21 → circumference ≈ 131.9
-  fill.setAttribute('stroke-dasharray','131.9');
-  fill.setAttribute('stroke-dashoffset','131.9');
   svg.appendChild(track);svg.appendChild(fill);
   const icon=document.createElement('div');icon.className='file-upload-spinner-icon';icon.innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M12 3v12\" /> <path d=\"m17 8-5-5-5 5\" /> <path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\" /> </svg>';
   spinnerEl.appendChild(svg);spinnerEl.appendChild(icon);
@@ -4774,7 +4693,7 @@ function buildTgFileMeta(m, isSent){
   ov.appendChild(tEl);
   if(isSent){
     const tk = document.createElement('span');
-    // БАГ-ФИКС: если _pending — показываем часики
+    // ФИКС ЧАСИКОВ: показываем часики если сообщение ожидает отправки
     if(m._pending){
       tk.className='msg-ticks pending';
       tk.innerHTML='<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
@@ -4840,37 +4759,25 @@ function buildFileCardUploading(file, fileId, m, isSent){
   const wrap = document.createElement('div');
   wrap.className = 'tg-file-wrap';
 
-  const isPendingOffline = m && m._pending && !m.uploading;
-  if(isPendingOffline){
-    // БАГ-ФИКС: файл ждёт отправки (оффлайн) — показываем иконку файла с часиками
-    const iconEl = document.createElement('div');
-    iconEl.className = 'tg-file-icon tg-file-icon-static';
-    iconEl.innerHTML = getFileIcon(file.type);
-    wrap.appendChild(iconEl);
-  } else {
-    // Спиннер загрузки (идёт реальная отправка)
-    const spinnerEl = document.createElement('div');
-    spinnerEl.className = 'file-upload-spinner';
-    const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
-    svg.setAttribute('viewBox','0 0 42 42');
-    const track = document.createElementNS('http://www.w3.org/2000/svg','circle');
-    track.setAttribute('class','file-upload-spinner-track');
-    track.setAttribute('cx','21');track.setAttribute('cy','21');track.setAttribute('r','19');
-    const fill = document.createElementNS('http://www.w3.org/2000/svg','circle');
-    fill.setAttribute('class','file-upload-spinner-fill');
-    fill.setAttribute('cx','21');fill.setAttribute('cy','21');fill.setAttribute('r','19');
-    // БАГ-ФИКС: устанавливаем stroke-dasharray/offset прямо в SVG-атрибутах чтобы style.strokeDashoffset работал корректно
-    // r=19 → circumference = 2*π*19 ≈ 119.4
-    fill.setAttribute('stroke-dasharray','119.4');
-    fill.setAttribute('stroke-dashoffset','119.4');
-    svg.appendChild(track);svg.appendChild(fill);
-    const iconEl = document.createElement('div');
-    iconEl.className = 'file-upload-spinner-icon';
-    iconEl.innerHTML = '<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M12 3v12" /> <path d="m17 8-5-5-5 5" /> <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /> </svg>';
-    spinnerEl.appendChild(svg);spinnerEl.appendChild(iconEl);
-    registerUploadUI(fileId, spinnerEl, fill, null);
-    wrap.appendChild(spinnerEl);
-  }
+  // Спиннер загрузки
+  const spinnerEl = document.createElement('div');
+  spinnerEl.className = 'file-upload-spinner';
+  const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.setAttribute('viewBox','0 0 42 42');
+  const track = document.createElementNS('http://www.w3.org/2000/svg','circle');
+  track.setAttribute('class','file-upload-spinner-track');
+  track.setAttribute('cx','21');track.setAttribute('cy','21');track.setAttribute('r','19');
+  const fill = document.createElementNS('http://www.w3.org/2000/svg','circle');
+  fill.setAttribute('class','file-upload-spinner-fill');
+  fill.setAttribute('cx','21');fill.setAttribute('cy','21');fill.setAttribute('r','19');
+  svg.appendChild(track);svg.appendChild(fill);
+  const iconEl = document.createElement('div');
+  iconEl.className = 'file-upload-spinner-icon';
+  iconEl.innerHTML = '<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M12 3v12\" /> <path d=\"m17 8-5-5-5 5\" /> <path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\" /> </svg>';
+  spinnerEl.appendChild(svg);spinnerEl.appendChild(iconEl);
+  // Защита от дублирования: если upload UI уже зарегистрирован — перезаписываем fill чтобы updateUploadProgress работал с новым DOM
+  registerUploadUI(fileId, spinnerEl, fill, null);
+  wrap.appendChild(spinnerEl);
 
   const info = document.createElement('div');
   info.className = 'tg-file-info';
@@ -4879,13 +4786,12 @@ function buildFileCardUploading(file, fileId, m, isSent){
   name.textContent = file.name;
   info.appendChild(name);
 
-  // Нижняя строка: "Загрузка…" / "Ожидает отправки…" · spacer · время · галочки
+  // Нижняя строка: "Загрузка…" · spacer · время · галочки
   const bottomRow = document.createElement('div');
   bottomRow.className = 'tg-file-bottom';
   const sz = document.createElement('span');
   sz.className = 'tg-file-size';
-  // БАГ-ФИКС: если _pending — показываем "Ожидает отправки…" вместо "Загрузка…"
-  sz.textContent = (m && m._pending) ? 'Ожидает отправки…' : 'Загрузка…';
+  sz.textContent = 'Загрузка…';
   bottomRow.appendChild(sz);
   const spacer = document.createElement('span');
   spacer.className = 'tg-file-spacer';
@@ -5112,12 +5018,6 @@ function buildRow(m){
     bubble.style.cssText='padding:0;background:transparent;border:none;box-shadow:none;overflow:visible;';
     bubble.appendChild(buildFileAvailableCard(m));
 
-  }else if(m._pending&&m.file&&!m.uploading){
-    // БАГ-ФИКС: ФАЙЛ В ОЧЕРЕДИ (оффлайн) — показываем плитку с часиками
-    bubble.style.cssText='padding:0;background:transparent;border:none;box-shadow:none;overflow:visible;';
-    bubble.appendChild(buildFileCardUploading(m.file,m.id,m,isSent));
-    if(m.text){const tn=document.createElement('span');tn.className='bubble-text';tn.style.cssText='display:block;margin-top:4px;padding:6px 8px;background:rgba(255,255,255,.05);border-radius:12px;font-size:13px';tn.innerHTML=formatText(m.text);bubble.appendChild(tn);}
-
   }else if(m.uploading&&m.file){
     // ОТПРАВИТЕЛЬ — ИДЁТ ЗАГРУЗКА
     const isImg=m.file.type&&m.file.type.startsWith('image/');
@@ -5250,11 +5150,10 @@ function buildRow(m){
       overlay.appendChild(tEl);
       if(isSent){
         const tk = document.createElement('span');
-        // БАГ-ФИКС: если _pending — показываем часики
+        // ФИКС ЧАСИКОВ: показываем часики если ожидает отправки
         if(m._pending){
           tk.className='msg-ticks pending';
           tk.innerHTML='<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
-          tk.title='Ожидает отправки';
         } else {
           tk.className = 'msg-ticks' + (m.delivered ? ' double' : ' single');
           tk.innerHTML = m.delivered ? '<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M18 6 7 17l-5-5" /> <path d="m22 10-7.5 7.5L13 16" /> </svg>' : '<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M20 6 9 17l-5-5" /> </svg>';
@@ -6856,6 +6755,19 @@ async function sendVideoNoteMessageBuffer(fileBuffer, durSec, mimeType, blob) {
   cancelReply();
   _sendActivityStop(activePid);
 
+  // ФИКС ПРОГРЕССА ОТПРАВКИ КРУЖКА:
+  // Если buildVideoNoteBubble ещё не зарегистрировал upload-спиннер — делаем это здесь
+  // чтобы updateUploadProgress работал сразу при отправке чанков
+  setTimeout(()=>{
+    if(!uploadUIs.has(msgId)){
+      const _vnSpEl=document.querySelector(`.vn-dl-spinner[data-fileid="${msgId}"]`);
+      if(_vnSpEl){
+        const _vnFillEl=_vnSpEl.querySelector('.vn-dl-spinner-fill');
+        if(_vnFillEl)registerUploadUI(msgId,_vnSpEl,_vnFillEl,null);
+      }
+    }
+  },100);
+
   const vnMeta = JSON.stringify({ durSec, videoMime: mimeType, replyTo: replyTo || null, ts });
   // АДАПТИВНЫЕ ЧАНКИ ДЛЯ ВИДЕО-КРУЖКА
   const _vnChunkSize = getAdaptiveChunkSize();
@@ -6904,28 +6816,47 @@ async function sendVideoNoteMessageBuffer(fileBuffer, durSec, mimeType, blob) {
   let vnKey = null;
   try { vnKey = await getKey(activePid); } catch(e) {}
 
-  for (let i = 0; i < totalChunks; i++) {
-    if(receivedChunks.has(i)) continue;
-    const start = i * _vnChunkSize;
-    const slice = fileBuffer.slice(start, Math.min(start + _vnChunkSize, fileBuffer.byteLength));
-    let chunkData;
-    if (vnKey) {
-      const encBuf = await encData(slice, vnKey);
-      chunkData = arrayBufferToBase64(encBuf);
-    } else {
-      chunkData = arrayBufferToBase64(slice);
+  // ФИКС МЕДЛЕННОЙ ЗАГРУЗКИ КРУЖКОВ:
+  // Раньше отправляли по 1 чанку и ждали store-chunks-ack на каждый (30 сек таймаут!).
+  // Но сервер отправляет store-chunks-ack ТОЛЬКО если файл не завершён,
+  // а при последнем чанке отправляет file-upload-complete — waiter зависал на 30 сек!
+  // Решение: отправляем чанки БАТЧАМИ (как в sendFileToServer) без ожидания на каждый ack
+  const _vnBatch = getAdaptiveStoreBatch();
+  const _vnPid = activePid; // сохраняем activePid до начала асинхронной записи
+  for (let b = 0; b < totalChunks; b += _vnBatch) {
+    const batch = [];
+    const end = Math.min(b + _vnBatch, totalChunks);
+    for (let i = b; i < end; i++) {
+      if(receivedChunks.has(i)) continue;
+      const start = i * _vnChunkSize;
+      const slice = fileBuffer.slice(start, Math.min(start + _vnChunkSize, fileBuffer.byteLength));
+      let chunkData;
+      if (vnKey) {
+        const encBuf = await encData(slice, vnKey);
+        chunkData = arrayBufferToBase64(encBuf);
+      } else {
+        chunkData = arrayBufferToBase64(slice);
+      }
+      batch.push({ index: i, data: chunkData });
     }
-    wsSend({ type: 'store-chunks', fileId, chunks: [{ index: i, data: chunkData }] });
-    
-    await new Promise(resolve=>{
-      const timer=setTimeout(resolve,30000);
-      storeAckWaiters.set('chunk_'+fileId+'_'+i,{resolve:()=>{clearTimeout(timer);resolve();}});
-    });
-    storeAckWaiters.delete('chunk_'+fileId+'_'+i);
-    // Пауза между чанками на основе типа сети
-    const _delay = _netQuality.getParams().delay;
-    if(_delay > 0 && i < totalChunks - 1) await new Promise(r=>setTimeout(r, _delay));
+    if (batch.length > 0) {
+      wsSend({ type: 'store-chunks', fileId, chunks: batch });
+    }
+    // Обновляем прогресс отправки в DOM
+    const vnPct = Math.round(Math.min(end, totalChunks) / totalChunks * 100);
+    updateUploadProgress(fileId, vnPct);
+    // Пауза между батчами чтобы не забивать WS буфер
+    if(end < totalChunks){
+      const _delay = _netQuality.getParams().delay;
+      await new Promise(r=>setTimeout(r, Math.max(_delay, 50)));
+    }
   }
+  // Фоллбэк: если file-upload-complete не пришёл за 20 сек — финализируем UI
+  if(!window._uploadFinalizeTimers) window._uploadFinalizeTimers={};
+  window._uploadFinalizeTimers[fileId]=setTimeout(async()=>{
+    delete window._uploadFinalizeTimers[fileId];
+    await finalizeUploadUI(fileId,_vnPid);
+  },20000);
 }
 
 // Старая функция оставлена как fallback (dataURL → buffer)
@@ -7131,6 +7062,26 @@ function buildVideoNoteBubble(m,isSent){
   // Кнопка/спиннер скачивания (если кружок ещё не загружен)
   if(dlOverlay)outer.appendChild(dlOverlay);
 
+  // ФИКС ПРОГРЕССА ОТПРАВКИ: если это отправленный кружок и он ещё загружается — показываем upload-спиннер
+  if(isSent && m.uploading !== false && !m.delivered && !isPending){
+    // Проверяем есть ли активный upload для этого fileId
+    const _vnUploadUI = uploadUIs.get(m.id);
+    if(!_vnUploadUI){
+      // Создаём upload-спиннер поверх кружка
+      const _vnUpOv=document.createElement('div');
+      _vnUpOv.className='vn-dl-wrap vn-upload-wrap'; // vn-upload-wrap отключает анимацию пульса
+      const _vnUpSpinner=document.createElement('div');
+      _vnUpSpinner.className='vn-dl-spinner';
+      _vnUpSpinner.dataset.fileid=m.id;
+      _vnUpSpinner.innerHTML=`<svg viewBox="0 0 42 42"><circle class="vn-dl-spinner-track" cx="21" cy="21" r="19"/><circle class="vn-dl-spinner-fill" cx="21" cy="21" r="19" stroke-dasharray="122" stroke-dashoffset="122"/></svg><div class="vn-dl-spinner-icon"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m17 8-5-5-5 5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg></div>`;
+      _vnUpOv.appendChild(_vnUpSpinner);
+      outer.appendChild(_vnUpOv);
+      // Регистрируем в uploadUIs чтобы updateUploadProgress работал
+      const _vnFill=_vnUpSpinner.querySelector('.vn-dl-spinner-fill');
+      registerUploadUI(m.id,_vnUpSpinner,_vnFill,null);
+    }
+  }
+
   // ── Overlay-плашки на кружке (Telegram-стиль, как у обычного видео) ──
   // 1. Длительность + dot непросмотренного — левый нижний угол
   const durPill=document.createElement('div');
@@ -7151,11 +7102,10 @@ function buildVideoNoteBubble(m,isSent){
   metaPill.appendChild(timeEl);
   if(isSent){
     const tk=document.createElement('span');
-    // БАГ-ФИКС: если _pending — показываем часики
+    // ФИКС ЧАСИКОВ: показываем часики если ожидает отправки
     if(m._pending){
       tk.className='msg-ticks pending';
       tk.innerHTML='<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
-      tk.title='Ожидает отправки';
     } else {
       tk.className='msg-ticks'+(m.delivered?' double':' single');
       tk.innerHTML = m.delivered?'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M18 6 7 17l-5-5" /> <path d="m22 10-7.5 7.5L13 16" /> </svg>':'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M20 6 9 17l-5-5" /> </svg>';
@@ -7738,11 +7688,10 @@ function buildVideoPlayer(file, isSent, m){
   metaOverlay.appendChild(tEl);
   if(isSent){
     const tk = document.createElement('span');
-    // БАГ-ФИКС: если _pending — показываем часики
+    // ФИКС ЧАСИКОВ: показываем часики если ожидает отправки
     if(m._pending){
       tk.className='msg-ticks pending';
       tk.innerHTML='<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
-      tk.title='Ожидает отправки';
     } else {
       tk.className = 'msg-ticks' + (m.delivered?' double':' single');
       tk.innerHTML = m.delivered ? '<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M18 6 7 17l-5-5" /> <path d="m22 10-7.5 7.5L13 16" /> </svg>' : '<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M20 6 9 17l-5-5" /> </svg>';
@@ -7857,11 +7806,10 @@ function buildVoiceBubble(m,isSent){
   metaWrap.appendChild(timeEl);
   if(isSent){
     const tk=document.createElement('span');
-    // БАГ-ФИКС: если _pending — показываем часики
+    // ФИКС ЧАСИКОВ: показываем часики если ожидает отправки
     if(m._pending){
       tk.className='msg-ticks pending';
       tk.innerHTML='<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
-      tk.title='Ожидает отправки';
     } else {
       tk.className='msg-ticks'+(m.delivered?' double':' single');
       tk.innerHTML = m.delivered?'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M18 6 7 17l-5-5" /> <path d="m22 10-7.5 7.5L13 16" /> </svg>':'<svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M20 6 9 17l-5-5" /> </svg>';
