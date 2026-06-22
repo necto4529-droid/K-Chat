@@ -488,6 +488,8 @@
     .msg-ticks{font-size:13px;line-height:1;transition:color .3s}
     .msg-ticks.single{color:rgba(255,255,255,.5)}
     .msg-ticks.double{color:var(--g)}
+    /* ЧАСИКИ: сообщение ожидает отправки */
+    .msg-ticks.pending{color:rgba(255,255,255,.45);font-size:12px;}
     .bubble-text{white-space:pre-wrap;word-break:break-word}
     .bubble-text a{color:var(--b);text-decoration:underline;cursor:pointer}
     .bubble-text b{font-weight:700}
@@ -975,6 +977,8 @@
     .vn-dl-btn:hover{background:rgba(0,217,255,.26);transform:scale(1.06)}
     .vn-dl-btn:active{transform:scale(.92)}
     .vn-dl-spinner{width:42px;height:42px;position:relative;animation:vnDlPulse 1.8s ease-in-out infinite}
+    /* Upload-спиннер на видео-кружке: без пульса */
+    .vn-dl-wrap.vn-upload-wrap .vn-dl-spinner{animation:none}
     @keyframes vnDlPulse{0%,100%{filter:drop-shadow(0 0 0 transparent)}50%{filter:drop-shadow(0 0 6px var(--g-40))}}
     .vn-dl-spinner svg{width:42px;height:42px;}
     .vn-dl-spinner-track{fill:none;stroke:rgba(255,255,255,.18);stroke-width:3}
