@@ -41,6 +41,49 @@ const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmtTime=ts=>{if(!ts)return'';const d=new Date(ts),n=new Date();return d.toDateString()===n.toDateString()?d.toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'}):d.toLocaleDateString('ru',{day:'numeric',month:'short'});};
 const uid=()=>'m_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
+
+// ── МАСКИРОВКА ТРАФИКА (BINARY OBFUSCATION) ──
+const MAGIC_BYTE = 0x4B; // 'K'
+
+function encodeMessage(obj) {
+  const json = JSON.stringify(obj);
+  const data = ENC.encode(json);
+  const keyLen = 4 + Math.floor(Math.random() * 8);
+  const key = new Uint8Array(keyLen);
+  window.crypto.getRandomValues(key);
+  
+  const buffer = new Uint8Array(2 + keyLen + data.length);
+  buffer[0] = MAGIC_BYTE;
+  buffer[1] = keyLen;
+  buffer.set(key, 2);
+  
+  for (let i = 0; i < data.length; i++) {
+    buffer[2 + keyLen + i] = data[i] ^ key[i % keyLen];
+  }
+  return buffer;
+}
+
+function decodeMessage(arrayBuffer) {
+  const buffer = new Uint8Array(arrayBuffer);
+  if (buffer.length < 2 || buffer[0] !== MAGIC_BYTE) return null;
+  
+  const keyLen = buffer[1];
+  if (buffer.length < 2 + keyLen) return null;
+  
+  const key = buffer.subarray(2, 2 + keyLen);
+  const encryptedData = buffer.subarray(2 + keyLen);
+  const data = new Uint8Array(encryptedData.length);
+  
+  for (let i = 0; i < encryptedData.length; i++) {
+    data[i] = encryptedData[i] ^ key[i % keyLen];
+  }
+  
+  try {
+    return JSON.parse(DEC.decode(data));
+  } catch (e) {
+    return null;
+  }
+}
 const fmtDur=s=>`${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
 
 // ── TOAST ──
@@ -629,12 +672,13 @@ async function ensureKey(pid){let key=await getKey(pid);if(key)return key;return
 // ══════════════════════════════════════════════════════
 // ── АНИМИРОВАННЫЕ СТАТУСЫ (Telegram-style, heartbeat) ──
 // ══════════════════════════════════════════════════════
-// activityType: 'typing'|'recording'|'sending_voice'|'sending_file'|'choosing_sticker'|null
+// activityType: 'typing'|'recording'|'recording_video'|'sending_voice'|'sending_video'|'sending_file'|'choosing_sticker'|null
 const ACTIVITY_LABELS={
   typing:'печатает',
   recording:'записывает голосовое',
   recording_video:'записывает видео',
   sending_voice:'отправляет голосовое',
+  sending_video:'отправляет видео',
   sending_file:'отправляет файл',
   choosing_sticker:'выбирает стикер',
 };
@@ -917,6 +961,7 @@ function ensureWS(){
     _startConnDots('Соединение');
   }
   ws=new WebSocket(SIGNAL_URL);
+    ws.binaryType='arraybuffer';
   
   // Тайм-аут на установку соединения (если за 10с не подключился — пробуем снова)
   const connTimeout = setTimeout(() => {
@@ -936,7 +981,7 @@ function ensureWS(){
     _stopConnDots();
     updateBar();
     // ОПТИМИЗАЦИЯ: Используем 'auth' вместо 'register' для единообразия с сервером
-    ws.send(JSON.stringify({type:'auth',id:MY_ID}));
+    ws.send(encodeMessage({type:'auth',id:MY_ID}));
     updateSendBtn();
     if(activePid)wsSend({type:'query-presence',target:activePid});
     processOutbox();
@@ -944,7 +989,7 @@ function ensureWS(){
     if(pingInterval)clearInterval(pingInterval);
     pingInterval=setInterval(()=>{
         if(ws&&ws.readyState===WebSocket.OPEN) {
-            ws.send(JSON.stringify({type:'ping'}));
+            ws.send(encodeMessage({type:'ping'}));
             // ИСПРАВЛЕНИЕ: Обновляем таймаут до 120с (синхронизировано с сервером)
             // На мобильных сетях задержки могут быть большие
             if(Date.now() - _lastPong > 120000) {
@@ -957,7 +1002,12 @@ function ensureWS(){
 
   ws.onmessage=async e=>{
     let d;
-    try{d=JSON.parse(e.data);}catch{return;}
+    if (e.data instanceof ArrayBuffer) {
+      d = decodeMessage(e.data);
+    } else {
+      try{d=JSON.parse(e.data);}catch{return;}
+    }
+    if (!d) return;
     if(d.type === 'pong') {
         // Понг пришел — значит связь жива
         _lastPong = Date.now();
@@ -1024,13 +1074,13 @@ function wsSend(obj){
     const now = Date.now();
     for (const item of buf) {
       if (now - item.ts < OUTBOX_TTL) {
-        try { ws.send(JSON.stringify(item.obj)); } catch(e) {}
+        try { ws.send(encodeMessage(item.obj)); } catch(e) {}
       }
     }
   }
   if (ws && ws.readyState === WebSocket.OPEN) {
     try {
-        ws.send(JSON.stringify(obj));
+        ws.send(encodeMessage(obj));
         _addToSentLog(obj);
     } catch(e) {
         if (_WS_BUFFER_TYPES.has(obj.type) && window._wsSendBuffer.length < _WS_BUFFER_MAX) {
@@ -6984,7 +7034,9 @@ async function sendVideoNoteMessageBuffer(fileBuffer, durSec, mimeType, blob) {
   await updateChat(activePid, { lastMsg: 'Видео-кружок', lastMsgTime: ts });
   appendOrReloadMsg(activePid, { ...mSender, videoData: previewURL, _previewURL: previewURL });
   cancelReply();
-  _sendActivityStop(activePid);
+  // Сигнал "отправляет видео" + heartbeat пока идёт загрузка чанков
+  _sendActivitySignal(activePid,'sending_video');
+  const _vnSendActivityHb=setInterval(()=>{if(activePid)_sendActivitySignal(activePid,'sending_video');},3000);
 
   // ФИКС ПРОГРЕССА ОТПРАВКИ КРУЖКА:
   // Если buildVideoNoteBubble ещё не зарегистрировал upload-спиннер — делаем это здесь
@@ -7082,6 +7134,9 @@ async function sendVideoNoteMessageBuffer(fileBuffer, durSec, mimeType, blob) {
       await new Promise(r=>setTimeout(r, Math.max(_delay, 50)));
     }
   }
+  // Останавливаем heartbeat "отправляет видео" после отправки всех чанков
+  clearInterval(_vnSendActivityHb);
+  _sendActivityStop(activePid);
   // Фоллбэк: если file-upload-complete не пришёл за 20 сек — финализируем UI
   if(!window._uploadFinalizeTimers) window._uploadFinalizeTimers={};
   window._uploadFinalizeTimers[fileId]=setTimeout(async()=>{
