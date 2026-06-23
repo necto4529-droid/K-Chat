@@ -1280,8 +1280,8 @@ async function sendFileToServer(fileInfo,caption,msgIdFromCaller,skipCreate){
   // Сохраняем blob отправителя в IDB 'blobs' чтобы можно было воспроизвести без data:URL
   await saveBlob(fileId, fileBuffer);
 
-  // ОПТИМИЗАЦИЯ 1: Генерируем thumb до отправки заголовка
-  // Получатель увидит превью мгновенно, ещё до первого чанка
+  // ИСПРАВЛЕНИЕ: Генерируем thumb заранее и передаём в заголовке файла.
+  // Получатель увидит превью ТОЛЬКО после полной 100% загрузки всех чанков на сервер
   const thumb = await generateThumb(fileInfo).catch(()=>'');
 
   wsSend({type:'store-file-header',fileId,recipientId:targetPid,name:fileInfo.name,size:fileInfo.size,mimeType:fileInfo.type,totalChunks,caption:caption||'',thumb:thumb||'',ts});
@@ -1361,15 +1361,40 @@ async function sendFileToServer(fileInfo,caption,msgIdFromCaller,skipCreate){
 }
 
 // ИСПРАВЛЕНИЕ: handleFileAvailable — строгая проверка дублей + правильный unread
-// ОПТИМИЗАЦИЯ 1+3: thumb показывается мгновенно; chunksReady — сколько чанков уже есть
+// ИСПРАВЛЕНИЕ: thumb показывается ТОЛЬКО после полной 100% загрузки файла отправителем
 async function handleFileAvailable(msg){
   const{fileId,senderId,name,size,mimeType,totalChunks,caption,ts,thumb,chunksReady}=msg;
   if(senderId===MY_ID)return;
   const ct=loadContacts().find(c=>c.id===senderId);
   await getOrCreateChat(senderId,ct?.name,ct?.avatar);
   const existing=await loadMsgs(senderId);
-  if(existing.find(m=>m.id===fileId)){
-    // Дубль — только обновляем DOM если нужно, счётчик НЕ трогаем
+  const existingMsg=existing.find(m=>m.id===fileId);
+  if(existingMsg){
+    // Дубль — проверяем: пришёл обновлённый file-available с thumb (файл загрузился полностью)?
+    if(thumb && existingMsg.fileAvailable && !existingMsg.fileAvailable.thumb){
+      // Обновляем thumb и chunksReady в существующем сообщении
+      await withChatLock(senderId,async()=>{
+        const msgs=await loadMsgs(senderId);
+        const idx=msgs.findIndex(m=>m.id===fileId);
+        if(idx!==-1&&msgs[idx].fileAvailable){
+          msgs[idx].fileAvailable.thumb=thumb;
+          msgs[idx].fileAvailable.chunksReady=chunksReady||totalChunks;
+          await saveMsgs(senderId,msgs);
+        }
+      });
+      // Перерисовываем сообщение в DOM чтобы показать миниатюру
+      if(currentScreen==='scr-chat'&&activePid===senderId){
+        const updatedMsgs=await loadMsgs(senderId);
+        const updatedMsg=updatedMsgs.find(m=>m.id===fileId);
+        if(updatedMsg){
+          const existingRow=document.querySelector(`.msg-row[data-msgid="${fileId}"]`);
+          if(existingRow)(existingRow.closest('.msg-row-outer')||existingRow).replaceWith(buildRow(updatedMsg));
+          else appendOrReloadMsg(senderId,updatedMsg);
+        }
+      }
+      return;
+    }
+    // Дубль без изменений — только обновляем DOM если нужно, счётчик НЕ трогаем
     if(currentScreen==='scr-chat'&&activePid===senderId){
       const existingRow=document.querySelector(`.msg-row[data-msgid="${fileId}"]`);
       if(!existingRow){
@@ -1410,8 +1435,8 @@ async function handleFileAvailable(msg){
     return;
   }
 
-  // ОПТИМИЗАЦИЯ 1: сохраняем thumb в сообщении — покажется мгновенно
-  // ОПТИМИЗАЦИЯ 3: chunksReady — сколько чанков уже готово (может быть не все)
+  // ИСПРАВЛЕНИЕ: thumb сохраняется каким пришёл — если пустой (файл ещё загружается), миниатюра не покажется.
+  // Когда файл загрузится полностью, сервер пришлёт повторный file-available с thumb — обрабатывается выше.
   const placeholderMsg={id:fileId,text:caption||'',type:'recv',time:new Date(ts||Date.now()).toISOString(),reactions:{},edited:false,replyTo:null,delivered:true,forwarded:false,fileAvailable:{name,size,mimeType,totalChunks,senderId,thumb:thumb||'',chunksReady:chunksReady||0}};
   await upsertMsg(senderId,placeholderMsg);
   await updateChat(senderId,{lastMsg:`${name}`,lastMsgTime:new Date(placeholderMsg.time).getTime()});
@@ -4989,8 +5014,8 @@ function buildFileAvailableCard(m){
   const isVideo = fa.mimeType && fa.mimeType.startsWith('video/');
   const isImage = fa.mimeType && fa.mimeType.startsWith('image/');
 
-  // ОПТИМИЗАЦИЯ 1: если есть thumb — строим враппер с превью
-  // Показывается мгновенно, ещё до загрузки чанков
+  // ИСПРАВЛЕНИЕ: thumb приходит ТОЛЬКО после полной 100% загрузки файла отправителем.
+  // Если thumb есть — строим враппер с превью (файл уже загружен полностью)
   if((isImage||isVideo)&&fa.thumb){
     const wrap=document.createElement('div');
     wrap.className='tg-file-wrap tg-file-wrap-thumb';
