@@ -679,6 +679,10 @@ let ws=null,wsUp=false,wsRetry=0,pingInterval=null;
 let lastHiddenTime=0,ignoreNextVisibilityReturn=false;
 const WS_DELAYS=[2000,3000,5000,8000,15000,30000];
 
+// ── SCROLL STATE (Telegram-стиль) ──
+let _lastScrollPos = 0;  // Последняя позиция скролла
+let _isScrollingUp = false;  // Пользователь скроллит вверх
+
 // ── Network Quality (ручной выбор пользователем) ─────────────────────────────
 // Тип сети выбирается вручную в настройках. По умолчанию — 4G.
 // Возможные значения: 'wifi', '4g', 'hspa', '3g', '2g', 'edge'
@@ -935,17 +939,19 @@ function ensureWS(){
     updateSendBtn();
     if(activePid)wsSend({type:'query-presence',target:activePid});
     processOutbox();
+    // ИСПРАВЛЕНИЕ: Синхронизируем интервал пинга с сервером (70 секунд вместо 25)
     if(pingInterval)clearInterval(pingInterval);
     pingInterval=setInterval(()=>{
         if(ws&&ws.readyState===WebSocket.OPEN) {
             ws.send(JSON.stringify({type:'ping'}));
-            // Если понг не приходил слишком долго (более 40с), значит соединение "протухло"
-            if(Date.now() - _lastPong > 40000) {
-                console.warn('[WS] Zombie connection detected');
+            // ИСПРАВЛЕНИЕ: Обновляем таймаут до 120с (синхронизировано с сервером)
+            // На мобильных сетях задержки могут быть большие
+            if(Date.now() - _lastPong > 120000) {
+                console.warn('[WS] Zombie connection detected (no pong for 120s)');
                 ws.close();
             }
         }
-    }, 25000);
+    }, 70000);
   };
 
   ws.onmessage=async e=>{
@@ -1655,7 +1661,7 @@ function updateSpinnerProgress(fileId, pct) {
   const vnSpinner = document.querySelector(`.vn-dl-spinner[data-fileid="${fileId}"]`);
   if (vnSpinner) {
     const fill = vnSpinner.querySelector('.vn-dl-spinner-fill');
-    if (fill) fill.style.strokeDashoffset = Math.max(0, 122 - 122 * pct / 100);
+    if (fill) fill.style.strokeDashoffset = Math.max(0, 119 - 119 * pct / 100);
     const icon = vnSpinner.querySelector('.vn-dl-spinner-icon');
     if (icon && pct >= 100) { icon.innerHTML = '<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <path d=\"M20 6 9 17l-5-5\" /> </svg>'; icon.style.color = 'var(--g)'; }
   }
@@ -2337,13 +2343,36 @@ function setOnline(pid, isOnline, isRealEvent){
 let _connStatusInterval=null;
 let _connStatusDots=1;
 let _connStatusBase='';
+let _connBarHideTimer=null;
+
+// Показать полоску статуса соединения под шапкой (НЕ трогает заголовок/кнопки)
+function _showConnBar(text,connected){
+  const bar=$('connStatusBar');
+  const txt=$('connStatusText');
+  if(!bar)return;
+  if(_connBarHideTimer){clearTimeout(_connBarHideTimer);_connBarHideTimer=null;}
+  if(txt)txt.textContent=text;
+  bar.classList.toggle('connected-bar',!!connected);
+  bar.classList.add('visible');
+}
+
+// Скрыть полоску статуса (с опциональной задержкой)
+function _hideConnBar(delay){
+  const bar=$('connStatusBar');
+  if(!bar)return;
+  if(_connBarHideTimer){clearTimeout(_connBarHideTimer);_connBarHideTimer=null;}
+  if(delay){
+    _connBarHideTimer=setTimeout(()=>{bar.classList.remove('visible','connected-bar');_connBarHideTimer=null;},delay);
+  }else{
+    bar.classList.remove('visible','connected-bar');
+  }
+}
 
 function _startConnDots(base){
   _stopConnDots();
   _connStatusBase=base;
   _connStatusDots=1;
   const el=$('peerStatus');
-  const homeHeader=$('homeHeaderTitle');
   const connDot=$('homeConnDot'); // индикатор соединения
   function render(){
     const text = _connStatusBase+'.'.repeat(_connStatusDots);
@@ -2351,10 +2380,8 @@ function _startConnDots(base){
       el.textContent=text;
       el.className='chat-peer-status connecting';
     }
-    if(homeHeader){
-      homeHeader.textContent=text;
-      homeHeader.classList.add('connecting');
-    }
+    // Обновляем полоску статуса под шапкой — заголовок K-Chat НЕ трогаем
+    _showConnBar(text,false);
     // Индикатор соединения — жёлтый мигающий при переподключении
     if(connDot){connDot.classList.remove('connected');connDot.classList.add('connecting');}
     _connStatusDots=_connStatusDots>=3?1:_connStatusDots+1;
@@ -2367,15 +2394,19 @@ function _stopConnDots(){
   if(_connStatusInterval){clearInterval(_connStatusInterval);_connStatusInterval=null;}
   _connStatusBase='';
   _connStatusDots=1;
-  const homeHeader=$('homeHeaderTitle');
-  if(homeHeader){
-    homeHeader.textContent='K-Chat';
-    homeHeader.classList.remove('connecting');
-  }
+  // Заголовок «K-Chat» всегда остаётся на месте — ничего не меняем в шапке
   // Индикатор соединения — зелёный при подключении
   const connDot=$('homeConnDot');
-  if(connDot&&wsUp){connDot.classList.add('connected');connDot.classList.remove('connecting');}
-  else if(connDot){connDot.classList.remove('connected','connecting');}
+  if(connDot&&wsUp){
+    connDot.classList.add('connected');
+    connDot.classList.remove('connecting');
+    // Кратко показываем «Подключено» и скрываем полоску
+    _showConnBar('Подключено',true);
+    _hideConnBar(2000);
+  }else if(connDot){
+    connDot.classList.remove('connected','connecting');
+    _hideConnBar(0);
+  }
 }
 
 // setBar теперь — no-op (statusBar убран), оставляем для совместимости
@@ -2499,7 +2530,30 @@ function _throttle(fn, ms){
   };
 }
 
-function _onMessagesScroll(){updateScrollBtn();showFloatingDate();}
+function _onMessagesScroll(){
+  const area=$('messagesArea');
+  if(!area)return;
+  
+  const currentScrollPos=area.scrollTop;
+  const scrollDirection=currentScrollPos<_lastScrollPos?'up':'down';
+  
+  // ИСПРАВЛЕНИЕ: Логика Telegram — кнопка появляется при скролле вверх
+  // если пользователь отдалился от конца чата
+  const distanceFromBottom=area.scrollHeight-area.scrollTop-area.clientHeight;
+  
+  if(scrollDirection==='up'&&distanceFromBottom>100){
+    // Скроллим вверх и далеко от конца — показываем кнопку
+    _isScrollingUp=true;
+    updateScrollBtn();
+  }else if(scrollDirection==='down'&&distanceFromBottom<100){
+    // Скроллим вниз и близко к концу — скрываем кнопку
+    _isScrollingUp=false;
+    updateScrollBtn();
+  }
+  
+  _lastScrollPos=currentScrollPos;
+  showFloatingDate();
+}
 let _scrollHandler=_onMessagesScroll;
 function _rebuildScrollHandler(){
   const area=$('messagesArea');
@@ -3942,12 +3996,84 @@ function _initAttachSheetHandlers(){
   };
 }
 
-window.handleMediaSelect=async e=>{if(processingFiles)return;const files=Array.from(e.target.files);if(!files.length)return;$('mediaInput').value='';processingFiles=true;setInputsDisabled(true);showProcessingToast('Обработка фото…');try{for(const f of files){if(f.size>MAX_FILE_SIZE){toast('Файл слишком большой','err');continue;}if(f.type.startsWith('image/')){const c=await compressImage(f);pendingFiles.push({name:c.name,type:c.type,data:c.dataURL,size:f.size,blob:f,isMedia:true});}}}finally{processingFiles=false;setInputsDisabled(false);hideProgressToast();if(pendingFiles.length)updateFilePreview();}};
-window.handleVideoSelect=async e=>{if(processingFiles)return;const files=Array.from(e.target.files);if(!files.length)return;$('videoInput').value='';processingFiles=true;setInputsDisabled(true);showProcessingToast('Подготовка видео…');try{for(const f of files){if(f.size>MAX_FILE_SIZE){toast('Файл слишком большой','err');continue;}pendingFiles.push({name:f.name,type:f.type,data:null,size:f.size,blob:f,isMedia:false,isVideo:true});}}finally{processingFiles=false;setInputsDisabled(false);hideProgressToast();if(pendingFiles.length)updateFilePreview();}};
-window.handleFileSelect=async e=>{if(processingFiles)return;const files=Array.from(e.target.files);if(!files.length)return;$('fileInput').value='';processingFiles=true;setInputsDisabled(true);showProcessingToast('Обработка файлов…');try{for(const f of files){if(f.size>MAX_FILE_SIZE){toast('Файл слишком большой','err');continue;}pendingFiles.push({name:f.name,type:f.type,data:null,size:f.size,blob:f,isMedia:false});}}finally{processingFiles=false;setInputsDisabled(false);hideProgressToast();if(pendingFiles.length)updateFilePreview();}};
+window.handleMediaSelect=async e=>{
+  if(processingFiles)return;
+  const files=Array.from(e.target.files);
+  if(!files.length)return;
+  $('mediaInput').value='';
+  processingFiles=true;
+  setInputsDisabled(true);
+  showProcessingToast('Обработка фото…');
+  try{
+    for(const f of files){
+      if(f.size>MAX_FILE_SIZE){
+        toast('Файл слишком большой','err');
+        continue;
+      }
+      if(f.type.startsWith('image/')){
+        const c=await compressImage(f);
+        pendingFiles.push({name:c.name,type:c.type,data:c.dataURL,size:f.size,blob:f,isMedia:true});
+      }
+    }
+  }finally{
+    processingFiles=false;
+    setInputsDisabled(false);
+    hideProgressToast();
+    if(pendingFiles.length)updateFilePreview();
+  }
+};
+window.handleVideoSelect=async e=>{
+  if(processingFiles)return;
+  const files=Array.from(e.target.files);
+  if(!files.length)return;
+  $('videoInput').value='';
+  processingFiles=true;
+  setInputsDisabled(true);
+  showProcessingToast('Подготовка видео…');
+  try{
+    for(const f of files){
+      if(f.size>MAX_FILE_SIZE){
+        toast('Файл слишком большой','err');
+        continue;
+      }
+      pendingFiles.push({name:f.name,type:f.type,data:null,size:f.size,blob:f,isMedia:false,isVideo:true});
+    }
+  }finally{
+    processingFiles=false;
+    setInputsDisabled(false);
+    hideProgressToast();
+    if(pendingFiles.length)updateFilePreview();
+  }
+};
+window.handleFileSelect=async e=>{
+  if(processingFiles)return;
+  const files=Array.from(e.target.files);
+  if(!files.length)return;
+  $('fileInput').value='';
+  processingFiles=true;
+  setInputsDisabled(true);
+  showProcessingToast('Обработка файлов…');
+  try{
+    for(const f of files){
+      if(f.size>MAX_FILE_SIZE){
+        toast('Файл слишком большой','err');
+        continue;
+      }
+      pendingFiles.push({name:f.name,type:f.type,data:null,size:f.size,blob:f,isMedia:false});
+    }
+  }finally{
+    processingFiles=false;
+    setInputsDisabled(false);
+    hideProgressToast();
+    if(pendingFiles.length)updateFilePreview();
+  }
+};
 
 // ── SEND ──
 async function sendSingleMsg(text,fileInfo=null,existingId=null){
+  // ИСПРАВЛЕНИЕ: При отправке сообщения сбрасываем флаг скроллинга вверх
+  _isScrollingUp=false;
+  
   if(activePid===MY_ID){
     const msgId=existingId||uid(),ts=Date.now();
     const m={id:msgId,text,type:'sent',time:new Date(ts).toISOString(),reactions:{},edited:false,replyTo:replyTo||null,delivered:true,forwarded:false};
@@ -5593,12 +5719,63 @@ function appendOrReloadMsg(pid,m){
   area.appendChild(buildRow(m));
   // Синхронизируем renderedCount чтобы loadChatHistory(false) не дублировал
   renderedCount=area.querySelectorAll('.msg-row[data-msgid],.sys-msg[data-msgid]').length;
-  if(wasBot)area.scrollTop=area.scrollHeight;
-  else{const badge=$('scrollBadge');if(badge){badge.textContent=(parseInt(badge.textContent)||0)+1;$('scrollDownBtn').classList.add('has-badge');}}
+  
+  // ИСПРАВЛЕНИЕ: Автоскролл вниз если сообщение отправлено мною или если были в конце
+  if(m.type==='sent'||wasBot){
+    // Отправленные сообщения всегда автоскроллятся в конец
+    // Откладываем прокрутку на 100ms, чтобы поле ввода успело скстаться в одну строку
+    requestAnimationFrame(()=>{
+      setTimeout(()=>{
+        area.scrollTop=area.scrollHeight;
+        _isScrollingUp=false;
+        _lastScrollPos=area.scrollHeight;
+      },100);
+    });
+  }else{
+    // Входящие сообщения: показываем бейдж если пользователь не в конце
+    const badge=$('scrollBadge');
+    if(badge){
+      badge.textContent=(parseInt(badge.textContent)||0)+1;
+      $('scrollDownBtn').classList.add('has-badge');
+    }
+  }
   updateScrollBtn();
 }
-function updateScrollBtn(){const area=$('messagesArea'),btn=$('scrollDownBtn');if(!area||!btn)return;const d=area.scrollHeight-area.scrollTop-area.clientHeight;btn.classList.toggle('visible',d>100);if(d<=100){const badge=$('scrollBadge');if(badge)badge.textContent='';btn.classList.remove('has-badge');}}
-window.scrollToBottom=()=>{const area=$('messagesArea');area.scrollTo({top:area.scrollHeight,behavior:'smooth'});const badge=$('scrollBadge');if(badge)badge.textContent='';$('scrollDownBtn').classList.remove('has-badge');};
+function updateScrollBtn(){
+  const area=$('messagesArea'),btn=$('scrollDownBtn');
+  if(!area||!btn)return;
+  
+  // ИСПРАВЛЕНИЕ: Кнопка видна только если пользователь скроллит вверх или есть новые сообщения
+  const d=area.scrollHeight-area.scrollTop-area.clientHeight;
+  const badge=$('scrollBadge');
+  const hasBadge=badge&&badge.textContent&&badge.textContent.trim()!=='';
+  
+  // Показываем кнопку если:
+  // 1. Пользователь скроллит вверх (далеко от конца)
+  // 2. Или есть новые сообщения (бейдж)
+  const shouldShow=_isScrollingUp||hasBadge;
+  btn.classList.toggle('visible',shouldShow);
+  
+  if(d<=100&&!hasBadge){
+    if(badge)badge.textContent='';
+    btn.classList.remove('has-badge');
+  }
+}
+window.scrollToBottom=()=>{
+  const area=$('messagesArea');
+  // ИСПРАВЛЕНИЕ: Откладываем прокрутку для синхронизации с input-полем
+  requestAnimationFrame(()=>{
+    setTimeout(()=>{
+      area.scrollTo({top:area.scrollHeight,behavior:'smooth'});
+      const badge=$('scrollBadge');
+      if(badge)badge.textContent='';
+      $('scrollDownBtn').classList.remove('has-badge');
+      _isScrollingUp=false;
+      _lastScrollPos=area.scrollHeight;
+      updateScrollBtn();
+    },100);
+  });
+};
 _rebuildScrollHandler();
 new ResizeObserver(()=>updateScrollBtn()).observe($('messagesArea'));
 
@@ -6951,7 +7128,7 @@ function buildVideoNoteBubble(m,isSent){
     const spinner=document.createElement('div');
     spinner.className='vn-dl-spinner';
     spinner.dataset.fileid=m.id;
-    spinner.innerHTML=`<svg viewBox="0 0 42 42"><circle class="vn-dl-spinner-track" cx="21" cy="21" r="19"/><circle class="vn-dl-spinner-fill" cx="21" cy="21" r="19" stroke-dasharray="122" stroke-dashoffset="122"/></svg><div class="vn-dl-spinner-icon"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M12 15V3" /> <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /> <path d="m7 10 5 5 5-5" /> </svg></div>`;
+    spinner.innerHTML=`<svg viewBox="0 0 42 42"><circle class="vn-dl-spinner-track" cx="21" cy="21" r="19"/><circle class="vn-dl-spinner-fill" cx="21" cy="21" r="19" stroke-dasharray="119" stroke-dashoffset="119"/></svg><div class="vn-dl-spinner-icon"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" > <path d="M12 15V3" /> <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /> <path d="m7 10 5 5 5-5" /> </svg></div>`;
     ov.appendChild(spinner);
     return ov;
   }
@@ -7073,7 +7250,7 @@ function buildVideoNoteBubble(m,isSent){
       const _vnUpSpinner=document.createElement('div');
       _vnUpSpinner.className='vn-dl-spinner';
       _vnUpSpinner.dataset.fileid=m.id;
-      _vnUpSpinner.innerHTML=`<svg viewBox="0 0 42 42"><circle class="vn-dl-spinner-track" cx="21" cy="21" r="19"/><circle class="vn-dl-spinner-fill" cx="21" cy="21" r="19" stroke-dasharray="122" stroke-dashoffset="122"/></svg><div class="vn-dl-spinner-icon"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m17 8-5-5-5 5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg></div>`;
+      _vnUpSpinner.innerHTML=`<svg viewBox="0 0 42 42"><circle class="vn-dl-spinner-track" cx="21" cy="21" r="19"/><circle class="vn-dl-spinner-fill" cx="21" cy="21" r="19" stroke-dasharray="119" stroke-dashoffset="119"/></svg><div class="vn-dl-spinner-icon"><svg class="lucide-icon lucide" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m17 8-5-5-5 5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg></div>`;
       _vnUpOv.appendChild(_vnUpSpinner);
       outer.appendChild(_vnUpOv);
       // Регистрируем в uploadUIs чтобы updateUploadProgress работал
