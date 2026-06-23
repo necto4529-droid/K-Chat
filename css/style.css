@@ -65,9 +65,16 @@
     .home-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;padding-top:calc(14px + var(--safe-t));background:rgba(7,7,15,.88);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);flex-shrink:0;z-index:20;position:relative}
     .home-header::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:1px;background:linear-gradient(90deg,transparent,var(--g-30) 20%,var(--g-30) 80%,transparent)}
     .home-title-wrap{display:flex;align-items:center;gap:8px}
-    .home-title{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;color:var(--g);letter-spacing:-.5px;transition:color .35s ease,font-size .25s ease,opacity .3s ease}
-    /* Заголовок при переподключении — жёлтый, чуть меньше (как в Telegram) */
-    .home-title.connecting{color:var(--warn);font-size:17px;opacity:0.9;letter-spacing:-.3px}
+    .home-title{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;color:var(--g);letter-spacing:-.5px}
+    /* Полоска статуса соединения — не меняет шапку, появляется под ней */
+    .conn-status-bar{display:flex;align-items:center;justify-content:center;gap:7px;height:0;overflow:hidden;background:rgba(255,166,43,0.10);border-bottom:1px solid transparent;transition:height .3s cubic-bezier(.4,0,.2,1),border-color .3s ease,background .3s ease;flex-shrink:0;position:relative;z-index:19}
+    .conn-status-bar.visible{height:28px;border-color:rgba(255,166,43,0.22)}
+    .conn-status-bar.connected-bar{background:rgba(0,255,136,0.08);border-color:rgba(0,255,136,0.18)}
+    .conn-status-dot{width:6px;height:6px;border-radius:50%;background:var(--warn);flex-shrink:0;animation:connDotBlink 1s ease-in-out infinite}
+    @keyframes connDotBlink{0%,100%{opacity:1}50%{opacity:.3}}
+    .conn-status-bar.connected-bar .conn-status-dot{background:var(--g);animation:connPulse 2.4s ease-in-out infinite;box-shadow:0 0 5px var(--g-glow)}
+    .conn-status-text{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:var(--warn);letter-spacing:.3px;white-space:nowrap}
+    .conn-status-bar.connected-bar .conn-status-text{color:var(--g)}
     /* Индикатор соединения с сервером — добавляется классом connected/connecting к .home-conn-dot */
     .home-conn-dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex-shrink:0;transition:background .35s ease,box-shadow .35s ease;margin-top:2px}
     /* Бейдж типа сети (G, E, 2G, 3G, H, H+, LTE, 4G, WiFi) */
@@ -350,6 +357,8 @@
     body.power-save .pinned-close{transition:background .1s!important;transform:none!important}
     body.power-save .chat-peer-status.activity::before{animation:none!important;opacity:1}
     body.power-save .chat-peer-status.connecting::before{animation:none!important;opacity:1}
+    body.power-save .conn-status-dot{animation:none!important;opacity:1}
+    body.power-save .conn-status-bar{transition:none!important}
     body.power-save .bubble.reply-highlight{animation:none!important;background:var(--reply-hl-color,rgba(0,255,136,0.25))!important;transition:background 1.4s ease-out!important}
     /* FAB-меню в режиме энергосбережения — просто fade */
     body.power-save .fab-menu.open{opacity:1!important}
@@ -973,17 +982,18 @@
     .vn-ring-prog-play{fill:none;stroke:var(--g);stroke-width:3.5;stroke-linecap:round;transform:rotate(-90deg);transform-origin:50% 50%}
     /* ── Кнопка/спиннер скачивания — внутри круга ── */
     .vn-dl-wrap{position:absolute;top:4px;left:4px;right:4px;bottom:4px;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45);border-radius:50%;z-index:3}
-    .vn-dl-btn{width:42px;height:42px;border-radius:50%;background:rgba(0,217,255,.16);border:2px solid rgba(0,217,255,.4);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .2s,transform .15s;font-size:16px;color:#fff}
+    .vn-dl-btn{width:38px;height:38px;border-radius:50%;background:rgba(0,217,255,.16);border:2px solid rgba(0,217,255,.4);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .2s,transform .15s;font-size:16px;color:#fff}
     .vn-dl-btn:hover{background:rgba(0,217,255,.26);transform:scale(1.06)}
     .vn-dl-btn:active{transform:scale(.92)}
-    .vn-dl-spinner{width:42px;height:42px;position:relative;animation:vnDlPulse 1.8s ease-in-out infinite}
+    .vn-dl-spinner{width:38px;height:38px;position:relative;animation:vnDlPulse 1.8s ease-in-out infinite}
     /* Upload-спиннер на видео-кружке: без пульса */
     .vn-dl-wrap.vn-upload-wrap .vn-dl-spinner{animation:none}
     @keyframes vnDlPulse{0%,100%{filter:drop-shadow(0 0 0 transparent)}50%{filter:drop-shadow(0 0 6px var(--g-40))}}
-    .vn-dl-spinner svg{width:42px;height:42px;}
+    .vn-dl-spinner > svg{width:100%;height:100%;display:block;}
     .vn-dl-spinner-track{fill:none;stroke:rgba(255,255,255,.18);stroke-width:3}
-    .vn-dl-spinner-fill{fill:none;stroke:var(--g);stroke-width:3;stroke-linecap:round;stroke-dasharray:122;stroke-dashoffset:122;transition:stroke-dashoffset .25s ease}
+    .vn-dl-spinner-fill{fill:none;stroke:var(--g);stroke-width:3;stroke-linecap:round;stroke-dasharray:119;stroke-dashoffset:119;transition:stroke-dashoffset .25s ease}
     .vn-dl-spinner-icon{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff}
+    .vn-dl-spinner-icon svg.lucide-icon{width:18px;height:18px;display:block}
     /* pauseDot — SVG circle в кольце, не обрезается */
     .vn-pause-dot{position:absolute;border-radius:50%;background:#fff;box-shadow:0 0 4px rgba(0,0,0,.5);pointer-events:none;opacity:0;transition:opacity .18s;width:11px;height:11px;z-index:5}
     @keyframes vnPauseDotPulse{0%,100%{r:6}50%{r:7}}
@@ -1616,7 +1626,7 @@
 .bio-lock-icon svg.lucide-icon { width: 48px; height: 48px; }
 
 /* Video note download */
-.vn-dl-btn svg.lucide-icon { width: 20px; height: 20px; }
+.vn-dl-btn svg.lucide-icon { width: 18px; height: 18px; }
 
 /* Video lightbox play */
 .vid-play-overlay svg.lucide-icon { width: 32px; height: 32px; }
