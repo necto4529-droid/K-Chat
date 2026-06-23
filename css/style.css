@@ -942,6 +942,17 @@
     .vn-pause-btn.paused{background:rgba(0,255,136,.12);border-color:rgba(0,255,136,.35);color:var(--g)}
     .vn-pause-btn.paused:active{background:rgba(0,255,136,.22)}
     .vn-pause-btn.fading-out{transform:scale(.5);opacity:0;transition:transform .25s ease,opacity .25s ease}
+    
+    .vn-flip-btn{
+      width:44px;height:44px;border-radius:50%;flex-shrink:0;
+      background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.15);
+      display:flex;align-items:center;justify-content:center;
+      cursor:pointer;font-size:17px;color:#fff;
+      transition:background .18s,transform .15s,border-color .18s;
+    }
+    .vn-flip-btn:active{transform:scale(.88);background:rgba(255,255,255,.18)}
+    .vn-flip-btn.flipping{animation:vnFlipSpin .45s ease-in-out}
+    @keyframes vnFlipSpin{from{transform:rotate(0)}to{transform:rotate(180deg)}}
 
     /* Кнопка отправки ➤ — справа, акцентная, крупнее остальных */
     .vn-send-btn{
@@ -1628,6 +1639,7 @@
 
 /* Video note download */
 .vn-dl-btn svg.lucide-icon { width: 18px; height: 18px; }
+.vn-flip-btn svg.lucide-icon { width: 18px; height: 18px; }
 
 /* Video lightbox play */
 .vid-play-overlay svg.lucide-icon { width: 32px; height: 32px; }
