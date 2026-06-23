@@ -633,6 +633,7 @@ async function ensureKey(pid){let key=await getKey(pid);if(key)return key;return
 const ACTIVITY_LABELS={
   typing:'печатает',
   recording:'записывает голосовое',
+  recording_video:'записывает видео',
   sending_voice:'отправляет голосовое',
   sending_file:'отправляет файл',
   choosing_sticker:'выбирает стикер',
@@ -6561,6 +6562,59 @@ function _isFrontCamera(){
   return true;
 }
 
+async function flipCamera(){
+  if(!_vnRecording||_vnFlipping)return;
+  _vnFlipping=true;
+  const btn=$('vnFlipBtn');
+  if(btn)btn.classList.add('flipping');
+  
+  try{
+    // 1. Переключаем режим
+    _vnFacingMode=(_vnFacingMode==='user'?'environment':'user');
+    
+    // 2. Получаем новый видеопоток
+    const p=_netQuality.getParams();
+    const newStream=await navigator.mediaDevices.getUserMedia({
+      video:{
+        facingMode:_vnFacingMode,
+        width:{exact:p.vnW},
+        height:{exact:p.vnH},
+        frameRate:{exact:p.vnFps}
+      }
+    });
+    
+    const newVideoTrack=newStream.getVideoTracks()[0];
+    const oldVideoTrack=_vnStream.getVideoTracks()[0];
+    
+    // 3. Подменяем трек в основном стриме (чтобы MediaRecorder продолжал писать)
+    // ВАЖНО: MediaRecorder на некоторых Android/iOS может не подхватить replaceTrack
+    // Но для большинства современных браузеров это работает.
+    if(oldVideoTrack){
+      _vnStream.removeTrack(oldVideoTrack);
+      oldVideoTrack.stop();
+    }
+    _vnStream.addTrack(newVideoTrack);
+    
+    // 4. Обновляем превью
+    const preview=$('vnPreview');
+    if(preview){
+      preview.srcObject=_vnStream;
+      preview.style.transform=(_vnFacingMode==='user'?'scaleX(-1)':'scaleX(1)');
+      try{await preview.play();}catch(e){}
+    }
+    
+    if(typeof _vib==='function')_vib('tick');
+  }catch(e){
+    console.error('[VN] Flip failed:',e);
+    toast('Не удалось переключить камеру','err');
+  }finally{
+    setTimeout(()=>{
+      if(btn)btn.classList.remove('flipping');
+      _vnFlipping=false;
+    },500);
+  }
+}
+
 async function startVideoNote(){
   if(_vnRecording||isRecording||processingFiles)return;
 
@@ -6607,7 +6661,7 @@ async function startVideoNote(){
 
     const preview=$('vnPreview');
     preview.srcObject=_vnStream;
-    preview.style.transform='scaleX(-1)'; // фронтальная — зеркало
+    preview.style.transform=(_vnFacingMode==='user'?'scaleX(-1)':'scaleX(1)');
     try{await preview.play();}catch(e){}
 
   }catch(e){
@@ -6643,7 +6697,7 @@ async function startVideoNote(){
 
       const preview=$('vnPreview');
       preview.srcObject=_vnStream;
-      preview.style.transform='scaleX(-1)'; // фронтальная — зеркало
+      preview.style.transform=(_vnFacingMode==='user'?'scaleX(-1)':'scaleX(1)');
       try{await preview.play();}catch(e){}
 
     }catch(e2){
@@ -6705,8 +6759,8 @@ async function startVideoNote(){
   _vnTimerIv=requestAnimationFrame(_vnRafTick);
 
   if(activePid&&activePid!==MY_ID){
-    _sendActivitySignal(activePid,'recording');
-    _vnActivityHb=setInterval(()=>{if(activePid&&_vnRecording)_sendActivitySignal(activePid,'recording');},3000);
+    _sendActivitySignal(activePid,'recording_video');
+    _vnActivityHb=setInterval(()=>{if(activePid&&_vnRecording)_sendActivitySignal(activePid,'recording_video');},3000);
   }
 }
 
@@ -6869,8 +6923,8 @@ window.togglePauseVideoNote=function(){
     _vnTimerIv=requestAnimationFrame(_vnRafResume);
     // Возобновляем activity heartbeat
     if(activePid&&activePid!==MY_ID){
-      _sendActivitySignal(activePid,'recording');
-      _vnActivityHb=setInterval(()=>{if(activePid&&_vnRecording&&!_vnPaused)_sendActivitySignal(activePid,'recording');},3000);
+      _sendActivitySignal(activePid,'recording_video');
+      _vnActivityHb=setInterval(()=>{if(activePid&&_vnRecording&&!_vnPaused)_sendActivitySignal(activePid,'recording_video');},3000);
     }
     // Визуальная обратная связь
     if(pauseBtn){pauseBtn.classList.remove('paused');pauseBtn.innerHTML='<svg class=\"lucide-icon lucide\" xmlns=\"http://www.w3.org/2000/svg\" width=\"1em\" height=\"1em\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" > <rect x=\"14\" y=\"3\" width=\"5\" height=\"18\" rx=\"1\" /> <rect x=\"5\" y=\"3\" width=\"5\" height=\"18\" rx=\"1\" /> </svg>';pauseBtn.title='Пауза';}
