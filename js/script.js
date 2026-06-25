@@ -1051,7 +1051,9 @@ function ensureWS(){
     wsUp=false;
     updateSendBtn();
     console.log('[WS] Closed:', e.code, e.reason);
-    
+    // ИСПРАВЛЕНИЕ: сбрасываем локальный typing-таймер при разрыве соединения.
+    // Сервер сам разошлёт presence=offline всем при разрыве, но таймер требует сброса.
+    clearTimeout(window._tyd); window._tyd = null;
     // ОБНОВЛЕНИЕ ЗАГОЛОВКА (как в Telegram):
     // На главном экране — всегда обновляем заголовок
     // В чате — обновляем статус собеседника
@@ -1096,9 +1098,13 @@ function _addToSentLog(obj) {
 function wsSend(obj){
   // Присваиваем уникальный ID каждому запросу для дедупликации на сервере
   if (!obj.requestId && obj.type !== 'ping') obj.requestId = uid();
-  
-  // Дренируем буфер перед отправкой нового пакета
-  if (ws && ws.readyState === WebSocket.OPEN && window._wsSendBuffer.length > 0) {
+
+  // ИСПРАВЛЕНИЕ: ephemeral-пакеты (typing, activity) НЕ буферизуем и НЕ воспроизводим при reconnect.
+  // Если WS не готов — просто дропаем их (как в Telegram: устаревший статус не нужен).
+  const isEphemeral = !!obj.ephemeral;
+
+  // Дренируем буфер перед отправкой нового пакета (только не-ephemeral)
+  if (!isEphemeral && ws && ws.readyState === WebSocket.OPEN && window._wsSendBuffer.length > 0) {
     const buf = window._wsSendBuffer.splice(0);
     const now = Date.now();
     for (const item of buf) {
@@ -1110,15 +1116,18 @@ function wsSend(obj){
   if (ws && ws.readyState === WebSocket.OPEN) {
     try {
         ws.send(encodeMessage(obj));
-        _addToSentLog(obj);
+        if (!isEphemeral) _addToSentLog(obj);
     } catch(e) {
-        if (_WS_BUFFER_TYPES.has(obj.type) && window._wsSendBuffer.length < _WS_BUFFER_MAX) {
+        // При ошибке отправки — буферизуем только не-ephemeral пакеты
+        if (!isEphemeral && _WS_BUFFER_TYPES.has(obj.type) && window._wsSendBuffer.length < _WS_BUFFER_MAX) {
             window._wsSendBuffer.push({ obj, ts: Date.now() });
         }
     }
-  } else if (_WS_BUFFER_TYPES.has(obj.type) && window._wsSendBuffer.length < _WS_BUFFER_MAX) {
+  } else if (!isEphemeral && _WS_BUFFER_TYPES.has(obj.type) && window._wsSendBuffer.length < _WS_BUFFER_MAX) {
+    // Буферизуем только не-ephemeral пакеты
     window._wsSendBuffer.push({ obj, ts: Date.now() });
   }
+  // ephemeral при недоступном WS — молча дропаем (стale typing/activity не нужен)
 }
 
 // ── ОПТИМИЗАЦИЯ 1: Генерация миниатюры (thumb) 20x20 для мгновенного превью ──
@@ -2004,6 +2013,9 @@ async function onWS(msg){
   switch(msg.type){
     case 'registered':
       updateSendBtn();
+      // ИСПРАВЛЕНИЕ: немедленно сбрасываем "Переподключение..."/"Соединение..." после успешной регистрации.
+      // Не ждём presence-reply — сразу показываем текущий статус (как в Telegram).
+      updateBar();
       if(activePid) wsSend({type:'query-presence',target:activePid});
       registerPushNotifications().catch(()=>{});
       broadcastLastSeen().catch(()=>{});
@@ -2468,6 +2480,11 @@ function setOnline(pid, isOnline, isRealEvent){
   if(!isOnline && isRealEvent){
     // Контакт вышел из сети прямо сейчас — записываем точный timestamp
     lsSet(`bc_last_seen_${pid}`, Date.now());
+    // ИСПРАВЛЕНИЕ: при реальном выходе собеседника — немедленно сбрасываем "печатает..."/"записывает..."
+    // Не ждём таймаута — сразу показываем "Не в сети" (как в Telegram)
+    if(pid===activePid && currentScreen==='scr-chat'){
+      stopPeerActivity();
+    }
   }
   // presence-reply: если offline — НЕ обновляем bc_last_seen_*
   // (не знаем когда он реально вышел, реальный ts придёт через last-seen envelope)
@@ -3880,7 +3897,23 @@ window.openChatById=async function(pid){
   activePid=pid;stopPeerActivity();
   const chat=(await loadChats()).find(c=>c.peerId===pid)||{};
   $('peerName').textContent=chat.peerName||pid;
-  setPeerStatus('offline','Не в сети');$('sendBtn').disabled=true;_startConnDots('Подключение');
+  // ИСПРАВЛЕНИЕ: если WS уже подключён — не запускаем анимацию "Подключение..."
+  // Сразу показываем текущий статус (как в Telegram)
+  if (wsUp) {
+    // WS уже готов — показываем текущий презенс (если известен)
+    $('sendBtn').disabled=false;
+    if (online[pid]) {
+      _stopConnDots();
+      setPeerStatus('online','В сети');
+    } else {
+      _stopConnDots();
+      const _lsTs=lsGet(`bc_last_seen_${pid}`,null);
+      const _lsOk=lsGet(`bc_ls_allowed_${pid}`,false);
+      if(_lsTs&&_lsOk){setPeerStatus('offline',fmtLastSeen(_lsTs));}else{setPeerStatus('offline','Не в сети');}
+    }
+  } else {
+    setPeerStatus('offline','Не в сети');$('sendBtn').disabled=true;_startConnDots('Подключение');
+  }
   renderedCount=0;clearMediaPreview();
   // Инициализируем UI блокировки
   const blockBtn=$('blockContactBtn');
@@ -4279,6 +4312,10 @@ async function sendSingleMsg(text,fileInfo=null,existingId=null){
 async function sendMsg(){
   if(processingFiles)return;
   const inp=$('messageInput'),text=inp.value.trim();
+  // ИСПРАВЛЕНИЕ: при отправке — немедленно сбрасываем статус "typing".
+  // Собеседник видит "печатает..." ровно до получения сообщения, не дольше.
+  clearTimeout(window._tyd); window._tyd = null;
+  if(activePid&&wsUp&&keyCache[activePid]) sendTyping(false).catch(()=>{});
   if(pendingFiles.length>0){_vib('impactLight');sendQueue=pendingFiles.slice();pendingFiles=[];clearMediaPreview();inp.value='';inp.style.height='';cancelReply();processSendQueue(text);return;}
   if(!text)return;if(editId){_vib('impactLight');await commitEdit(text);return;}
   _vib('impactLight'); // тактильный отклик — сообщение отправлено
@@ -4291,7 +4328,9 @@ $('sendBtn').addEventListener('click',()=>sendMsg().catch(console.warn));
 $('messageInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg().catch(console.warn);}});
 $('messageInput').addEventListener('input',function(){
   this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px';
-  if(activePid&&wsUp&&keyCache[activePid]){sendTyping(true);clearTimeout(window._tyd);window._tyd=setTimeout(()=>sendTyping(false),30000);}
+  // ИСПРАВЛЕНИЕ: таймаут сброса typing уменьшен до 5с (было 30с).
+  // Если пользователь перестал печатать — через 5с статус сбросится автоматически.
+  if(activePid&&wsUp&&keyCache[activePid]){sendTyping(true);clearTimeout(window._tyd);window._tyd=setTimeout(()=>sendTyping(false),5000);}
 });
 async function sendTyping(isTyping){const key=keyCache[activePid];if(!key||!wsUp)return;try{const enc=await encData(ENC.encode(JSON.stringify({type:'typing',isTyping,ts:Date.now()})),key);wsSend({type:'send-msg',target:activePid,msgId:uid(),payload:payloadToB64(enc),ephemeral:true});}catch(e){}}
 
@@ -4299,11 +4338,11 @@ let _typTmr=null;
 function handleTyping(isTyping){
   clearTimeout(_typTmr);
   if(isTyping){
-    // Typing использует старый подход (нет heartbeat для typing) — сбрасываем через 4с
     startPeerActivity('typing');
-    // Переопределяем таймер из startPeerActivity на 4с (короче чем для activity)
+    // ИСПРАВЛЕНИЕ: таймаут автосброса = 6с (на 1с больше чем таймаут отправки stop = 5с).
+    // Если stop-сигнал не пришёл (напр. разрыв сети) — статус сбросится автоматически через 6с.
     clearTimeout(_activityClearTimer);
-    _activityClearTimer=setTimeout(()=>{stopPeerActivity();updateBar();},4000);
+    _activityClearTimer=setTimeout(()=>{stopPeerActivity();updateBar();},6000);
   }else{stopPeerActivity();updateBar();}
 }
 
@@ -6143,6 +6182,17 @@ async function broadcastLastSeen(){
 }
 
 window.leaveChat=async()=>{
+  // ИСПРАВЛЕНИЕ: перед выходом из чата — отправляем сигнал остановки typing и activity.
+  // Собеседник немедленно уберёт "печатает..." (как в Telegram).
+  if (activePid && wsUp) {
+    // Сбрасываем таймер typing перед отправкой stop
+    clearTimeout(window._tyd);
+    window._tyd = null;
+    // Отправляем typing=false если есть ключ
+    sendTyping(false).catch(()=>{});
+    // Отправляем activity=null (стоп всех активностей)
+    _sendActivityStop(activePid).catch(()=>{});
+  }
   await broadcastLastSeen().catch(()=>{});
   activePid='';stopPeerActivity();_stopConnDots();cancelEdit();cancelReply();resetMsgSearch();exitSelectionMode();closeAll();clearMediaPreview();if(isRecording)cancelRecording();_stopPreviewAudio();$('voicePreviewBar').classList.remove('active');
   // Закрываем видеоплеер если открыт
@@ -6296,12 +6346,45 @@ window.toggleBlockContact=function(){
 };
 
 document.addEventListener('visibilitychange',()=>{
-  if(document.visibilityState==='hidden'){lastHiddenTime=Date.now();_lastSeenBroadcastTs=0;broadcastLastSeen().catch(()=>{});}
-  else{ensureWS();const hd=Date.now()-lastHiddenTime;if(ignoreNextVisibilityReturn){ignoreNextVisibilityReturn=false;}else if(hd>3000){if(activePid)leaveChat();else goHome();}else if(activePid&&wsUp)wsSend({type:'query-presence',target:activePid});}
+  if(document.visibilityState==='hidden'){
+    lastHiddenTime=Date.now();_lastSeenBroadcastTs=0;
+    // ИСПРАВЛЕНИЕ: при сворачивании/закрытии приложения — отправляем stop typing/activity.
+    // Собеседник немедленно уберёт "печатает..." даже если мы вышли из приложения.
+    if (activePid && wsUp) {
+      clearTimeout(window._tyd); window._tyd = null;
+      sendTyping(false).catch(()=>{});
+      _sendActivityStop(activePid).catch(()=>{});
+    }
+    broadcastLastSeen().catch(()=>{});
+  } else {
+    ensureWS();
+    const hd=Date.now()-lastHiddenTime;
+    if(ignoreNextVisibilityReturn){ignoreNextVisibilityReturn=false;}
+    else if(hd>3000){if(activePid)leaveChat();else goHome();}
+    else if(activePid&&wsUp)wsSend({type:'query-presence',target:activePid});
+  }
 });
-// Надёжная отправка last-seen при закрытии/сворачивании
-window.addEventListener('pagehide', () => { _lastSeenBroadcastTs=0; broadcastLastSeen().catch(()=>{}); });
-window.addEventListener('beforeunload', () => { _lastSeenBroadcastTs=0; broadcastLastSeen().catch(()=>{}); });
+// Надёжная отправка last-seen и stop-typing при закрытии/сворачивании
+window.addEventListener('pagehide', () => {
+  _lastSeenBroadcastTs=0;
+  // ИСПРАВЛЕНИЕ: отправляем stop-typing/activity при закрытии страницы
+  if (activePid && wsUp) {
+    clearTimeout(window._tyd); window._tyd = null;
+    sendTyping(false).catch(()=>{});
+    _sendActivityStop(activePid).catch(()=>{});
+  }
+  broadcastLastSeen().catch(()=>{});
+});
+window.addEventListener('beforeunload', () => {
+  _lastSeenBroadcastTs=0;
+  // ИСПРАВЛЕНИЕ: отправляем stop-typing/activity перед выгрузкой страницы
+  if (activePid && wsUp) {
+    clearTimeout(window._tyd); window._tyd = null;
+    sendTyping(false).catch(()=>{});
+    _sendActivityStop(activePid).catch(()=>{});
+  }
+  broadcastLastSeen().catch(()=>{});
+});
 
 $('contactsSearch')?.addEventListener('input',renderContacts);
 $('homeSearch')?.addEventListener('input',()=>renderChatList());
