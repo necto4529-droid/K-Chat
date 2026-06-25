@@ -793,7 +793,9 @@ function wsReconnectDelay(attempt) {
 // При отсутствии соединения сообщение сохраняется в очередь и
 // автоматически отправляется при reconnect. Переживает reload страницы.
 const OUTBOX_KEY = 'bc_outbox_v2';
-const OUTBOX_TTL = 5 * 60 * 1000; // 5 минут
+// ГАРАНТИРОВАННАЯ ДОСТАВКА: TTL увеличен до 30 дней (аналог Telegram)
+// Раньше было 5 минут — сообщения терялись если пользователь был офлайн больше 5 минут
+const OUTBOX_TTL = 30 * 24 * 60 * 60 * 1000; // 30 дней
 function _outboxLoad() {
   const now = Date.now();
   const items = lsGet(OUTBOX_KEY, []);
@@ -813,6 +815,7 @@ function _outboxRemove(msgId) {
   const items = _outboxLoad().filter(x => x.msgId !== msgId);
   _outboxSave(items);
 }
+// ГАРАНТИРОВАННАЯ ДОСТАВКА: _drainOutbox поддерживает все типы сообщений: msg, media, voice, sticker
 async function _drainOutbox() {
   if (!wsUp) return;
   const items = _outboxLoad();
@@ -823,7 +826,31 @@ async function _drainOutbox() {
     try {
       const key = await getKey(item.peerId);
       if (!key) { remaining.push(item); continue; }
-      const env = { type: 'msg', id: item.msgId, text: item.text, ts: item.ts, replyTo: item.replyTo || null, forwarded: false };
+      let env;
+      if (item.type === 'voice') {
+        // Голосовое сообщение
+        env = { type: 'voice', id: item.msgId, text: '', ts: item.ts, replyTo: item.replyTo || null, forwarded: false,
+          voice: { data: item.voiceData, waveform: item.waveform }, voiceDuration: item.duration };
+      } else if (item.type === 'sticker') {
+        // Стикер
+        env = { type: 'sticker', id: item.msgId, sticker: item.emoji, ts: item.ts, replyTo: item.replyTo || null };
+      } else if (item.type === 'media') {
+        // Медиа (фото)
+        env = { type: 'media', id: item.msgId, text: item.text || '', ts: item.ts, replyTo: item.replyTo || null, forwarded: false,
+          media: item.media, caption: item.caption || '' };
+      } else if (item.type === 'video_note') {
+        // Видео-кружок: загружаем blob из IDB и отправляем через sendFileToServer
+        const vnBuf = await loadBlob(item.videoBlobId);
+        if (!vnBuf) { remaining.push(item); continue; }
+        const vnBlob = new Blob([vnBuf], {type: item.videoMime || 'video/webm'});
+        const vnFileInfo = { blob: vnBlob, name: item.msgId+'.webm', type: item.videoMime||'video/webm', size: vnBuf.byteLength, isVideoNote: true, durSec: item.durSec, replyTo: item.replyTo };
+        // Отправляем через sendFileToServer с skipCreate=true (сообщение уже есть в IDB)
+        sendFileToServer(vnFileInfo, '', item.msgId, true).catch(()=>{ remaining.push(item); });
+        continue; // Не добавляем в remaining — sendFileToServer сам уберёт из outbox при успехе
+      } else {
+        // Обычное текстовое сообщение
+        env = { type: 'msg', id: item.msgId, text: item.text, ts: item.ts, replyTo: item.replyTo || null, forwarded: false };
+      }
       const enc = await encData(ENC.encode(JSON.stringify(env)), key);
       wsSend({ type: 'send-msg', target: item.peerId, msgId: item.msgId, payload: payloadToB64(enc) });
       _markMsgSent(item.peerId, item.msgId);
@@ -984,7 +1011,9 @@ function ensureWS(){
     ws.send(encodeMessage({type:'auth',id:MY_ID}));
     updateSendBtn();
     if(activePid)wsSend({type:'query-presence',target:activePid});
-    processOutbox();
+    // ГАРАНТИРОВАННАЯ ДОСТАВКА: processOutbox() удалён здесь
+    // Раньше вызывался при onopen, но ещё раз в registered event — двойная отправка!
+    // Теперь только _drainOutbox() в registered event — единая надёжная очередь
     // ИСПРАВЛЕНИЕ: Синхронизируем интервал пинга с сервером (70 секунд вместо 25)
     if(pingInterval)clearInterval(pingInterval);
     pingInterval=setInterval(()=>{
@@ -1968,11 +1997,10 @@ const online={};
 async function onWS(msg){
   if(msg.type==='incoming-msg'&&msg.from===MY_ID)return;
   
-  // УЛЬТИМАТИВНАЯ ОПТИМИЗАЦИЯ: Фиксация ID события для Delta-Sync
+  // ГАРАНТИРОВАННАЯ ДОСТАВКА: bc_last_event_id обновляется ТОЛЬКО ПОСЛЕ успешной обработки
+  // Раньше обновлялся ДО обработки — если приложение упало в момент обработки, сообщение терялось
   const eventId=msg.eventId;
-  if (eventId && eventId > lsGet('bc_last_event_id', 0)) {
-    lsSet('bc_last_event_id', eventId);
-  }
+  // НЕ обновляем bc_last_event_id здесь — делаем это в конце каждого case после обработки
   switch(msg.type){
     case 'registered':
       updateSendBtn();
@@ -1980,10 +2008,12 @@ async function onWS(msg){
       registerPushNotifications().catch(()=>{});
       broadcastLastSeen().catch(()=>{});
       
-      // УЛЬТИМАТИВНАЯ ОПТИМИЗАЦИЯ: Delta-Sync (запрос пропущенных событий)
-      // Мы сообщаем серверу ID последнего полученного события, чтобы он дослал только новое.
-      const lastEvId = lsGet('bc_last_event_id', 0);
-      wsSend({ type: 'delta-sync', sinceId: lastEvId });
+      // ГАРАНТИРОВАННАЯ ДОСТАВКА: Сервер уже отправил все накопленные события через flushEventsToUser
+      // Дополнительно делаем delta-sync для получения событий которые могли быть пропущены в окно между flushEventsToUser и подключением
+      {
+        const lastEvId = lsGet('bc_last_event_id', 0);
+        wsSend({ type: 'delta-sync', sinceId: lastEvId });
+      }
 
       // После reconnect — drain все pending сообщения у которых есть ключ
       _drainAllPendingOnReconnect().catch(()=>{});
@@ -1995,20 +2025,21 @@ async function onWS(msg){
       if(activePid && currentScreen==='scr-chat') _sendChatReadReceipt(activePid).catch(()=>{});
       // Возобновляем загрузки файлов
       _resumeAllFileTransfers();
-      // ОПТИМИЗАЦИЯ 10: _drainOutbox при reconnect
+      // ГАРАНТИРОВАННАЯ ДОСТАВКА: _drainOutbox при reconnect
       _drainOutbox().catch(()=>{});
-      // Дренируем wsSend-буфер
+      // Дренируем wsSend-буфер (буфер имеет отдельный TTL 5 минут — не зависит от OUTBOX_TTL)
       if (window._wsSendBuffer.length > 0) {
         const buf = window._wsSendBuffer.splice(0);
         const now = Date.now();
+        const WS_BUFFER_TTL = 5 * 60 * 1000; // 5 минут для буфера (ACK-сообщения не нужно повторять через 30 дней)
         for (const item of buf) {
-          if (now - item.ts < OUTBOX_TTL) wsSend(item.obj);
+          if (now - item.ts < WS_BUFFER_TTL) wsSend(item.obj);
         }
       }
       break;
     case 'presence':setOnline(msg.peerId.toLowerCase(),!!msg.online,true);break;
     case 'presence-reply':setOnline((msg.target||'').toLowerCase(),!!msg.online,false);break;
-    case 'file-available':if(!isContactBlocked((msg.senderId||'').toLowerCase())){await handleFileAvailable(msg);}if(eventId)wsSend({type:'ack-event',eventId});break;
+    case 'file-available':if(!isContactBlocked((msg.senderId||'').toLowerCase())){await handleFileAvailable(msg);}if(eventId){wsSend({type:'ack-event',eventId});if(eventId>lsGet('bc_last_event_id',0))lsSet('bc_last_event_id',eventId);}break;
     // ОПТИМИЗАЦИЯ 3+4: сервер сообщает сколько чанков уже есть — обновляем UI
     case 'file-chunks-update':{
       const{fileId:cuFileId,chunksReady:cuReady,totalChunks:cuTotal}=msg;
@@ -2135,12 +2166,21 @@ async function onWS(msg){
       let key=keyCache[from]||await loadPersistedKey(from);
       if(!key){const pwd=localStorage.getItem(`bc_pwd_${from}`)||sessionStorage.getItem(`bc_pwd_${from}`);if(pwd){try{key=await deriveKey(pwd,from);keyCache[from]=key;await persistKey(from,key);}catch(e){}}}
       if(!key){const pending=lsGet(`bc_pending_${from}`,[]);if(!pending.some(p=>p.msgId===msg.msgId))pending.push({msgId:msg.msgId,payload:msg.payload,ts:Date.now()});lsSet(`bc_pending_${from}`,pending);const ct=loadContacts().find(c=>c.id===from);await getOrCreateChat(from,ct?.name,ct?.avatar);const chat=(await loadChats()).find(c=>c.peerId===from);await updateChat(from,{unread:(chat?.unread||0)+1,lastMsg:'Зашифровано',lastMsgTime:Date.now()});toast(`${ct?.name||from}: (зашифровано)`);break;}
-      try{const buf=typeof msg.payload==='string'?base64ToArrayBuffer(msg.payload):new Uint8Array(msg.payload).buffer;const pt=DEC.decode(await decData(buf,key));await handleEnvelope(from,JSON.parse(pt));}catch(e){console.warn('decrypt fail',e);}
+      try{
+        const buf=typeof msg.payload==='string'?base64ToArrayBuffer(msg.payload):new Uint8Array(msg.payload).buffer;
+        const pt=DEC.decode(await decData(buf,key));
+        await handleEnvelope(from,JSON.parse(pt));
+        // ГАРАНТИРОВАННАЯ ДОСТАВКА: Обновляем bc_last_event_id ТОЛЬКО после успешной расшифровки и сохранения
+        if(eventId && eventId > lsGet('bc_last_event_id', 0)) lsSet('bc_last_event_id', eventId);
+      }catch(e){
+        console.warn('decrypt fail',e);
+        // НЕ обновляем bc_last_event_id если расшифровка не удалась — сервер повторит отправку
+      }
       break;
     }
-    case 'msg-delivered':await markDelivered(msg.msgId,msg.by);if(eventId)wsSend({type:'ack-event',eventId});break;
-    case 'voice-listened':await markVoiceListened(msg.voiceMsgId,(msg.from||'').toLowerCase());if(eventId)wsSend({type:'ack-event',eventId});break;
-    case 'vn-watched':await markVnWatched(msg.vnMsgId,(msg.from||'').toLowerCase());if(eventId)wsSend({type:'ack-event',eventId});break;
+    case 'msg-delivered':await markDelivered(msg.msgId,msg.by);if(eventId){wsSend({type:'ack-event',eventId});if(eventId>lsGet('bc_last_event_id',0))lsSet('bc_last_event_id',eventId);}break;
+    case 'voice-listened':await markVoiceListened(msg.voiceMsgId,(msg.from||'').toLowerCase());if(eventId){wsSend({type:'ack-event',eventId});if(eventId>lsGet('bc_last_event_id',0))lsSet('bc_last_event_id',eventId);}break;
+    case 'vn-watched':await markVnWatched(msg.vnMsgId,(msg.from||'').toLowerCase());if(eventId){wsSend({type:'ack-event',eventId});if(eventId>lsGet('bc_last_event_id',0))lsSet('bc_last_event_id',eventId);}break;
   }
 }
 
@@ -2391,7 +2431,28 @@ async function _sendChatReadReceipt(pid){
   }catch(e){}
 }
 
-async function drainPending(pid,key){const pending=lsGet(`bc_pending_${pid}`,[]);if(!pending.length)return;localStorage.removeItem(`bc_pending_${pid}`);for(const p of pending)await decryptAndStore(pid,p.payload,key);}
+// ГАРАНТИРОВАННая ДОСТАВКА: drainPending — не удаляем bc_pending_ до успешной расшифровки
+// Раньше: localStorage.removeItem вызывался ДО расшифровки — если расшифровка упала, сообщение терялось
+async function drainPending(pid,key){
+  const pending=lsGet(`bc_pending_${pid}`,[]);
+  if(!pending.length)return;
+  const failed=[];
+  for(const p of pending){
+    try{
+      await decryptAndStore(pid,p.payload,key);
+      // Успешно расшифровано — не добавляем в failed
+    }catch(e){
+      console.warn('[drainPending] decrypt failed for',pid,p.msgId,e);
+      failed.push(p); // Оставляем для повторной попытки
+    }
+  }
+  // Удаляем ТОЛЬКО успешно расшифрованные, неудачные остаются для повторного дрейна
+  if(failed.length>0){
+    lsSet(`bc_pending_${pid}`,failed);
+  }else{
+    localStorage.removeItem(`bc_pending_${pid}`);
+  }
+}
 
 // ── PRESENCE ──
 function setOnline(pid, isOnline, isRealEvent){
@@ -6486,19 +6547,26 @@ async function sendVoiceMessage(dataURL,duration,waveform){
     const m={id:msgId,text:'',type:'sent',time:new Date(ts).toISOString(),reactions:{},edited:false,replyTo:replyTo||null,delivered:true,forwarded:false,voice:{waveform,blobId:msgId+'_voice',data:dataURL},voiceDuration:duration,voiceListened:true};
     await upsertMsg(MY_ID,m);await updateChat(MY_ID,{lastMsg:'Голосовое',lastMsgTime:ts});appendOrReloadMsg(MY_ID,m);cancelReply();return;
   }
-  if(!wsUp){toast('Нет связи с сервером','err');return;}
   let key;try{key=await ensureKey(activePid);}catch(e){return;}
-  await drainPending(activePid,key);
   const msgId=uid(),ts=Date.now();
+  // ГАРАНТИРОВАННАЯ ДОСТАВКА: Сначала сохраняем сообщение в IDB и отображаем в UI
+  try{const vbuf=base64ToArrayBuffer(dataURL.replace(/^data:[^,]+,/,''));await saveBlob(msgId+'_voice',vbuf);}catch(e){}
+  const m={id:msgId,text:'',type:'sent',time:new Date(ts).toISOString(),reactions:{},edited:false,replyTo:replyTo||null,delivered:false,forwarded:false,voice:{waveform,blobId:msgId+'_voice',data:dataURL},voiceDuration:duration,voiceListened:false,_pending:!wsUp};
+  await upsertMsg(activePid,m);await updateChat(activePid,{lastMsg:'Голосовое',lastMsgTime:ts});appendOrReloadMsg(activePid,m);cancelReply();
+  if(!wsUp){
+    // ГАРАНТИРОВАННАЯ ДОСТАВКА: Сохраняем в outbox для автоматической отправки при reconnect
+    _outboxPush({msgId,peerId:activePid,type:'voice',voiceData:dataURL,waveform,duration,replyTo:replyTo||null,ts});
+    _markMsgPending(activePid,msgId);
+    toast('Голосовое будет отправлено при подключении','warn');
+    return;
+  }
+  await drainPending(activePid,key);
   const env={type:'voice',id:msgId,text:'',ts,replyTo:replyTo||null,forwarded:false,voice:{data:dataURL,waveform},voiceDuration:duration};
   try{
     const enc=await encData(ENC.encode(JSON.stringify(env)),key);
     wsSend({type:'send-msg',target:activePid,msgId,payload:payloadToB64(enc)});
-    // Сохраняем голосовое отправителя в blobs
-    try{const vbuf=base64ToArrayBuffer(dataURL.replace(/^data:[^,]+,/,''));await saveBlob(msgId+'_voice',vbuf);}catch(e){}
-    const m={id:msgId,text:'',type:'sent',time:new Date(ts).toISOString(),reactions:{},edited:false,replyTo:replyTo||null,delivered:false,forwarded:false,voice:{waveform:env.voice.waveform,blobId:msgId+'_voice',data:dataURL},voiceDuration:duration,voiceListened:false};
-    await upsertMsg(activePid,m);await updateChat(activePid,{lastMsg:'Голосовое',lastMsgTime:ts});appendOrReloadMsg(activePid,m);cancelReply();
-    _sendActivityStop(activePid); // сбрасываем статус у получателя
+    _markMsgSent(activePid,msgId);
+    _sendActivityStop(activePid);
   }catch(e){toast('Ошибка отправки голосового','err');}
 }
 
@@ -7045,20 +7113,28 @@ async function sendVideoNoteMessageBuffer(fileBuffer, durSec, mimeType, blob) {
     return;
   }
 
-  if (!wsUp) { toast('Нет связи с сервером', 'err'); return; }
-
   const mSender = {
     id: msgId, text: '', type: 'sent',
     time: new Date(ts).toISOString(),
     reactions: {}, edited: false, replyTo: replyTo || null,
     delivered: false, forwarded: false,
     videoNote: true, voiceDuration: durSec, voiceListened: false,
-    videoBlobId: msgId + '_vnote', videoMime: mimeType
+    videoBlobId: msgId + '_vnote', videoMime: mimeType,
+    _pending: !wsUp
   };
   await upsertMsg(activePid, mSender);
   await updateChat(activePid, { lastMsg: 'Видео-кружок', lastMsgTime: ts });
   appendOrReloadMsg(activePid, { ...mSender, videoData: previewURL, _previewURL: previewURL });
   cancelReply();
+
+  if (!wsUp) {
+    // ГАРАНТИРОВАННАЯ ДОСТАВКА: Сохраняем видео-кружок в outbox для отправки при reconnect
+    // Видео-кружок будет отправлен через sendFileToServer при reconnect
+    _outboxPush({msgId, peerId: activePid, type: 'video_note', videoBlobId: msgId+'_vnote', videoMime: mimeType, durSec, replyTo: replyTo||null, ts});
+    _markMsgPending(activePid, msgId);
+    toast('Видео-кружок будет отправлен при подключении', 'warn');
+    return;
+  }
   // Сигнал "отправляет видео" + heartbeat пока идёт загрузка чанков
   _sendActivitySignal(activePid,'sending_video');
   const _vnSendActivityHb=setInterval(()=>{if(activePid)_sendActivitySignal(activePid,'sending_video');},3000);
@@ -8840,7 +8916,7 @@ function renderStickerGrid(packIdx,query){
 }
 
 async function sendSticker(emoji){
-  if(!activePid||!wsUp){toast('Нет соединения','err');return;}
+  if(!activePid)return;
   if(isContactBlocked(activePid))return;
   _vib('impactLight'); // тактильный отклик — стикер отправлен
   // Панель НЕ закрываем — пользователь может отправить ещё стикеры
@@ -8850,14 +8926,21 @@ async function sendSticker(emoji){
   addRecentSticker(emoji);
   const msgId=uid();
   const now=new Date().toISOString();
-  const emojiName=STICKER_NAMES[emoji]?STICKER_NAMES[emoji][0]:'стикер';
-  const envelope={type:'sticker',id:msgId,sticker:emoji,ts:Date.now(),replyTo:replyTo||null};
-  const localMsg={id:msgId,sticker:emoji,type:'sent',time:now,reactions:{},edited:false,replyTo:replyTo||null,delivered:false,forwarded:false};
+  const ts=Date.now();
+  const envelope={type:'sticker',id:msgId,sticker:emoji,ts,replyTo:replyTo||null};
+  const localMsg={id:msgId,sticker:emoji,type:'sent',time:now,reactions:{},edited:false,replyTo:replyTo||null,delivered:false,forwarded:false,_pending:!wsUp};
   cancelReply();
   await upsertMsg(activePid,localMsg);
-  await updateChat(activePid,{lastMsg:`${emoji} Стикер`,lastMsgTime:Date.now()});
+  await updateChat(activePid,{lastMsg:`${emoji} Стикер`,lastMsgTime:ts});
   appendOrReloadMsg(activePid,localMsg);
   renderChatList();
+  if(!wsUp){
+    // ГАРАНТИРОВАННАЯ ДОСТАВКА: Сохраняем стикер в outbox для отправки при reconnect
+    _outboxPush({msgId,peerId:activePid,type:'sticker',emoji,replyTo:replyTo||null,ts});
+    _markMsgPending(activePid,msgId);
+    toast('Стикер будет отправлен при подключении','warn');
+    return;
+  }
   try{
     const enc=await encData(ENC.encode(JSON.stringify(envelope)),key);
     wsSend({type:'send-msg',target:activePid,msgId,payload:payloadToB64(enc)});
