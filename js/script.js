@@ -1466,9 +1466,15 @@ async function handleFileAvailable(msg){
       const existingRow=document.querySelector(`.msg-row[data-msgid="${fileId}"]`);
       if(!existingRow)appendOrReloadMsg(senderId,vnMsg);
     }else{
-      const chat=(await loadChats()).find(c=>c.peerId===senderId);
-      await updateChat(senderId,{unread:(chat?.unread||0)+1});
-      toast(`${chat?.peerName||senderId}: Видео-кружок`);
+      // ИСПРАВЛЕНИЕ: атомарный инкремент unread через withChatLock
+      let _vnToastName;
+      await withChatLock(senderId, async () => {
+        const chats = await loadChats();
+        const chat = chats.find(c => c.peerId === senderId);
+        _vnToastName = chat?.peerName || senderId;
+        await updateChat(senderId, { unread: (chat?.unread || 0) + 1 });
+      });
+      toast(`${_vnToastName || senderId}: Видео-кружок`);
     }
     return;
   }
@@ -1482,9 +1488,15 @@ async function handleFileAvailable(msg){
     const existingRow=document.querySelector(`.msg-row[data-msgid="${fileId}"]`);
     if(!existingRow)appendOrReloadMsg(senderId,placeholderMsg);
   }else{
-    const chat=(await loadChats()).find(c=>c.peerId===senderId);
-    await updateChat(senderId,{unread:(chat?.unread||0)+1});
-    toast(`${chat?.peerName||senderId}: ${name}`);
+    // ИСПРАВЛЕНИЕ: атомарный инкремент unread через withChatLock
+    let _faToastName;
+    await withChatLock(senderId, async () => {
+      const chats = await loadChats();
+      const chat = chats.find(c => c.peerId === senderId);
+      _faToastName = chat?.peerName || senderId;
+      await updateChat(senderId, { unread: (chat?.unread || 0) + 1 });
+    });
+    toast(`${_faToastName || senderId}: ${name}`);
   }
 }
 
@@ -1833,9 +1845,15 @@ async function handleFileRef(from,env){
     const existingRow=document.querySelector(`.msg-row[data-msgid="${fileId}"]`);
     if(!existingRow)appendOrReloadMsg(from,placeholderMsg);
   }else{
-    const chat=(await loadChats()).find(c=>c.peerId===from);
-    await updateChat(from,{unread:(chat?.unread||0)+1,marked:false});
-    toast(`${chat?.peerName||from}: ${finfo.name}`);
+    // ИСПРАВЛЕНИЕ: атомарный инкремент unread через withChatLock
+    let _frToastName;
+    await withChatLock(from, async () => {
+      const chats = await loadChats();
+      const chat = chats.find(c => c.peerId === from);
+      _frToastName = chat?.peerName || from;
+      await updateChat(from, { unread: (chat?.unread || 0) + 1, marked: false });
+    });
+    toast(`${_frToastName || from}: ${finfo.name}`);
   }
 }
 
@@ -2020,11 +2038,20 @@ async function onWS(msg){
       registerPushNotifications().catch(()=>{});
       broadcastLastSeen().catch(()=>{});
       
-      // ГАРАНТИРОВАННАЯ ДОСТАВКА: Сервер уже отправил все накопленные события через flushEventsToUser
-      // Дополнительно делаем delta-sync для получения событий которые могли быть пропущены в окно между flushEventsToUser и подключением
-      {
-        const lastEvId = lsGet('bc_last_event_id', 0);
-        wsSend({ type: 'delta-sync', sinceId: lastEvId });
+      // ИСПРАВЛЕНИЕ КЛИЕНТСКОГО ДУБЛЯ:
+      // Сервер уже отправил все накопленные события через flushEventsToUser.
+      // delta-sync отправляем С ЗАДЕРЖКОЙ 350мс, чтобы дать время обработчикам
+      // incoming-msg обновить bc_last_event_id до того, как мы пошлём sinceId.
+      // Без задержки delta-sync срабатывал с sinceId=0 (старым 0)
+      // и повторно присылал все события, которые flushEventsToUser уже отправил.
+      // Флаг _deltaSyncInFlight предотвращает параллельные запросы при быстрых reconnect.
+      if (!window._deltaSyncInFlight) {
+        window._deltaSyncInFlight = true;
+        setTimeout(() => {
+          window._deltaSyncInFlight = false;
+          const lastEvId = lsGet('bc_last_event_id', 0);
+          wsSend({ type: 'delta-sync', sinceId: lastEvId });
+        }, 350);
       }
 
       // После reconnect — drain все pending сообщения у которых есть ключ
@@ -2177,7 +2204,11 @@ async function onWS(msg){
       getKey(from).then(k=>{if(k)drainPending(from,k).catch(()=>{});}).catch(()=>{});
       let key=keyCache[from]||await loadPersistedKey(from);
       if(!key){const pwd=localStorage.getItem(`bc_pwd_${from}`)||sessionStorage.getItem(`bc_pwd_${from}`);if(pwd){try{key=await deriveKey(pwd,from);keyCache[from]=key;await persistKey(from,key);}catch(e){}}}
-      if(!key){const pending=lsGet(`bc_pending_${from}`,[]);if(!pending.some(p=>p.msgId===msg.msgId))pending.push({msgId:msg.msgId,payload:msg.payload,ts:Date.now()});lsSet(`bc_pending_${from}`,pending);const ct=loadContacts().find(c=>c.id===from);await getOrCreateChat(from,ct?.name,ct?.avatar);const chat=(await loadChats()).find(c=>c.peerId===from);await updateChat(from,{unread:(chat?.unread||0)+1,lastMsg:'Зашифровано',lastMsgTime:Date.now()});toast(`${ct?.name||from}: (зашифровано)`);break;}
+      if(!key){const pending=lsGet(`bc_pending_${from}`,[]);if(!pending.some(p=>p.msgId===msg.msgId))pending.push({msgId:msg.msgId,payload:msg.payload,ts:Date.now()});lsSet(`bc_pending_${from}`,pending);const ct=loadContacts().find(c=>c.id===from);await getOrCreateChat(from,ct?.name,ct?.avatar);const chat=(await loadChats()).find(c=>c.peerId===from);await withChatLock(from, async () => {
+        const _chats = await loadChats();
+        const _chat = _chats.find(c => c.peerId === from);
+        await updateChat(from, { unread: (_chat?.unread || 0) + 1, lastMsg: 'Зашифровано', lastMsgTime: Date.now() });
+      });toast(`${ct?.name||from}: (зашифровано)`);break;}
       try{
         const buf=typeof msg.payload==='string'?base64ToArrayBuffer(msg.payload):new Uint8Array(msg.payload).buffer;
         const pt=DEC.decode(await decData(buf,key));
@@ -2218,9 +2249,14 @@ async function handleEnvelope(from,env){
       appendOrReloadMsg(from,m);
       if(from===activePid){stopPeerActivity();updateBar();}
     }else{
-      const chat=(await loadChats()).find(ch=>ch.peerId===from);
-      await updateChat(from,{unread:(chat?.unread||0)+1,marked:false});
-      toast((chat?.peerName||from)+': Стикер');
+      // ИСПРАВЛЕНИЕ: атомарный инкремент unread через withChatLock
+      await withChatLock(from, async () => {
+        const chats = await loadChats();
+        const chat = chats.find(ch => ch.peerId === from);
+        await updateChat(from, { unread: (chat?.unread || 0) + 1, marked: false });
+      });
+      const _chat = (await loadChats()).find(ch => ch.peerId === from);
+      toast((_chat?.peerName || from) + ': Стикер');
     }
     return;
   }
@@ -2308,7 +2344,17 @@ async function handleEnvelope(from,env){
       appendOrReloadMsg(from,m);
       // Сбрасываем статус активности при получении реального сообщения
       if(from===activePid){stopPeerActivity();updateBar();}
-    }else{const chat=(await loadChats()).find(c=>c.peerId===from);await updateChat(from,{unread:(chat?.unread||0)+1,marked:false});toast(`${chat?.peerName||from}: ${lastPreview}`);}
+    }else{
+      // ИСПРАВЛЕНИЕ: атомарный инкремент unread через withChatLock
+      let _toastName;
+      await withChatLock(from, async () => {
+        const chats = await loadChats();
+        const chat = chats.find(c => c.peerId === from);
+        _toastName = chat?.peerName || from;
+        await updateChat(from, { unread: (chat?.unread || 0) + 1, marked: false });
+      });
+      toast(`${_toastName || from}: ${lastPreview}`);
+    }
   }else if(env.type==='file-ref'){
     if(from===activePid&&currentScreen==='scr-chat'){stopPeerActivity();updateBar();}
     await handleFileRef(from,env);
